@@ -1,18 +1,20 @@
 {
-  "name": "arbeitszeiterfassung",
+  "name": "zeit-erfassungs-app",
   "version": "1.0.0",
-  "description": "Eine einfache Arbeitszeiterfassungs-App",
+  "description": "Eine App zur Erfassung von Arbeitszeiten",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
   },
   "dependencies": {
-    "express": "^4.17.1",
-    "sqlite3": "^5.0.2",
-    "body-parser": "^1.19.0",
-    "express-session": "^1.17.1"
+    "express": "^4.18.2",
+    "sqlite3": "^5.1.6",
+    "body-parser": "^1.20.2",
+    "express-session": "^1.17.3"
   },
   "engines": {
-    "node": "14.x"
-  }
+    "node": ">=14.0.0"
+  },
+  "author": "",
+  "license": "ISC"
 }

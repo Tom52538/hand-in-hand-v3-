@@ -4,7 +4,7 @@ const bodyParser = require('body-parser');
 const session = require('express-session');
 const path = require('path');
 const app = express();
-const port = 3000;
+const port = process.env.PORT || 3000;
 
 // Middleware
 app.use(bodyParser.json());
@@ -12,14 +12,15 @@ app.use(express.static('public'));
 
 // Session-Middleware konfigurieren
 app.use(session({
-  secret: 'dein-geheimes-schluessel', // Ersetze dies durch einen sicheren Schlüssel
+  secret: process.env.SESSION_SECRET || 'default-secret', // Use environment variable for session secret
   resave: false,
   saveUninitialized: true,
-  cookie: { secure: false } // Auf true setzen, wenn du HTTPS verwendest
+  cookie: { secure: false } // Set to true if using HTTPS
 }));
 
 // SQLite Datenbank einrichten
-const db = new sqlite3.Database('./work_hours.db');
+const dbPath = process.env.DATABASE_URL || './work_hours.db'; // Use environment variable for database path
+const db = new sqlite3.Database(dbPath);
 
 db.serialize(() => {
   db.run(`
@@ -35,10 +36,10 @@ db.serialize(() => {
     )
   `);
 
-  // Füge die 'comment', 'startTime', 'endTime' Felder hinzu, falls sie noch nicht existieren
+  // Add 'comment', 'startTime', 'endTime' fields if they do not exist
   db.all("PRAGMA table_info(work_hours)", [], (err, rows) => {
     if (err) {
-      console.error("Fehler beim Abrufen der Tabelleninformationen:", err);
+      console.error("Error retrieving table information:", err);
       return;
     }
 
@@ -67,228 +68,81 @@ function isAdmin(req, res, next) {
 
 // Route für alle Einträge (Admin)
 app.get('/admin-work-hours', isAdmin, (req, res) => {
-  const query = 'SELECT * FROM work_hours';
-  db.all(query, [], (err, rows) => {
+  db.all("SELECT * FROM work_hours", [], (err, rows) => {
     if (err) {
-      return res.status(500).send('Error fetching work hours.');
+      console.error("Error retrieving work hours:", err);
+      res.status(500).send('Internal Server Error');
+      return;
     }
     res.json(rows);
   });
 });
 
-// Route zum CSV-Download (Admin)
-app.get('/admin-download-csv', isAdmin, (req, res) => {
-  const query = 'SELECT * FROM work_hours';
-  db.all(query, [], (err, rows) => {
+// Route zum Hinzufügen eines neuen Eintrags (Admin)
+app.post('/api/admin/add-hours', isAdmin, (req, res) => {
+  const { name, date, hours, break_time, comment, startTime, endTime } = req.body;
+  const stmt = db.prepare("INSERT INTO work_hours (name, date, hours, break_time, comment, startTime, endTime) VALUES (?, ?, ?, ?, ?, ?, ?)");
+  stmt.run(name, date, hours, break_time, comment, startTime, endTime, function(err) {
     if (err) {
-      return res.status(500).send('Error fetching work hours.');
+      console.error("Error adding work hours:", err);
+      res.status(500).send('Internal Server Error');
+      return;
     }
-    const csv = convertToCSV(rows);
-    res.setHeader('Content-Type', 'text/csv');
-    res.setHeader('Content-Disposition', 'attachment; filename="arbeitszeiten.csv"');
-    res.send(csv);
+    res.send('Work hours added successfully');
   });
+  stmt.finalize();
 });
 
-// Update-Endpunkt (Admin)
-app.put('/api/admin/update-hours', isAdmin, (req, res) => {
-  const { id, name, date, startTime, endTime, comment } = req.body;
-
-  // Überprüfen, ob Arbeitsbeginn vor Arbeitsende liegt
-  if (startTime >= endTime) {
-    return res.status(400).json({ error: 'Arbeitsbeginn darf nicht später als Arbeitsende sein.' });
-  }
-
-  const hours = calculateWorkHours(startTime, endTime);
-  const breakTime = calculateBreakTime(hours, comment);
-  const netHours = hours - breakTime;
-
-  const query = `
-    UPDATE work_hours
-    SET name = ?, date = ?, hours = ?, break_time = ?, comment = ?, startTime = ?, endTime = ?
-    WHERE id = ?
-  `;
-  db.run(query, [name, date, netHours, breakTime, comment, startTime, endTime, id], function(err) {
-    if (err) {
-      return res.status(500).send('Error updating working hours.');
-    }
-    res.send('Working hours updated successfully.');
-  });
-});
-
-// Delete-Endpunkt (Admin)
+// Route zum Löschen eines Eintrags (Admin)
 app.delete('/api/admin/delete-hours/:id', isAdmin, (req, res) => {
-  const { id } = req.params;
-  const query = 'DELETE FROM work_hours WHERE id = ?';
-  db.run(query, [id], function(err) {
+  const id = req.params.id;
+  db.run("DELETE FROM work_hours WHERE id = ?", id, function(err) {
     if (err) {
-      return res.status(500).send('Error deleting working hours.');
+      console.error("Error deleting work hours:", err);
+      res.status(500).send('Internal Server Error');
+      return;
     }
-    res.send('Working hours deleted successfully.');
+    res.send('Work hours deleted successfully');
   });
 });
 
-// API: Arbeitszeiten erfassen
-app.post('/log-hours', (req, res) => {
-  const { name, date, startTime, endTime, comment } = req.body;
-
-  // Überprüfen, ob Arbeitsbeginn vor Arbeitsende liegt
-  if (startTime >= endTime) {
-    return res.status(400).json({ error: 'Arbeitsbeginn darf nicht später als Arbeitsende sein.' });
-  }
-
-  // Case-insensitive prüfen, ob für denselben Tag + (Name) bereits ein Eintrag existiert
-  const checkQuery = `
-    SELECT * FROM work_hours
-    WHERE LOWER(name) = LOWER(?) AND date = ?
-  `;
-  db.get(checkQuery, [name, date], (err, row) => {
+// Route zum Herunterladen der Arbeitszeiten als CSV (Admin)
+app.get('/admin-download-csv', isAdmin, (req, res) => {
+  db.all("SELECT * FROM work_hours", [], (err, rows) => {
     if (err) {
-      return res.status(500).send('Fehler beim Überprüfen der Daten.');
+      console.error("Error retrieving work hours:", err);
+      res.status(500).send('Internal Server Error');
+      return;
     }
 
-    if (row) {
-      return res.status(400).json({ error: 'Eintrag für diesen Tag existiert bereits.' });
-    }
+    const csv = rows.map(row =>
+      `${row.id},${row.name},${row.date},${row.hours},${row.break_time},${row.comment || ''},${row.startTime || ''},${row.endTime || ''}`
+    ).join('\n');
 
-    const hours = calculateWorkHours(startTime, endTime);
-    const breakTime = calculateBreakTime(hours, comment);
-    const netHours = hours - breakTime;
-
-    const insertQuery = `
-      INSERT INTO work_hours (name, date, hours, break_time, comment, startTime, endTime)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
-    `;
-    db.run(insertQuery, [name, date, netHours, breakTime, comment, startTime, endTime], function(err) {
-      if (err) {
-        return res.status(500).send('Fehler beim Speichern der Daten.');
-      }
-      res.send('Daten erfolgreich gespeichert.');
-    });
+    res.header('Content-Type', 'text/csv');
+    res.attachment('arbeitszeiten.csv');
+    return res.send(csv);
   });
 });
 
-/**
- * NEUER GET-Endpunkt, um ALLE Einträge für einen Namen abzurufen (case-insensitive).
- */
-app.get('/get-all-hours', (req, res) => {
-  const { name } = req.query;
-  if (!name) {
-    return res.status(400).send('Name ist erforderlich.');
-  }
-
-  const query = `
-    SELECT * FROM work_hours
-    WHERE LOWER(name) = LOWER(?)
-    ORDER BY date ASC
-  `;
-  db.all(query, [name], (err, rows) => {
-    if (err) {
-      return res.status(500).send('Fehler beim Abrufen der Daten.');
-    }
-    res.json(rows); // Gibt alle Einträge für diesen Namen zurück
-  });
-});
-
-// API: Einen Datensatz für Name + Datum abrufen (case-insensitive)
-app.get('/get-hours', (req, res) => {
-  const { name, date } = req.query;
-  const query = `
-    SELECT * FROM work_hours
-    WHERE LOWER(name) = LOWER(?) AND date = ?
-  `;
-  db.get(query, [name, date], (err, row) => {
-    if (err) {
-      return res.status(500).send('Fehler beim Abrufen der Daten.');
-    }
-    if (!row) {
-      return res.status(404).send('Keine Daten gefunden.');
-    }
-    res.json(row);
-  });
-});
-
-// API: Löschen aller Arbeitszeiten
+// Route zum Löschen aller Arbeitszeiten (Admin)
 app.delete('/delete-hours', (req, res) => {
-  const { password, confirm } = req.body;
-  if (password === 'dein-passwort' && confirm === true) {
-    const deleteQuery = 'DELETE FROM work_hours';
-    db.run(deleteQuery, function(err) {
+  const { confirmDelete, password } = req.body;
+  if (confirmDelete === 'true' && password === process.env.ADMIN_PASSWORD) {
+    db.run("DELETE FROM work_hours", function(err) {
       if (err) {
-        return res.status(500).send('Fehler beim Löschen der Daten.');
+        console.error("Error deleting all work hours:", err);
+        res.status(500).send('Internal Server Error');
+        return;
       }
-      res.send('Daten erfolgreich gelöscht.');
+      res.send('All work hours deleted successfully');
     });
   } else {
-    res.status(401).send('Löschen abgebrochen. Passwort erforderlich oder Bestätigung fehlt.');
+    res.status(403).send('Access denied. Invalid password.');
   }
 });
 
-// Admin Login Endpunkt
-app.post('/admin-login', (req, res) => {
-  const { password } = req.body;
-  if (password === 'admin') {
-    req.session.isAdmin = true;
-    res.send('Admin angemeldet.');
-  } else {
-    res.status(401).send('Ungültiges Passwort.');
-  }
-});
-
-// Hilfsfunktionen
-function calculateWorkHours(startTime, endTime) {
-  const start = new Date(`1970-01-01T${startTime}:00`);
-  const end = new Date(`1970-01-01T${endTime}:00`);
-  const diff = end - start;
-  return diff / 1000 / 60 / 60; // Stunden
-}
-
-function calculateBreakTime(hours, comment) {
-  if (comment && (comment.toLowerCase().includes("ohne pause") || comment.toLowerCase().includes("keine pause"))) {
-    return 0;
-  } else if (comment && comment.toLowerCase().includes("15 minuten")) {
-    return 0.25; // 15 Minuten Pause
-  } else if (hours > 9) {
-    return 0.75; // 45 Minuten Pause
-  } else if (hours > 6) {
-    return 0.5; // 30 Minuten Pause
-  } else {
-    return 0; // Keine Pause erforderlich
-  }
-}
-
-function convertDecimalHoursToHoursMinutes(decimalHours) {
-  const hours = Math.floor(decimalHours);
-  const minutes = Math.round((decimalHours - hours) * 60);
-  return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
-}
-
-function convertToCSV(data) {
-  if (!data || data.length === 0) {
-    return '';
-  }
-  const csvRows = [];
-  const headers = ["Name", "Datum", "Anfang", "Ende", "Gesamtzeit", "Bemerkung"];
-  csvRows.push(headers.join(','));
-
-  for (const row of data) {
-    const formattedHours = convertDecimalHoursToHoursMinutes(row.hours);
-
-    const values = [
-      row.name,
-      row.date,
-      row.startTime,
-      row.endTime,
-      formattedHours, // Formatiert als Stunden:Minuten
-      row.comment || ''
-    ];
-    csvRows.push(values.join(','));
-  }
-
-  return csvRows.join('\n');
-}
-
-// Server starten
+// Start the server
 app.listen(port, () => {
-  console.log(`Server läuft auf http://localhost:${port}`);
+  console.log(`Server is running on port ${port}`);
 });
