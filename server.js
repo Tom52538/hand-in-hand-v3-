@@ -68,6 +68,30 @@ db.serialize(() => {
       console.log("Tabelle employees erfolgreich erstellt oder bereits vorhanden.");
     }
   });
+  
+  // Neue Spalten für Soll-Arbeitszeiten (Montag bis Freitag) in der Tabelle employees hinzufügen
+  db.all("PRAGMA table_info(employees)", [], (err, rows) => {
+    if (err) {
+      console.error("Fehler beim Abrufen der Mitarbeiter-Tabelle:", err);
+      return;
+    }
+    const columnNames = rows.map(row => row.name);
+    if (!columnNames.includes('mo_hours')) {
+      db.run("ALTER TABLE employees ADD COLUMN mo_hours REAL");
+    }
+    if (!columnNames.includes('di_hours')) {
+      db.run("ALTER TABLE employees ADD COLUMN di_hours REAL");
+    }
+    if (!columnNames.includes('mi_hours')) {
+      db.run("ALTER TABLE employees ADD COLUMN mi_hours REAL");
+    }
+    if (!columnNames.includes('do_hours')) {
+      db.run("ALTER TABLE employees ADD COLUMN do_hours REAL");
+    }
+    if (!columnNames.includes('fr_hours')) {
+      db.run("ALTER TABLE employees ADD COLUMN fr_hours REAL");
+    }
+  });
 });
 
 // Middleware, um Admin-Berechtigungen zu prüfen
@@ -83,8 +107,6 @@ function isAdmin(req, res, next) {
 // --------------------------
 // API-Endpunkte für Arbeitszeiten
 // --------------------------
-
-// Alle Arbeitszeiten abrufen (Admin)
 app.get('/admin-work-hours', isAdmin, (req, res) => {
   const query = 'SELECT * FROM work_hours';
   db.all(query, [], (err, rows) => {
@@ -95,7 +117,6 @@ app.get('/admin-work-hours', isAdmin, (req, res) => {
   });
 });
 
-// CSV-Download für Arbeitszeiten (Admin)
 app.get('/admin-download-csv', isAdmin, (req, res) => {
   const query = 'SELECT * FROM work_hours';
   db.all(query, [], (err, rows) => {
@@ -109,20 +130,15 @@ app.get('/admin-download-csv', isAdmin, (req, res) => {
   });
 });
 
-// Update eines Arbeitszeiteintrags (Admin)
 app.put('/api/admin/update-hours', isAdmin, (req, res) => {
   const { id, name, date, startTime, endTime, comment, breakTime } = req.body;
-
-  // Überprüfen, ob Arbeitsbeginn vor Arbeitsende liegt
   if (startTime >= endTime) {
     return res.status(400).json({ error: 'Arbeitsbeginn darf nicht später als Arbeitsende sein.' });
   }
-
   const totalHours = calculateWorkHours(startTime, endTime);
   const breakTimeMinutes = parseInt(breakTime, 10) || 0;
   const breakTimeHours = breakTimeMinutes / 60;
   const netHours = totalHours - breakTimeHours;
-
   const query = `
     UPDATE work_hours
     SET name = ?, date = ?, hours = ?, break_time = ?, comment = ?, startTime = ?, endTime = ?
@@ -136,7 +152,6 @@ app.put('/api/admin/update-hours', isAdmin, (req, res) => {
   });
 });
 
-// Löschen eines Arbeitszeiteintrags (Admin)
 app.delete('/api/admin/delete-hours/:id', isAdmin, (req, res) => {
   const { id } = req.params;
   const query = 'DELETE FROM work_hours WHERE id = ?';
@@ -148,16 +163,11 @@ app.delete('/api/admin/delete-hours/:id', isAdmin, (req, res) => {
   });
 });
 
-// Arbeitszeiten erfassen
 app.post('/log-hours', (req, res) => {
   const { name, date, startTime, endTime, comment, breakTime } = req.body;
-
-  // Überprüfen, ob Arbeitsbeginn vor Arbeitsende liegt
   if (startTime >= endTime) {
     return res.status(400).json({ error: 'Arbeitsbeginn darf nicht später als Arbeitsende sein.' });
   }
-
-  // Prüfen, ob für denselben Tag bereits ein Eintrag existiert (case-insensitive)
   const checkQuery = `
     SELECT * FROM work_hours
     WHERE LOWER(name) = LOWER(?) AND date = ?
@@ -169,12 +179,10 @@ app.post('/log-hours', (req, res) => {
     if (row) {
       return res.status(400).json({ error: 'Eintrag für diesen Tag existiert bereits.' });
     }
-
     const totalHours = calculateWorkHours(startTime, endTime);
     const breakTimeMinutes = parseInt(breakTime, 10) || 0;
     const breakTimeHours = breakTimeMinutes / 60;
     const netHours = totalHours - breakTimeHours;
-
     const insertQuery = `
       INSERT INTO work_hours (name, date, hours, break_time, comment, startTime, endTime)
       VALUES (?, ?, ?, ?, ?, ?, ?)
@@ -188,9 +196,6 @@ app.post('/log-hours', (req, res) => {
   });
 });
 
-/**
- * GET-Endpunkt: Alle Arbeitszeiten für einen Namen abrufen (case-insensitive)
- */
 app.get('/get-all-hours', (req, res) => {
   const { name } = req.query;
   if (!name) {
@@ -209,7 +214,6 @@ app.get('/get-all-hours', (req, res) => {
   });
 });
 
-// GET-Endpunkt: Einen Datensatz für Name + Datum abrufen (case-insensitive)
 app.get('/get-hours', (req, res) => {
   const { name, date } = req.query;
   const query = `
@@ -227,10 +231,8 @@ app.get('/get-hours', (req, res) => {
   });
 });
 
-// Löschen aller Arbeitszeiten
 app.delete('/delete-hours', (req, res) => {
   const { password, confirmDelete } = req.body;
-  // Gleicher Passwort-Check wie beim Admin-Login
   if (password === 'admin' && (confirmDelete === true || confirmDelete === 'true')) {
     const deleteQuery = 'DELETE FROM work_hours';
     db.run(deleteQuery, function(err) {
@@ -244,7 +246,6 @@ app.delete('/delete-hours', (req, res) => {
   }
 });
 
-// Admin Login Endpunkt
 app.post('/admin-login', (req, res) => {
   const { password } = req.body;
   if (password === 'admin') {
@@ -256,7 +257,7 @@ app.post('/admin-login', (req, res) => {
 });
 
 // --------------------------
-// Neue API-Endpunkte für die Mitarbeiterverwaltung
+// API-Endpunkte für Mitarbeiterverwaltung
 // --------------------------
 app.get('/admin/employees', isAdmin, (req, res) => {
   const query = 'SELECT * FROM employees';
@@ -269,27 +270,27 @@ app.get('/admin/employees', isAdmin, (req, res) => {
 });
 
 app.post('/admin/employees', isAdmin, (req, res) => {
-  const { name, contract_hours } = req.body;
+  const { name, contract_hours, mo_hours, di_hours, mi_hours, do_hours, fr_hours } = req.body;
   if (!name) {
     return res.status(400).send('Name ist erforderlich.');
   }
-  const query = 'INSERT INTO employees (name, contract_hours) VALUES (?, ?)';
-  db.run(query, [name, contract_hours || 0], function(err) {
+  const query = 'INSERT INTO employees (name, contract_hours, mo_hours, di_hours, mi_hours, do_hours, fr_hours) VALUES (?, ?, ?, ?, ?, ?, ?)';
+  db.run(query, [name, contract_hours || 0, mo_hours || 0, di_hours || 0, mi_hours || 0, do_hours || 0, fr_hours || 0], function(err) {
     if (err) {
       return res.status(500).send('Fehler beim Hinzufügen des Mitarbeiters.');
     }
-    res.send({ id: this.lastID, name, contract_hours });
+    res.send({ id: this.lastID, name, contract_hours, mo_hours, di_hours, mi_hours, do_hours, fr_hours });
   });
 });
 
 app.put('/admin/employees/:id', isAdmin, (req, res) => {
   const { id } = req.params;
-  const { name, contract_hours } = req.body;
+  const { name, contract_hours, mo_hours, di_hours, mi_hours, do_hours, fr_hours } = req.body;
   if (!name) {
     return res.status(400).send('Name ist erforderlich.');
   }
-  const query = 'UPDATE employees SET name = ?, contract_hours = ? WHERE id = ?';
-  db.run(query, [name, contract_hours || 0, id], function(err) {
+  const query = 'UPDATE employees SET name = ?, contract_hours = ?, mo_hours = ?, di_hours = ?, mi_hours = ?, do_hours = ?, fr_hours = ? WHERE id = ?';
+  db.run(query, [name, contract_hours || 0, mo_hours || 0, di_hours || 0, mi_hours || 0, do_hours || 0, fr_hours || 0, id], function(err) {
     if (err) {
       return res.status(500).send('Fehler beim Aktualisieren des Mitarbeiters.');
     }
@@ -346,7 +347,6 @@ function convertToCSV(data) {
   return csvRows.join('\n');
 }
 
-// Server starten
 app.listen(port, () => {
   console.log(`Server läuft auf http://localhost:${port}`);
 });
