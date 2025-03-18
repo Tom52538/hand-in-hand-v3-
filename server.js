@@ -54,7 +54,7 @@ db.serialize(() => {
     }
   });
 
-  // Neue Tabelle für Mitarbeiter erstellen, falls sie noch nicht existiert
+  // Tabelle für Mitarbeiter erstellen
   db.run(`
     CREATE TABLE IF NOT EXISTS employees (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -68,6 +68,25 @@ db.serialize(() => {
       console.log("Tabelle employees erfolgreich erstellt oder bereits vorhanden.");
     }
   });
+
+  // Neue Tabelle für vertragliche Arbeitszeiten pro Wochentag erstellen
+  db.run(`
+    CREATE TABLE IF NOT EXISTS employee_schedule (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      employee_id INTEGER,
+      weekday INTEGER,          -- 1 = Montag, 2 = Dienstag, …, 5 = Freitag
+      expected_start TEXT,      -- z. B. '08:00'
+      expected_end TEXT,        -- z. B. '16:30'
+      expected_hours REAL,      -- z. B. 8.5
+      FOREIGN KEY(employee_id) REFERENCES employees(id)
+    )
+  `, (err) => {
+    if (err) {
+      console.error("Fehler beim Erstellen der Tabelle employee_schedule:", err);
+    } else {
+      console.log("Tabelle employee_schedule erfolgreich erstellt oder bereits vorhanden.");
+    }
+  });
 });
 
 // Middleware, um Admin-Berechtigungen zu prüfen
@@ -78,6 +97,18 @@ function isAdmin(req, res, next) {
   } else {
     res.status(403).send('Access denied. Admin privileges required.');
   }
+}
+
+// Hilfsfunktion: Mitarbeiter-ID anhand des Namens ermitteln
+function getEmployeeByName(name, callback) {
+  const query = 'SELECT id FROM employees WHERE LOWER(name) = LOWER(?)';
+  db.get(query, [name], callback);
+}
+
+// Hilfsfunktion: Erwartete Stunden für einen Mitarbeiter und Wochentag ermitteln
+function getExpectedHours(employeeId, weekday, callback) {
+  const query = 'SELECT expected_hours FROM employee_schedule WHERE employee_id = ? AND weekday = ?';
+  db.get(query, [employeeId, weekday], callback);
 }
 
 // --------------------------
@@ -113,7 +144,6 @@ app.get('/admin-download-csv', isAdmin, (req, res) => {
 app.put('/api/admin/update-hours', isAdmin, (req, res) => {
   const { id, name, date, startTime, endTime, comment } = req.body;
 
-  // Überprüfen, ob Arbeitsbeginn vor Arbeitsende liegt
   if (startTime >= endTime) {
     return res.status(400).json({ error: 'Arbeitsbeginn darf nicht später als Arbeitsende sein.' });
   }
@@ -151,12 +181,11 @@ app.delete('/api/admin/delete-hours/:id', isAdmin, (req, res) => {
 app.post('/log-hours', (req, res) => {
   const { name, date, startTime, endTime, comment } = req.body;
 
-  // Überprüfen, ob Arbeitsbeginn vor Arbeitsende liegt
   if (startTime >= endTime) {
     return res.status(400).json({ error: 'Arbeitsbeginn darf nicht später als Arbeitsende sein.' });
   }
 
-  // Prüfen, ob für denselben Tag bereits ein Eintrag existiert (case-insensitive)
+  // Zuerst prüfen, ob für denselben Tag schon ein Eintrag existiert
   const checkQuery = `
     SELECT * FROM work_hours
     WHERE LOWER(name) = LOWER(?) AND date = ?
@@ -173,15 +202,55 @@ app.post('/log-hours', (req, res) => {
     const breakTime = calculateBreakTime(hours, comment);
     const netHours = hours - breakTime;
 
-    const insertQuery = `
-      INSERT INTO work_hours (name, date, hours, break_time, comment, startTime, endTime)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
-    `;
-    db.run(insertQuery, [name, date, netHours, breakTime, comment, startTime, endTime], function(err) {
+    // Zuerst den Mitarbeiter ermitteln, um seine ID zu bekommen
+    getEmployeeByName(name, (err, employee) => {
       if (err) {
-        return res.status(500).send('Fehler beim Speichern der Daten.');
+        return res.status(500).send('Fehler beim Abrufen der Mitarbeiterdaten.');
       }
-      res.send('Daten erfolgreich gespeichert.');
+      if (!employee) {
+        // Falls kein Mitarbeiter gefunden wurde, speichern wir dennoch, aber ohne Soll-Vergleich
+        const insertQuery = `
+          INSERT INTO work_hours (name, date, hours, break_time, comment, startTime, endTime)
+          VALUES (?, ?, ?, ?, ?, ?, ?)
+        `;
+        return db.run(insertQuery, [name, date, netHours, breakTime, comment, startTime, endTime], function(err) {
+          if (err) {
+            return res.status(500).send('Fehler beim Speichern der Daten.');
+          }
+          res.send('Daten erfolgreich gespeichert (Mitarbeiter nicht in Stammdaten gefunden).');
+        });
+      }
+      
+      // Bestimme den Wochentag. JavaScript: 0=Sonntag, 1=Montag, ...6=Samstag.
+      const dt = new Date(date);
+      const jsWeekday = dt.getDay();
+      // Wir gehen davon aus, dass nur Montag bis Freitag (1-5) geplant sind.
+      const weekday = (jsWeekday >= 1 && jsWeekday <= 5) ? jsWeekday : null;
+      
+      // Jetzt Eintrag in work_hours speichern
+      const insertQuery = `
+        INSERT INTO work_hours (name, date, hours, break_time, comment, startTime, endTime)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `;
+      db.run(insertQuery, [name, date, netHours, breakTime, comment, startTime, endTime], function(err) {
+        if (err) {
+          return res.status(500).send('Fehler beim Speichern der Daten.');
+        }
+        // Wenn Wochentag vorhanden, ermitteln wir die erwarteten Stunden
+        if (weekday !== null) {
+          getExpectedHours(employee.id, weekday, (err, row) => {
+            if (err) {
+              return res.send('Daten erfolgreich gespeichert, aber Fehler beim Abrufen der Soll-Stunden.');
+            }
+            const expectedHours = row ? row.expected_hours : 0;
+            const difference = netHours - expectedHours;
+            res.send(`Daten erfolgreich gespeichert. Erfasste Stunden: ${netHours.toFixed(2)}. Soll-Stunden: ${expectedHours.toFixed(2)}. Differenz: ${difference.toFixed(2)}.`);
+          });
+        } else {
+          // Bei Wochenenden (z. B. Samstag/Sonntag) setzen wir expectedHours auf 0.
+          res.send(`Daten erfolgreich gespeichert. Erfasste Stunden: ${netHours.toFixed(2)}. (Wochenende, keine Soll-Stunden.)`);
+        }
+      });
     });
   });
 });
@@ -228,7 +297,6 @@ app.get('/get-hours', (req, res) => {
 // Löschen aller Arbeitszeiten
 app.delete('/delete-hours', (req, res) => {
   const { password, confirmDelete } = req.body;
-  // Gleicher Passwort-Check wie beim Admin-Login
   if (password === 'admin' && (confirmDelete === true || confirmDelete === 'true')) {
     const deleteQuery = 'DELETE FROM work_hours';
     db.run(deleteQuery, function(err) {
@@ -257,7 +325,6 @@ app.post('/admin-login', (req, res) => {
 // Neue API-Endpunkte für die Mitarbeiterverwaltung
 // --------------------------
 
-// Alle Mitarbeiter abrufen (Admin)
 app.get('/admin/employees', isAdmin, (req, res) => {
   const query = 'SELECT * FROM employees';
   db.all(query, [], (err, rows) => {
@@ -268,7 +335,6 @@ app.get('/admin/employees', isAdmin, (req, res) => {
   });
 });
 
-// Neuen Mitarbeiter hinzufügen (Admin)
 app.post('/admin/employees', isAdmin, (req, res) => {
   const { name, contract_hours } = req.body;
   if (!name) {
@@ -283,7 +349,6 @@ app.post('/admin/employees', isAdmin, (req, res) => {
   });
 });
 
-// Mitarbeiter aktualisieren (Admin)
 app.put('/admin/employees/:id', isAdmin, (req, res) => {
   const { id } = req.params;
   const { name, contract_hours } = req.body;
@@ -299,7 +364,6 @@ app.put('/admin/employees/:id', isAdmin, (req, res) => {
   });
 });
 
-// Mitarbeiter löschen (Admin)
 app.delete('/admin/employees/:id', isAdmin, (req, res) => {
   const { id } = req.params;
   const query = 'DELETE FROM employees WHERE id = ?';
@@ -349,7 +413,6 @@ function convertToCSV(data) {
   const csvRows = [];
   const headers = ["Name", "Datum", "Anfang", "Ende", "Gesamtzeit", "Bemerkung"];
   csvRows.push(headers.join(','));
-
   for (const row of data) {
     const formattedHours = convertDecimalHoursToHoursMinutes(row.hours);
     const values = [
