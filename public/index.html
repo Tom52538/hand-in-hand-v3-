@@ -9,39 +9,62 @@
   <link rel="stylesheet" href="style.css">
 
   <!-- Manifest und Apple-Touch-Icon -->
-  <!-- Wichtig: Das Manifest liegt in /icons/manifest.json -->
   <link rel="manifest" href="/icons/manifest.json">
   <meta name="theme-color" content="#ffffff">
-  <!-- Für iOS-Geräte (optional): -->
   <link rel="apple-touch-icon" sizes="180x180" href="/icons/Hand-in-Hand-Logo-192x192.png">
 
   <style>
     .hidden {
       display: none;
     }
+
+    /* Beispiel-Styles, damit die Felder automatisch untereinander stehen.
+       Falls du ein eigenes Layout/CSS verwendest, kannst du dies anpassen. */
+    form > div {
+      margin-bottom: 1rem;
+    }
+
+    label {
+      display: block; /* Label als Block, damit es über dem Input erscheint */
+      margin-bottom: 0.3rem;
+    }
   </style>
 </head>
 <body>
   <div class="container">
     <h1>Arbeitszeiterfassung</h1>
-    <!-- Statt eines Texteingabefeldes wird jetzt ein Dropdown verwendet -->
     <form id="workHoursForm">
-      <label for="employeeSelect">Mitarbeiter:</label>
-      <select id="employeeSelect" name="employeeSelect" required>
-        <option value="">Bitte auswählen</option>
-      </select>
+      <!-- Mitarbeiter-Auswahl -->
+      <div>
+        <label for="employeeSelect">Mitarbeiter:</label>
+        <select id="employeeSelect" name="employeeSelect" required>
+          <option value="">Bitte auswählen</option>
+        </select>
+      </div>
 
-      <label for="date">Datum:</label>
-      <input type="date" id="date" name="date" required>
+      <!-- Datum -->
+      <div>
+        <label for="date">Datum:</label>
+        <input type="date" id="date" name="date" required>
+      </div>
 
-      <label for="startTime">Arbeitsbeginn:</label>
-      <input type="time" id="startTime" name="startTime" required>
+      <!-- Arbeitsbeginn -->
+      <div>
+        <label for="startTime">Arbeitsbeginn:</label>
+        <input type="time" id="startTime" name="startTime" required>
+      </div>
 
-      <label for="endTime">Arbeitsende:</label>
-      <input type="time" id="endTime" name="endTime" required>
+      <!-- Arbeitsende -->
+      <div>
+        <label for="endTime">Arbeitsende:</label>
+        <input type="time" id="endTime" name="endTime" required>
+      </div>
 
-      <label for="comment">Bemerkung:</label>
-      <input type="text" id="comment" name="comment">
+      <!-- Bemerkung -->
+      <div>
+        <label for="comment">Bemerkung:</label>
+        <input type="text" id="comment" name="comment">
+      </div>
 
       <button type="submit">Eintragen</button>
     </form>
@@ -64,20 +87,31 @@
       <h2>Datensatz bearbeiten</h2>
       <form id="editForm">
         <input type="hidden" id="editId" name="id">
-        <label for="editName">Name:</label>
-        <input type="text" id="editName" name="name">
 
-        <label for="editDate">Datum:</label>
-        <input type="date" id="editDate" name="date">
+        <div>
+          <label for="editName">Name:</label>
+          <input type="text" id="editName" name="name">
+        </div>
 
-        <label for="editStartTime">Arbeitsbeginn:</label>
-        <input type="time" id="editStartTime" name="startTime" required>
+        <div>
+          <label for="editDate">Datum:</label>
+          <input type="date" id="editDate" name="date">
+        </div>
 
-        <label for="editEndTime">Arbeitsende:</label>
-        <input type="time" id="editEndTime" name="endTime" required>
+        <div>
+          <label for="editStartTime">Arbeitsbeginn:</label>
+          <input type="time" id="editStartTime" name="startTime" required>
+        </div>
 
-        <label for="editComment">Bemerkung:</label>
-        <input type="text" id="editComment" name="comment">
+        <div>
+          <label for="editEndTime">Arbeitsende:</label>
+          <input type="time" id="editEndTime" name="endTime" required>
+        </div>
+
+        <div>
+          <label for="editComment">Bemerkung:</label>
+          <input type="text" id="editComment" name="comment">
+        </div>
 
         <button type="button" onclick="saveChanges()">Speichern</button>
       </form>
@@ -103,16 +137,18 @@
       <button id="adminDeleteData">Alle Arbeitszeiten löschen</button>
     </div>
 
-    <!-- Neuer Bereich für Mitarbeiterverwaltung im Admin-Bereich -->
+    <!-- Bereich für Mitarbeiterverwaltung -->
     <div id="employeePanel" class="hidden">
       <h2>Mitarbeiterverwaltung</h2>
       <form id="addEmployeeForm">
-        <label for="employeeName">Name:</label>
-        <input type="text" id="employeeName" name="employeeName" required>
-
-        <label for="contractHours">Vertragliche Arbeitsstunden:</label>
-        <input type="number" id="contractHours" name="contractHours" step="0.1">
-
+        <div>
+          <label for="employeeName">Name:</label>
+          <input type="text" id="employeeName" name="employeeName" required>
+        </div>
+        <div>
+          <label for="contractHours">Vertragliche Arbeitsstunden:</label>
+          <input type="number" id="contractHours" name="contractHours" step="0.1">
+        </div>
         <button type="submit">Mitarbeiter hinzufügen</button>
       </form>
 
@@ -123,11 +159,9 @@
 
   <script>
     // --------------------------
-    // Mitarbeiter Dropdown laden (für die Zeiterfassung)
+    // Mitarbeiter-Dropdown laden (nur Vor-/Nachname)
     // --------------------------
     async function loadEmployeeOptions() {
-      // Hier wird der Endpunkt /admin/employees genutzt. Falls du einen
-      // öffentlichen Endpunkt bevorzugst, kannst du diesen hier anpassen.
       const response = await fetch('/admin/employees');
       if (!response.ok) {
         console.error("Fehler beim Laden der Mitarbeiteroptionen.");
@@ -138,9 +172,9 @@
       select.innerHTML = '<option value="">Bitte auswählen</option>';
       employees.forEach(emp => {
         const option = document.createElement('option');
-        // Wir speichern hier den Namen als value; alternativ könntest du auch die ID speichern
+        // Nur den Namen anzeigen
         option.value = emp.name;
-        option.textContent = `${emp.name} (${emp.contract_hours || 0} Std.)`;
+        option.textContent = emp.name;
         select.appendChild(option);
       });
     }
@@ -179,7 +213,6 @@
     });
 
     async function loadWorkHours() {
-      // Hier wird als Name der ausgewählte Mitarbeiter genutzt
       const name = document.getElementById('employeeSelect').value;
       const workHoursList = document.getElementById('workHoursList');
       const totalHoursElement = document.getElementById('totalHours');
