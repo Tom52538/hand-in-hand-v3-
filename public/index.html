@@ -71,7 +71,7 @@
       <button type="submit">Anmelden</button>
     </form>
     
-    <!-- Admin Panel für Arbeitszeiten -->
+    <!-- Admin Panel: Arbeitszeiten -->
     <div id="adminPanel" class="hidden">
       <h2>Admin Panel: Arbeitszeiten</h2>
       <form id="editForm">
@@ -173,7 +173,7 @@
     }
     
     // --------------------------
-    // Arbeitszeiterfassung (Formular)
+    // Arbeitszeiterfassung
     // --------------------------
     document.getElementById('name').addEventListener('input', loadWorkHours);
     
@@ -333,7 +333,7 @@
     // --------------------------
     // Arbeitsplan (Schedule) Verwaltung
     // --------------------------
-    // Lade Mitarbeiter in ein Dropdown für den Schedule-Bereich
+    // Lade Mitarbeiter in das Dropdown für den Schedule-Bereich
     async function loadEmployeesForSchedule() {
       const response = await fetch('/admin/employees');
       const data = await response.json();
