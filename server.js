@@ -111,23 +111,24 @@ app.get('/admin-download-csv', isAdmin, (req, res) => {
 
 // Update eines Arbeitszeiteintrags (Admin)
 app.put('/api/admin/update-hours', isAdmin, (req, res) => {
-  const { id, name, date, startTime, endTime, comment } = req.body;
+  const { id, name, date, startTime, endTime, comment, breakTime } = req.body;
 
   // Überprüfen, ob Arbeitsbeginn vor Arbeitsende liegt
   if (startTime >= endTime) {
     return res.status(400).json({ error: 'Arbeitsbeginn darf nicht später als Arbeitsende sein.' });
   }
 
-  const hours = calculateWorkHours(startTime, endTime);
-  const breakTime = calculateBreakTime(hours, comment);
-  const netHours = hours - breakTime;
+  const totalHours = calculateWorkHours(startTime, endTime);
+  const breakTimeMinutes = parseInt(breakTime, 10) || 0;
+  const breakTimeHours = breakTimeMinutes / 60;
+  const netHours = totalHours - breakTimeHours;
 
   const query = `
     UPDATE work_hours
     SET name = ?, date = ?, hours = ?, break_time = ?, comment = ?, startTime = ?, endTime = ?
     WHERE id = ?
   `;
-  db.run(query, [name, date, netHours, breakTime, comment, startTime, endTime, id], function(err) {
+  db.run(query, [name, date, netHours, breakTimeHours, comment, startTime, endTime, id], function(err) {
     if (err) {
       return res.status(500).send('Error updating working hours.');
     }
@@ -149,7 +150,7 @@ app.delete('/api/admin/delete-hours/:id', isAdmin, (req, res) => {
 
 // Arbeitszeiten erfassen
 app.post('/log-hours', (req, res) => {
-  const { name, date, startTime, endTime, comment } = req.body;
+  const { name, date, startTime, endTime, comment, breakTime } = req.body;
 
   // Überprüfen, ob Arbeitsbeginn vor Arbeitsende liegt
   if (startTime >= endTime) {
@@ -169,15 +170,16 @@ app.post('/log-hours', (req, res) => {
       return res.status(400).json({ error: 'Eintrag für diesen Tag existiert bereits.' });
     }
 
-    const hours = calculateWorkHours(startTime, endTime);
-    const breakTime = calculateBreakTime(hours, comment);
-    const netHours = hours - breakTime;
+    const totalHours = calculateWorkHours(startTime, endTime);
+    const breakTimeMinutes = parseInt(breakTime, 10) || 0;
+    const breakTimeHours = breakTimeMinutes / 60;
+    const netHours = totalHours - breakTimeHours;
 
     const insertQuery = `
       INSERT INTO work_hours (name, date, hours, break_time, comment, startTime, endTime)
       VALUES (?, ?, ?, ?, ?, ?, ?)
     `;
-    db.run(insertQuery, [name, date, netHours, breakTime, comment, startTime, endTime], function(err) {
+    db.run(insertQuery, [name, date, netHours, breakTimeHours, comment, startTime, endTime], function(err) {
       if (err) {
         return res.status(500).send('Fehler beim Speichern der Daten.');
       }
@@ -256,8 +258,6 @@ app.post('/admin-login', (req, res) => {
 // --------------------------
 // Neue API-Endpunkte für die Mitarbeiterverwaltung
 // --------------------------
-
-// Alle Mitarbeiter abrufen (Admin)
 app.get('/admin/employees', isAdmin, (req, res) => {
   const query = 'SELECT * FROM employees';
   db.all(query, [], (err, rows) => {
@@ -268,7 +268,6 @@ app.get('/admin/employees', isAdmin, (req, res) => {
   });
 });
 
-// Neuen Mitarbeiter hinzufügen (Admin)
 app.post('/admin/employees', isAdmin, (req, res) => {
   const { name, contract_hours } = req.body;
   if (!name) {
@@ -283,7 +282,6 @@ app.post('/admin/employees', isAdmin, (req, res) => {
   });
 });
 
-// Mitarbeiter aktualisieren (Admin)
 app.put('/admin/employees/:id', isAdmin, (req, res) => {
   const { id } = req.params;
   const { name, contract_hours } = req.body;
@@ -299,7 +297,6 @@ app.put('/admin/employees/:id', isAdmin, (req, res) => {
   });
 });
 
-// Mitarbeiter löschen (Admin)
 app.delete('/admin/employees/:id', isAdmin, (req, res) => {
   const { id } = req.params;
   const query = 'DELETE FROM employees WHERE id = ?';
@@ -314,26 +311,11 @@ app.delete('/admin/employees/:id', isAdmin, (req, res) => {
 // --------------------------
 // Hilfsfunktionen
 // --------------------------
-
 function calculateWorkHours(startTime, endTime) {
   const start = new Date(`1970-01-01T${startTime}:00`);
   const end = new Date(`1970-01-01T${endTime}:00`);
   const diff = end - start;
   return diff / 1000 / 60 / 60; // Stunden
-}
-
-function calculateBreakTime(hours, comment) {
-  if (comment && (comment.toLowerCase().includes("ohne pause") || comment.toLowerCase().includes("keine pause"))) {
-    return 0;
-  } else if (comment && comment.toLowerCase().includes("15 minuten")) {
-    return 0.25; // 15 Minuten Pause
-  } else if (hours > 9) {
-    return 0.75; // 45 Minuten Pause
-  } else if (hours > 6) {
-    return 0.5; // 30 Minuten Pause
-  } else {
-    return 0; // Keine Pause erforderlich
-  }
 }
 
 function convertDecimalHoursToHoursMinutes(decimalHours) {
@@ -349,7 +331,6 @@ function convertToCSV(data) {
   const csvRows = [];
   const headers = ["Name", "Datum", "Anfang", "Ende", "Gesamtzeit", "Bemerkung"];
   csvRows.push(headers.join(','));
-
   for (const row of data) {
     const formattedHours = convertDecimalHoursToHoursMinutes(row.hours);
     const values = [

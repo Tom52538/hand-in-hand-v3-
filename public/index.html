@@ -17,15 +17,13 @@
     .hidden {
       display: none;
     }
-
     /* Beispiel-Styles, damit die Felder automatisch untereinander stehen.
        Falls du ein eigenes Layout/CSS verwendest, kannst du dies anpassen. */
     form > div {
       margin-bottom: 1rem;
     }
-
     label {
-      display: block; /* Label als Block, damit es über dem Input erscheint */
+      display: block;
       margin-bottom: 0.3rem;
     }
   </style>
@@ -58,6 +56,12 @@
       <div>
         <label for="endTime">Arbeitsende:</label>
         <input type="time" id="endTime" name="endTime" required>
+      </div>
+
+      <!-- Pause in Minuten -->
+      <div>
+        <label for="breakTime">Pause (Minuten):</label>
+        <input type="number" id="breakTime" name="breakTime" min="0" step="1" value="0" required>
       </div>
 
       <!-- Bemerkung -->
@@ -106,6 +110,12 @@
         <div>
           <label for="editEndTime">Arbeitsende:</label>
           <input type="time" id="editEndTime" name="endTime" required>
+        </div>
+
+        <!-- Neues Feld für Pause in Minuten -->
+        <div>
+          <label for="editBreakTime">Pause (Minuten):</label>
+          <input type="number" id="editBreakTime" name="breakTime" min="0" step="1" value="0">
         </div>
 
         <div>
@@ -158,6 +168,13 @@
   </div>
 
   <script>
+    // Hilfsfunktion zur Formatierung von Dezimalstunden in HH:MM
+    function formatDecimalHours(decimalHours) {
+      const hours = Math.floor(decimalHours);
+      const minutes = Math.round((decimalHours - hours) * 60);
+      return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
+    }
+
     // --------------------------
     // Mitarbeiter-Dropdown laden (nur Vor-/Nachname)
     // --------------------------
@@ -172,7 +189,6 @@
       select.innerHTML = '<option value="">Bitte auswählen</option>';
       employees.forEach(emp => {
         const option = document.createElement('option');
-        // Nur den Namen anzeigen
         option.value = emp.name;
         option.textContent = emp.name;
         select.appendChild(option);
@@ -182,13 +198,11 @@
     // --------------------------
     // Arbeitszeiterfassung
     // --------------------------
-    // Beim Laden der Seite die Mitarbeiteroptionen laden
     window.addEventListener('load', loadEmployeeOptions);
 
     document.getElementById('workHoursForm').addEventListener('submit', async function(event) {
       event.preventDefault();
 
-      // Aus dem Dropdown den ausgewählten Mitarbeiternamen übernehmen
       const name = document.getElementById('employeeSelect').value;
       if (!name) {
         alert("Bitte wählen Sie einen Mitarbeiter aus.");
@@ -197,18 +211,17 @@
       const date = document.getElementById('date').value;
       const startTime = document.getElementById('startTime').value;
       const endTime = document.getElementById('endTime').value;
+      const breakTime = document.getElementById('breakTime').value;
       const comment = document.getElementById('comment').value;
 
       const response = await fetch('/log-hours', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, date, startTime, endTime, comment })
+        body: JSON.stringify({ name, date, startTime, endTime, breakTime, comment })
       });
 
       const result = await response.text();
       alert(result);
-
-      // Nach dem Eintragen erneut alle Einträge laden
       await loadWorkHours();
     });
 
@@ -236,11 +249,11 @@
       let sumHours = 0;
       data.forEach(entry => {
         const listItem = document.createElement('li');
-        listItem.textContent = `ID: ${entry.id}, Datum: ${formatDate(entry.date)}, Stunden: ${entry.hours}, Bemerkung: ${entry.comment}`;
+        listItem.textContent = `ID: ${entry.id}, Datum: ${formatDate(entry.date)}, Stunden: ${formatDecimalHours(entry.hours)}, Bemerkung: ${entry.comment}`;
         workHoursList.appendChild(listItem);
         sumHours += entry.hours;
       });
-      totalHoursElement.textContent = `Gesamtstunden: ${sumHours}`;
+      totalHoursElement.textContent = `Gesamtstunden: ${formatDecimalHours(sumHours)}`;
     }
 
     function formatDate(date) {
@@ -267,7 +280,6 @@
         document.getElementById('employeePanel').classList.remove('hidden');
         loadAdminWorkHours();
         loadEmployees();
-        // Auch die Mitarbeiteroptionen für die Zeiterfassung neu laden
         loadEmployeeOptions();
       } else {
         alert(result);
@@ -285,10 +297,10 @@
           <td>${entry.id}</td>
           <td>${entry.name}</td>
           <td>${entry.date}</td>
-          <td>${entry.hours}</td>
+          <td>${formatDecimalHours(entry.hours)}</td>
           <td>${entry.comment}</td>
           <td>
-            <button onclick="editEntry(${entry.id}, '${entry.name}', '${entry.date}', '${entry.startTime}', '${entry.endTime}', '${entry.comment}')">Bearbeiten</button>
+            <button onclick="editEntry(${entry.id}, '${entry.name}', '${entry.date}', '${entry.startTime}', '${entry.endTime}', '${entry.comment}', ${entry.break_time})">Bearbeiten</button>
             <button onclick="deleteEntry(${entry.id})">Löschen</button>
           </td>
         `;
@@ -296,13 +308,15 @@
       });
     }
 
-    function editEntry(id, name, date, startTime, endTime, comment) {
+    function editEntry(id, name, date, startTime, endTime, comment, breakTime) {
       document.getElementById('editId').value = id;
       document.getElementById('editName').value = name;
       document.getElementById('editDate').value = date;
       document.getElementById('editStartTime').value = startTime;
       document.getElementById('editEndTime').value = endTime;
       document.getElementById('editComment').value = comment;
+      // breakTime ist in Stunden gespeichert – in Minuten umrechnen:
+      document.getElementById('editBreakTime').value = breakTime ? Math.round(breakTime * 60) : 0;
     }
 
     async function saveChanges() {
@@ -312,11 +326,12 @@
       const startTime = document.getElementById('editStartTime').value;
       const endTime = document.getElementById('editEndTime').value;
       const comment = document.getElementById('editComment').value;
+      const breakTime = document.getElementById('editBreakTime').value;
 
       const response = await fetch('/api/admin/update-hours', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id, name, date, startTime, endTime, comment })
+        body: JSON.stringify({ id, name, date, startTime, endTime, comment, breakTime })
       });
 
       const result = await response.text();
@@ -392,7 +407,7 @@
             if (delResponse.ok) {
               alert('Mitarbeiter gelöscht.');
               loadEmployees();
-              loadEmployeeOptions(); // Dropdown ebenfalls aktualisieren
+              loadEmployeeOptions();
             } else {
               alert('Fehler beim Löschen des Mitarbeiters.');
             }
@@ -417,7 +432,7 @@
         document.getElementById('employeeName').value = '';
         document.getElementById('contractHours').value = '';
         loadEmployees();
-        loadEmployeeOptions(); // Dropdown aktualisieren
+        loadEmployeeOptions();
       } else {
         alert('Fehler beim Hinzufügen des Mitarbeiters.');
       }
