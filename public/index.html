@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Arbeitszeiterfassung</title>
+
+  <!-- CSS-Datei einbinden -->
+  <link rel="stylesheet" href="style.css">
+
+  <!-- Manifest und Apple-Touch-Icon -->
+  <!-- Wichtig: Das Manifest liegt in /icons/manifest.json -->
+  <link rel="manifest" href="/icons/manifest.json">
+  <meta name="theme-color" content="#ffffff">
+  <!-- Für iOS-Geräte (optional): -->
+  <link rel="apple-touch-icon" sizes="180x180" href="/icons/Hand-in-Hand-Logo-192x192.png">
+
+  <style>
+    .hidden {
+      display: none;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Arbeitszeiterfassung</h1>
+    <form id="workHoursForm">
+      <label for="name">Name:</label>
+      <input type="text" id="name" name="name" required>
+
+      <label for="date">Datum:</label>
+      <input type="date" id="date" name="date" required>
+
+      <label for="startTime">Arbeitsbeginn:</label>
+      <input type="time" id="startTime" name="startTime" required>
+
+      <label for="endTime">Arbeitsende:</label>
+      <input type="time" id="endTime" name="endTime" required>
+
+      <label for="comment">Bemerkung:</label>
+      <input type="text" id="comment" name="comment">
+
+      <button type="submit">Eintragen</button>
+    </form>
+
+    <h2>Gebuchte Arbeitszeiten</h2>
+    <ul id="workHoursList"></ul>
+
+    <h2>Gesamtarbeitszeit</h2>
+    <p id="totalHours"></p>
+
+    <h2>Admin Login</h2>
+    <form id="adminLoginForm">
+      <label for="adminPassword">Passwort:</label>
+      <input type="password" id="adminPassword" name="adminPassword" required>
+      <button type="submit">Anmelden</button>
+    </form>
+
+    <!-- Admin-Funktionen sind standardmäßig ausgeblendet -->
+    <div id="adminPanel" class="hidden">
+      <h2>Datensatz bearbeiten</h2>
+      <form id="editForm">
+        <input type="hidden" id="editId" name="id">
+        <label for="editName">Name:</label>
+        <input type="text" id="editName" name="name">
+
+        <label for="editDate">Datum:</label>
+        <input type="date" id="editDate" name="date">
+
+        <label for="editStartTime">Arbeitsbeginn:</label>
+        <input type="time" id="editStartTime" name="startTime" required>
+
+        <label for="editEndTime">Arbeitsende:</label>
+        <input type="time" id="editEndTime" name="endTime" required>
+
+        <label for="editComment">Bemerkung:</label>
+        <input type="text" id="editComment" name="comment">
+
+        <button type="button" onclick="saveChanges()">Speichern</button>
+      </form>
+
+      <h2>Admin Panel</h2>
+      <table id="workHoursTable">
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Name</th>
+            <th>Datum</th>
+            <th>Stunden</th>
+            <th>Bemerkung</th>
+            <th>Aktionen</th>
+          </tr>
+        </thead>
+        <tbody>
+          <!-- Datensätze werden hier dynamisch geladen -->
+        </tbody>
+      </table>
+
+      <button id="adminDownloadCsv">Alle Arbeitszeiten als CSV herunterladen</button>
+      <button id="adminDeleteData">Alle Arbeitszeiten löschen</button>
+    </div>
+
+    <!-- Neuer Bereich für Mitarbeiterverwaltung -->
+    <div id="employeePanel" class="hidden">
+      <h2>Mitarbeiterverwaltung</h2>
+      <form id="addEmployeeForm">
+        <label for="employeeName">Name:</label>
+        <input type="text" id="employeeName" name="employeeName" required>
+
+        <label for="contractHours">Vertragliche Arbeitsstunden:</label>
+        <input type="number" id="contractHours" name="contractHours" step="0.1">
+
+        <button type="submit">Mitarbeiter hinzufügen</button>
+      </form>
+
+      <h3>Aktuelle Mitarbeiter</h3>
+      <ul id="employeeList"></ul>
+    </div>
+  </div>
+
+  <script>
+    // --------------------------
+    // Arbeitszeiterfassung
+    // --------------------------
+    document.getElementById('name').addEventListener('input', async function() {
+      await loadWorkHours();
+    });
+    
+    document.getElementById('workHoursForm').addEventListener('submit', async function(event) {
+      event.preventDefault();
+
+      const name = document.getElementById('name').value;
+      const date = document.getElementById('date').value;
+      const startTime = document.getElementById('startTime').value;
+      const endTime = document.getElementById('endTime').value;
+      const comment = document.getElementById('comment').value;
+
+      const response = await fetch('/log-hours', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, date, startTime, endTime, comment })
+      });
+
+      const result = await response.text();
+      alert(result);
+
+      // Nach dem Eintragen erneut alle Einträge laden
+      await loadWorkHours();
+    });
+
+    async function loadWorkHours() {
+      const name = document.getElementById('name').value;
+      const workHoursList = document.getElementById('workHoursList');
+      const totalHoursElement = document.getElementById('totalHours');
+
+      if (!name) {
+        workHoursList.innerHTML = '';
+        totalHoursElement.textContent = 'Gesamtstunden: 0';
+        return;
+      }
+
+      const response = await fetch(`/get-all-hours?name=${encodeURIComponent(name)}`);
+      if (!response.ok) {
+        workHoursList.innerHTML = '';
+        totalHoursElement.textContent = 'Gesamtstunden: 0';
+        return;
+      }
+
+      const data = await response.json();
+      workHoursList.innerHTML = '';
+      
+      let sumHours = 0;
+
+      data.forEach(entry => {
+        const listItem = document.createElement('li');
+        listItem.textContent = `ID: ${entry.id}, Datum: ${formatDate(entry.date)}, Stunden: ${entry.hours}, Bemerkung: ${entry.comment}`;
+        workHoursList.appendChild(listItem);
+
+        sumHours += entry.hours;
+      });
+
+      totalHoursElement.textContent = `Gesamtstunden: ${sumHours}`;
+    }
+
+    function formatDate(date) {
+      const [year, month, day] = date.split('-');
+      return `${day.padStart(2, '0')}.${month.padStart(2, '0')}.${year}`;
+    }
+
+    // --------------------------
+    // Admin-Login & Admin-Funktionen
+    // --------------------------
+    document.getElementById('adminLoginForm').addEventListener('submit', async function(event) {
+      event.preventDefault();
+      const password = document.getElementById('adminPassword').value;
+
+      const response = await fetch('/admin-login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password })
+      });
+
+      const result = await response.text();
+      if (result === 'Admin angemeldet.') {
+        // Admin-Bereich sichtbar machen
+        document.getElementById('adminPanel').classList.remove('hidden');
+        document.getElementById('employeePanel').classList.remove('hidden');
+
+        // Arbeitszeiten & Mitarbeiter laden
+        loadAdminWorkHours();
+        loadEmployees();
+      } else {
+        alert(result);
+      }
+    });
+
+    // Alle Arbeitszeiten laden (Admin)
+    async function loadAdminWorkHours() {
+      const response = await fetch('/admin-work-hours');
+      const data = await response.json();
+      const tableBody = document.querySelector('#workHoursTable tbody');
+      tableBody.innerHTML = '';
+
+      data.forEach(entry => {
+        const row = document.createElement('tr');
+        row.innerHTML = `
+          <td>${entry.id}</td>
+          <td>${entry.name}</td>
+          <td>${entry.date}</td>
+          <td>${entry.hours}</td>
+          <td>${entry.comment}</td>
+          <td>
+            <button onclick="editEntry(${entry.id}, '${entry.name}', '${entry.date}', '${entry.startTime}', '${entry.endTime}', '${entry.comment}')">Bearbeiten</button>
+            <button onclick="deleteEntry(${entry.id})">Löschen</button>
+          </td>
+        `;
+        tableBody.appendChild(row);
+      });
+    }
+
+    function editEntry(id, name, date, startTime, endTime, comment) {
+      document.getElementById('editId').value = id;
+      document.getElementById('editName').value = name;
+      document.getElementById('editDate').value = date;
+      document.getElementById('editStartTime').value = startTime;
+      document.getElementById('editEndTime').value = endTime;
+      document.getElementById('editComment').value = comment;
+    }
+
+    async function saveChanges() {
+      const id = document.getElementById('editId').value;
+      const name = document.getElementById('editName').value;
+      const date = document.getElementById('editDate').value;
+      const startTime = document.getElementById('editStartTime').value;
+      const endTime = document.getElementById('editEndTime').value;
+      const comment = document.getElementById('editComment').value;
+
+      const response = await fetch('/api/admin/update-hours', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, name, date, startTime, endTime, comment })
+      });
+
+      const result = await response.text();
+      alert(result);
+      loadAdminWorkHours();
+    }
+
+    async function deleteEntry(id) {
+      const confirmDelete = confirm('Möchten Sie diesen Eintrag wirklich löschen?');
+      if (confirmDelete) {
+        const response = await fetch(`/api/admin/delete-hours/${id}`, {
+          method: 'DELETE'
+        });
+        const result = await response.text();
+        alert(result);
+        loadAdminWorkHours();
+      }
+    }
+
+    document.getElementById('adminDownloadCsv').addEventListener('click', async function() {
+      const response = await fetch('/admin-download-csv');
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.style.display = 'none';
+      a.href = url;
+      a.download = 'arbeitszeiten.csv';
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+    });
+
+    document.getElementById('adminDeleteData').addEventListener('click', async function() {
+      const confirmDelete = confirm('Möchten Sie wirklich alle Arbeitszeiten löschen?');
+      if (confirmDelete) {
+        const password = prompt('Geben Sie das Admin-Passwort ein:');
+        if (password) {
+          const response = await fetch('/delete-hours', {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ confirmDelete: 'true', password })
+          });
+          const result = await response.text();
+          alert(result);
+          loadAdminWorkHours();
+        } else {
+          alert('Löschen abgebrochen. Passwort erforderlich.');
+        }
+      } else {
+        alert('Löschen abgebrochen.');
+      }
+    });
+
+    // --------------------------
+    // Neue Funktionen für Mitarbeiterverwaltung
+    // --------------------------
+
+    // 1. Mitarbeiterliste laden
+    async function loadEmployees() {
+      const response = await fetch('/admin/employees');
+      if (!response.ok) {
+        alert('Fehler beim Laden der Mitarbeiter.');
+        return;
+      }
+      const employees = await response.json();
+      const list = document.getElementById('employeeList');
+      list.innerHTML = '';
+
+      employees.forEach(emp => {
+        const li = document.createElement('li');
+        li.textContent = `ID: ${emp.id} – ${emp.name} (Vertrag: ${emp.contract_hours || 0} Std.)`;
+
+        // Button zum Löschen
+        const deleteBtn = document.createElement('button');
+        deleteBtn.textContent = 'Löschen';
+        deleteBtn.style.marginLeft = '10px';
+        deleteBtn.onclick = async () => {
+          if (confirm(`Mitarbeiter "${emp.name}" wirklich löschen?`)) {
+            const delResponse = await fetch(`/admin/employees/${emp.id}`, {
+              method: 'DELETE'
+            });
+            if (delResponse.ok) {
+              alert('Mitarbeiter gelöscht.');
+              loadEmployees();
+            } else {
+              alert('Fehler beim Löschen des Mitarbeiters.');
+            }
+          }
+        };
+
+        li.appendChild(deleteBtn);
+        list.appendChild(li);
+      });
+    }
+
+    // 2. Mitarbeiter hinzufügen
+    document.getElementById('addEmployeeForm').addEventListener('submit', async function(event) {
+      event.preventDefault();
+      const name = document.getElementById('employeeName').value;
+      const contract_hours = parseFloat(document.getElementById('contractHours').value) || 0;
+
+      const response = await fetch('/admin/employees', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, contract_hours })
+      });
+
+      if (response.ok) {
+        alert('Mitarbeiter hinzugefügt!');
+        document.getElementById('employeeName').value = '';
+        document.getElementById('contractHours').value = '';
+        loadEmployees();
+      } else {
+        alert('Fehler beim Hinzufügen des Mitarbeiters.');
+      }
+    });
+  </script>
+</body>
+</html>
