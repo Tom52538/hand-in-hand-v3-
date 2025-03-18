@@ -227,8 +227,9 @@ app.get('/get-hours', (req, res) => {
 
 // Löschen aller Arbeitszeiten
 app.delete('/delete-hours', (req, res) => {
-  const { password, confirm } = req.body;
-  if (password === 'dein-passwort' && confirm === true) {
+  const { password, confirmDelete } = req.body;
+  // Akzeptiere sowohl boolean true als auch den String "true"
+  if (password === 'dein-passwort' && (confirmDelete === true || confirmDelete === 'true')) {
     const deleteQuery = 'DELETE FROM work_hours';
     db.run(deleteQuery, function(err) {
       if (err) {
