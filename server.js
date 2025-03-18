@@ -228,8 +228,8 @@ app.get('/get-hours', (req, res) => {
 // Löschen aller Arbeitszeiten
 app.delete('/delete-hours', (req, res) => {
   const { password, confirmDelete } = req.body;
-  // Akzeptiere sowohl boolean true als auch den String "true"
-  if (password === 'dein-passwort' && (confirmDelete === true || confirmDelete === 'true')) {
+  // Gleicher Passwort-Check wie beim Admin-Login
+  if (password === 'admin' && (confirmDelete === true || confirmDelete === 'true')) {
     const deleteQuery = 'DELETE FROM work_hours';
     db.run(deleteQuery, function(err) {
       if (err) {
@@ -349,6 +349,7 @@ function convertToCSV(data) {
   const csvRows = [];
   const headers = ["Name", "Datum", "Anfang", "Ende", "Gesamtzeit", "Bemerkung"];
   csvRows.push(headers.join(','));
+
   for (const row of data) {
     const formattedHours = convertDecimalHoursToHoursMinutes(row.hours);
     const values = [
