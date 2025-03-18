@@ -117,8 +117,15 @@ app.get('/admin-work-hours', isAdmin, (req, res) => {
   });
 });
 
+// CSV-Download für Arbeitszeiten (inkl. Vergleich von Ist- und Soll-Arbeitszeiten)
 app.get('/admin-download-csv', isAdmin, (req, res) => {
-  const query = 'SELECT * FROM work_hours';
+  // Hier wird ein JOIN zwischen work_hours und employees durchgeführt,
+  // sodass wir die Soll-Arbeitszeiten (mo_hours, di_hours, …) erhalten.
+  const query = `
+    SELECT w.*, e.mo_hours, e.di_hours, e.mi_hours, e.do_hours, e.fr_hours
+    FROM work_hours w
+    LEFT JOIN employees e ON LOWER(w.name) = LOWER(e.name)
+  `;
   db.all(query, [], (err, rows) => {
     if (err) {
       return res.status(500).send('Error fetching work hours.');
@@ -325,21 +332,49 @@ function convertDecimalHoursToHoursMinutes(decimalHours) {
   return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
 }
 
+// Hilfsfunktion, um die Soll-Arbeitszeit anhand des Datums und der Mitarbeiterstammdaten zu berechnen
+function getExpectedHours(row, dateStr) {
+  const d = new Date(dateStr);
+  const day = d.getDay(); // 0 = Sonntag, 1 = Montag, …, 5 = Freitag, 6 = Samstag
+  if (day === 1) { // Montag
+    return row.mo_hours || 0;
+  } else if (day === 2) { // Dienstag
+    return row.di_hours || 0;
+  } else if (day === 3) { // Mittwoch
+    return row.mi_hours || 0;
+  } else if (day === 4) { // Donnerstag
+    return row.do_hours || 0;
+  } else if (day === 5) { // Freitag
+    return row.fr_hours || 0;
+  } else {
+    return 0;
+  }
+}
+
+// Angepasste CSV-Funktion, die neben den bisherigen Feldern auch die Differenz (Ist - Soll) berechnet
 function convertToCSV(data) {
   if (!data || data.length === 0) {
     return '';
   }
   const csvRows = [];
-  const headers = ["Name", "Datum", "Anfang", "Ende", "Gesamtzeit", "Bemerkung"];
-  csvRows.push(headers.join(','));
+  // Header: Name, Datum, Arbeitsbeginn, Arbeitsende, Pause (Minuten), Ist Arbeitszeit, Differenz, Bemerkung
+  csvRows.push(["Name", "Datum", "Arbeitsbeginn", "Arbeitsende", "Pause (Minuten)", "Ist Arbeitszeit", "Differenz", "Bemerkung"].join(','));
   for (const row of data) {
-    const formattedHours = convertDecimalHoursToHoursMinutes(row.hours);
+    const breakMinutes = (row.break_time * 60).toFixed(0);
+    const istHours = row.hours;
+    const expected = getExpectedHours(row, row.date);
+    const diff = istHours - expected;
+    // Formatierung der Stundenwerte (2 Dezimalstellen)
+    const istFormatted = istHours.toFixed(2);
+    const diffFormatted = diff.toFixed(2);
     const values = [
       row.name,
       row.date,
       row.startTime,
       row.endTime,
-      formattedHours,
+      breakMinutes,
+      istFormatted,
+      diffFormatted,
       row.comment || ''
     ];
     csvRows.push(values.join(','));

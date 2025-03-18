@@ -439,7 +439,6 @@
     }
 
     function editEmployee(emp) {
-      // Zeige das Formular zum Bearbeiten und fülle es mit den Mitarbeiterdaten
       document.getElementById('editEmployeeForm').classList.remove('hidden');
       document.getElementById('editEmployeeId').value = emp.id;
       document.getElementById('editEmployeeName').value = emp.name;
@@ -460,7 +459,7 @@
       const mi_hours = parseFloat(document.getElementById('editMiHours').value) || 0;
       const do_hours = parseFloat(document.getElementById('editDoHours').value) || 0;
       const fr_hours = parseFloat(document.getElementById('editFrHours').value) || 0;
-      const response = await fetch(`/admin/employees/${id}`, {
+      const response = await fetch(`/admin/employees/${document.getElementById('editEmployeeId').value}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name, contract_hours, mo_hours, di_hours, mi_hours, do_hours, fr_hours })
@@ -508,3 +507,4 @@
   </script>
 </body>
 </html>
+
