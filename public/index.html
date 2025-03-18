@@ -24,9 +24,12 @@
 <body>
   <div class="container">
     <h1>Arbeitszeiterfassung</h1>
+    <!-- Statt eines Texteingabefeldes wird jetzt ein Dropdown verwendet -->
     <form id="workHoursForm">
-      <label for="name">Name:</label>
-      <input type="text" id="name" name="name" required>
+      <label for="employeeSelect">Mitarbeiter:</label>
+      <select id="employeeSelect" name="employeeSelect" required>
+        <option value="">Bitte auswählen</option>
+      </select>
 
       <label for="date">Datum:</label>
       <input type="date" id="date" name="date" required>
@@ -100,7 +103,7 @@
       <button id="adminDeleteData">Alle Arbeitszeiten löschen</button>
     </div>
 
-    <!-- Neuer Bereich für Mitarbeiterverwaltung -->
+    <!-- Neuer Bereich für Mitarbeiterverwaltung im Admin-Bereich -->
     <div id="employeePanel" class="hidden">
       <h2>Mitarbeiterverwaltung</h2>
       <form id="addEmployeeForm">
@@ -120,16 +123,43 @@
 
   <script>
     // --------------------------
+    // Mitarbeiter Dropdown laden (für die Zeiterfassung)
+    // --------------------------
+    async function loadEmployeeOptions() {
+      // Hier wird der Endpunkt /admin/employees genutzt. Falls du einen
+      // öffentlichen Endpunkt bevorzugst, kannst du diesen hier anpassen.
+      const response = await fetch('/admin/employees');
+      if (!response.ok) {
+        console.error("Fehler beim Laden der Mitarbeiteroptionen.");
+        return;
+      }
+      const employees = await response.json();
+      const select = document.getElementById('employeeSelect');
+      select.innerHTML = '<option value="">Bitte auswählen</option>';
+      employees.forEach(emp => {
+        const option = document.createElement('option');
+        // Wir speichern hier den Namen als value; alternativ könntest du auch die ID speichern
+        option.value = emp.name;
+        option.textContent = `${emp.name} (${emp.contract_hours || 0} Std.)`;
+        select.appendChild(option);
+      });
+    }
+
+    // --------------------------
     // Arbeitszeiterfassung
     // --------------------------
-    document.getElementById('name').addEventListener('input', async function() {
-      await loadWorkHours();
-    });
-    
+    // Beim Laden der Seite die Mitarbeiteroptionen laden
+    window.addEventListener('load', loadEmployeeOptions);
+
     document.getElementById('workHoursForm').addEventListener('submit', async function(event) {
       event.preventDefault();
 
-      const name = document.getElementById('name').value;
+      // Aus dem Dropdown den ausgewählten Mitarbeiternamen übernehmen
+      const name = document.getElementById('employeeSelect').value;
+      if (!name) {
+        alert("Bitte wählen Sie einen Mitarbeiter aus.");
+        return;
+      }
       const date = document.getElementById('date').value;
       const startTime = document.getElementById('startTime').value;
       const endTime = document.getElementById('endTime').value;
@@ -149,7 +179,8 @@
     });
 
     async function loadWorkHours() {
-      const name = document.getElementById('name').value;
+      // Hier wird als Name der ausgewählte Mitarbeiter genutzt
+      const name = document.getElementById('employeeSelect').value;
       const workHoursList = document.getElementById('workHoursList');
       const totalHoursElement = document.getElementById('totalHours');
 
@@ -170,15 +201,12 @@
       workHoursList.innerHTML = '';
       
       let sumHours = 0;
-
       data.forEach(entry => {
         const listItem = document.createElement('li');
         listItem.textContent = `ID: ${entry.id}, Datum: ${formatDate(entry.date)}, Stunden: ${entry.hours}, Bemerkung: ${entry.comment}`;
         workHoursList.appendChild(listItem);
-
         sumHours += entry.hours;
       });
-
       totalHoursElement.textContent = `Gesamtstunden: ${sumHours}`;
     }
 
@@ -202,25 +230,22 @@
 
       const result = await response.text();
       if (result === 'Admin angemeldet.') {
-        // Admin-Bereich sichtbar machen
         document.getElementById('adminPanel').classList.remove('hidden');
         document.getElementById('employeePanel').classList.remove('hidden');
-
-        // Arbeitszeiten & Mitarbeiter laden
         loadAdminWorkHours();
         loadEmployees();
+        // Auch die Mitarbeiteroptionen für die Zeiterfassung neu laden
+        loadEmployeeOptions();
       } else {
         alert(result);
       }
     });
 
-    // Alle Arbeitszeiten laden (Admin)
     async function loadAdminWorkHours() {
       const response = await fetch('/admin-work-hours');
       const data = await response.json();
       const tableBody = document.querySelector('#workHoursTable tbody');
       tableBody.innerHTML = '';
-
       data.forEach(entry => {
         const row = document.createElement('tr');
         row.innerHTML = `
@@ -269,9 +294,7 @@
     async function deleteEntry(id) {
       const confirmDelete = confirm('Möchten Sie diesen Eintrag wirklich löschen?');
       if (confirmDelete) {
-        const response = await fetch(`/api/admin/delete-hours/${id}`, {
-          method: 'DELETE'
-        });
+        const response = await fetch(`/api/admin/delete-hours/${id}`, { method: 'DELETE' });
         const result = await response.text();
         alert(result);
         loadAdminWorkHours();
@@ -313,10 +336,8 @@
     });
 
     // --------------------------
-    // Neue Funktionen für Mitarbeiterverwaltung
+    // Mitarbeiterverwaltung (Admin)
     // --------------------------
-
-    // 1. Mitarbeiterliste laden
     async function loadEmployees() {
       const response = await fetch('/admin/employees');
       if (!response.ok) {
@@ -326,51 +347,44 @@
       const employees = await response.json();
       const list = document.getElementById('employeeList');
       list.innerHTML = '';
-
       employees.forEach(emp => {
         const li = document.createElement('li');
         li.textContent = `ID: ${emp.id} – ${emp.name} (Vertrag: ${emp.contract_hours || 0} Std.)`;
-
-        // Button zum Löschen
         const deleteBtn = document.createElement('button');
         deleteBtn.textContent = 'Löschen';
         deleteBtn.style.marginLeft = '10px';
         deleteBtn.onclick = async () => {
           if (confirm(`Mitarbeiter "${emp.name}" wirklich löschen?`)) {
-            const delResponse = await fetch(`/admin/employees/${emp.id}`, {
-              method: 'DELETE'
-            });
+            const delResponse = await fetch(`/admin/employees/${emp.id}`, { method: 'DELETE' });
             if (delResponse.ok) {
               alert('Mitarbeiter gelöscht.');
               loadEmployees();
+              loadEmployeeOptions(); // Dropdown ebenfalls aktualisieren
             } else {
               alert('Fehler beim Löschen des Mitarbeiters.');
             }
           }
         };
-
         li.appendChild(deleteBtn);
         list.appendChild(li);
       });
     }
 
-    // 2. Mitarbeiter hinzufügen
     document.getElementById('addEmployeeForm').addEventListener('submit', async function(event) {
       event.preventDefault();
       const name = document.getElementById('employeeName').value;
       const contract_hours = parseFloat(document.getElementById('contractHours').value) || 0;
-
       const response = await fetch('/admin/employees', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name, contract_hours })
       });
-
       if (response.ok) {
         alert('Mitarbeiter hinzugefügt!');
         document.getElementById('employeeName').value = '';
         document.getElementById('contractHours').value = '';
         loadEmployees();
+        loadEmployeeOptions(); // Dropdown aktualisieren
       } else {
         alert('Fehler beim Hinzufügen des Mitarbeiters.');
       }
