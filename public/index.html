@@ -206,7 +206,8 @@
     // Mitarbeiter-Dropdown laden
     // --------------------------
     async function loadEmployeeOptions() {
-      const response = await fetch('/admin/employees');
+      // Hier wird der neue, öffentliche Endpunkt abgefragt
+      const response = await fetch('/employees');
       if (!response.ok) {
         console.error("Fehler beim Laden der Mitarbeiteroptionen.");
         return;

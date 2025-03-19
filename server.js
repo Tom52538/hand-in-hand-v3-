@@ -261,7 +261,7 @@ app.post('/admin-login', (req, res) => {
 });
 
 // --------------------------
-// API-Endpunkte für Mitarbeiterverwaltung
+// API-Endpunkte für Mitarbeiterverwaltung (admin-geschützt)
 // --------------------------
 app.get('/admin/employees', isAdmin, (req, res) => {
   const query = 'SELECT * FROM employees';
@@ -310,6 +310,19 @@ app.delete('/admin/employees/:id', isAdmin, (req, res) => {
       return res.status(500).send('Fehler beim Löschen des Mitarbeiters.');
     }
     res.send('Mitarbeiter erfolgreich gelöscht.');
+  });
+});
+
+// --------------------------
+// Neuer, öffentlicher Endpunkt für Mitarbeiter (Variante 1)
+// --------------------------
+app.get('/employees', (req, res) => {
+  const query = 'SELECT id, name FROM employees';
+  db.all(query, [], (err, rows) => {
+    if (err) {
+      return res.status(500).send('Fehler beim Abrufen der Mitarbeiter.');
+    }
+    res.json(rows);
   });
 });
 
