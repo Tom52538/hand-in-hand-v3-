@@ -206,7 +206,7 @@
     // Mitarbeiter-Dropdown laden
     // --------------------------
     async function loadEmployeeOptions() {
-      // Hier wird der neue, öffentliche Endpunkt abgefragt
+      // Öffentlicher Endpunkt
       const response = await fetch('/employees');
       if (!response.ok) {
         console.error("Fehler beim Laden der Mitarbeiteroptionen.");
@@ -334,6 +334,7 @@
       document.getElementById('editStartTime').value = startTime;
       document.getElementById('editEndTime').value = endTime;
       document.getElementById('editComment').value = comment;
+      // breakTime ist in Stunden, wir wollen Minuten => * 60
       document.getElementById('editBreakTime').value = breakTime ? Math.round(breakTime * 60) : 0;
     }
 
