@@ -1,5 +1,5 @@
 const express = require('express');
-const sqlite3 = require('sqlite3').verbose();
+const { Pool } = require('pg');
 const bodyParser = require('body-parser');
 const session = require('express-session');
 const path = require('path');
@@ -19,12 +19,23 @@ app.use(session({
 }));
 
 // SQLite Datenbank einrichten
-const db = new sqlite3.Database('./work_hours.db');
-
-db.serialize(() => {
-  // Tabelle für Arbeitszeiten erstellen
+const db = new Pool({
+    connectionString: process.env.DATABASE_URL,
+    ssl: { rejectUnauthorized: false }
+});
   db.run(`
-    CREATE TABLE IF NOT EXISTS work_hours (
+db.query(`
+            CREATE TABLE IF NOT EXISTS work_hours (
+                id SERIAL PRIMARY KEY,
+                name TEXT NOT NULL,
+                date DATE NOT NULL,
+                hours DOUBLE PRECISION,
+                break_time DOUBLE PRECISION,
+                comment TEXT,
+                startTime TIME,
+                endTime TIME
+            );
+        `).catch(err => console.error("Fehler beim Erstellen der Tabelle work_hours:", err));
       id INTEGER PRIMARY KEY,
       name TEXT,
       date TEXT,
@@ -56,7 +67,18 @@ db.serialize(() => {
 
   // Neue Tabelle für Mitarbeiter erstellen, falls sie noch nicht existiert
   db.run(`
-    CREATE TABLE IF NOT EXISTS employees (
+db.query(`
+            CREATE TABLE IF NOT EXISTS employees (
+                id SERIAL PRIMARY KEY,
+                name TEXT NOT NULL,
+                contract_hours DOUBLE PRECISION,
+                mo_hours DOUBLE PRECISION,
+                di_hours DOUBLE PRECISION,
+                mi_hours DOUBLE PRECISION,
+                do_hours DOUBLE PRECISION,
+                fr_hours DOUBLE PRECISION
+            );
+        `).catch(err => console.error("Fehler beim Erstellen der Tabelle employees:", err));
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       name TEXT NOT NULL,
       contract_hours REAL
@@ -418,7 +440,7 @@ function convertToCSV(data) {
   }
   return csvRows.join('\n');
 }
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log(`Server läuft auf http://localhost:${PORT}`);
+
+app.listen(port, () => {
+  console.log(`Server läuft auf http://localhost:${port}`);
 });
