@@ -4,7 +4,7 @@ const bodyParser = require('body-parser');
 const session = require('express-session');
 const path = require('path');
 const app = express();
-const port = 3000;
+const port = process.env.PORT || 3000;
 
 // Middleware
 app.use(bodyParser.json());
@@ -18,108 +18,47 @@ app.use(session({
   cookie: { secure: false } // Auf true setzen, wenn du HTTPS verwendest
 }));
 
-// SQLite Datenbank einrichten
+// PostgreSQL Datenbank einrichten
 const db = new Pool({
-    connectionString: process.env.DATABASE_URL,
-    ssl: { rejectUnauthorized: false }
+  connectionString: process.env.DATABASE_URL,
+  ssl: { rejectUnauthorized: false }
 });
-  db.run(`
-db.query(`
-            CREATE TABLE IF NOT EXISTS work_hours (
-                id SERIAL PRIMARY KEY,
-                name TEXT NOT NULL,
-                date DATE NOT NULL,
-                hours DOUBLE PRECISION,
-                break_time DOUBLE PRECISION,
-                comment TEXT,
-                startTime TIME,
-                endTime TIME
-            );
-        `).catch(err => console.error("Fehler beim Erstellen der Tabelle work_hours:", err));
-      id INTEGER PRIMARY KEY,
-      name TEXT,
-      date TEXT,
-      hours REAL,
-      break_time REAL,
-      comment TEXT,
-      startTime TEXT,
-      endTime TEXT
-    )
-  `);
 
-  // Füge die 'comment', 'startTime', 'endTime' Felder hinzu, falls sie noch nicht existieren
-  db.all("PRAGMA table_info(work_hours)", [], (err, rows) => {
-    if (err) {
-      console.error("Fehler beim Abrufen der Tabelleninformationen:", err);
-      return;
-    }
-    const columnNames = rows.map(row => row.name);
-    if (!columnNames.includes('comment')) {
-      db.run("ALTER TABLE work_hours ADD COLUMN comment TEXT");
-    }
-    if (!columnNames.includes('startTime')) {
-      db.run("ALTER TABLE work_hours ADD COLUMN startTime TEXT");
-    }
-    if (!columnNames.includes('endTime')) {
-      db.run("ALTER TABLE work_hours ADD COLUMN endTime TEXT");
-    }
-  });
-
-  // Neue Tabelle für Mitarbeiter erstellen, falls sie noch nicht existiert
-  db.run(`
+// Tabellen erstellen
 db.query(`
-            CREATE TABLE IF NOT EXISTS employees (
-                id SERIAL PRIMARY KEY,
-                name TEXT NOT NULL,
-                contract_hours DOUBLE PRECISION,
-                mo_hours DOUBLE PRECISION,
-                di_hours DOUBLE PRECISION,
-                mi_hours DOUBLE PRECISION,
-                do_hours DOUBLE PRECISION,
-                fr_hours DOUBLE PRECISION
-            );
-        `).catch(err => console.error("Fehler beim Erstellen der Tabelle employees:", err));
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      name TEXT NOT NULL,
-      contract_hours REAL
-    )
-  `, (err) => {
-    if (err) {
-      console.error("Fehler beim Erstellen der Tabelle employees:", err);
-    } else {
-      console.log("Tabelle employees erfolgreich erstellt oder bereits vorhanden.");
-    }
-  });
-  
-  // Neue Spalten für Soll-Arbeitszeiten (Montag bis Freitag) in der Tabelle employees hinzufügen
-  db.all("PRAGMA table_info(employees)", [], (err, rows) => {
-    if (err) {
-      console.error("Fehler beim Abrufen der Mitarbeiter-Tabelle:", err);
-      return;
-    }
-    const columnNames = rows.map(row => row.name);
-    if (!columnNames.includes('mo_hours')) {
-      db.run("ALTER TABLE employees ADD COLUMN mo_hours REAL");
-    }
-    if (!columnNames.includes('di_hours')) {
-      db.run("ALTER TABLE employees ADD COLUMN di_hours REAL");
-    }
-    if (!columnNames.includes('mi_hours')) {
-      db.run("ALTER TABLE employees ADD COLUMN mi_hours REAL");
-    }
-    if (!columnNames.includes('do_hours')) {
-      db.run("ALTER TABLE employees ADD COLUMN do_hours REAL");
-    }
-    if (!columnNames.includes('fr_hours')) {
-      db.run("ALTER TABLE employees ADD COLUMN fr_hours REAL");
-    }
-  });
-});
+  CREATE TABLE IF NOT EXISTS work_hours (
+    id SERIAL PRIMARY KEY,
+    name TEXT NOT NULL,
+    date DATE NOT NULL,
+    hours DOUBLE PRECISION,
+    break_time DOUBLE PRECISION,
+    comment TEXT,
+    startTime TIME,
+    endTime TIME
+  );
+`).catch(err => console.error("Fehler beim Erstellen der Tabelle work_hours:", err));
+
+db.query(`
+  CREATE TABLE IF NOT EXISTS employees (
+    id SERIAL PRIMARY KEY,
+    name TEXT NOT NULL,
+    contract_hours DOUBLE PRECISION,
+    mo_hours DOUBLE PRECISION,
+    di_hours DOUBLE PRECISION,
+    mi_hours DOUBLE PRECISION,
+    do_hours DOUBLE PRECISION,
+    fr_hours DOUBLE PRECISION
+  );
+`).then(() => {
+  console.log("Tabelle employees erfolgreich erstellt oder bereits vorhanden.");
+}).catch(err => console.error("Fehler beim Erstellen der Tabelle employees:", err));
+
+// Die folgenden SQLite-spezifischen Blöcke (PRAGMA, ALTER TABLE) wurden entfernt,
+// da sie in PostgreSQL nicht benötigt werden.
 
 // Middleware, um Admin-Berechtigungen zu prüfen
 function isAdmin(req, res, next) {
-  const isAdminUser = req.session.isAdmin;
-  if (isAdminUser) {
+  if (req.session.isAdmin) {
     next();
   } else {
     res.status(403).send('Access denied. Admin privileges required.');
@@ -131,12 +70,9 @@ function isAdmin(req, res, next) {
 // --------------------------
 app.get('/admin-work-hours', isAdmin, (req, res) => {
   const query = 'SELECT * FROM work_hours';
-  db.all(query, [], (err, rows) => {
-    if (err) {
-      return res.status(500).send('Error fetching work hours.');
-    }
-    res.json(rows);
-  });
+  db.query(query, [])
+    .then(result => res.json(result.rows))
+    .catch(err => res.status(500).send('Error fetching work hours.'));
 });
 
 app.get('/admin-download-csv', isAdmin, (req, res) => {
@@ -145,15 +81,14 @@ app.get('/admin-download-csv', isAdmin, (req, res) => {
     FROM work_hours w
     LEFT JOIN employees e ON LOWER(w.name) = LOWER(e.name)
   `;
-  db.all(query, [], (err, rows) => {
-    if (err) {
-      return res.status(500).send('Error fetching work hours.');
-    }
-    const csv = convertToCSV(rows);
-    res.setHeader('Content-Type', 'text/csv');
-    res.setHeader('Content-Disposition', 'attachment; filename="arbeitszeiten.csv"');
-    res.send(csv);
-  });
+  db.query(query, [])
+    .then(result => {
+      const csv = convertToCSV(result.rows);
+      res.setHeader('Content-Type', 'text/csv');
+      res.setHeader('Content-Disposition', 'attachment; filename="arbeitszeiten.csv"');
+      res.send(csv);
+    })
+    .catch(err => res.status(500).send('Error fetching work hours.'));
 });
 
 app.put('/api/admin/update-hours', isAdmin, (req, res) => {
@@ -167,26 +102,20 @@ app.put('/api/admin/update-hours', isAdmin, (req, res) => {
   const netHours = totalHours - breakTimeHours;
   const query = `
     UPDATE work_hours
-    SET name = ?, date = ?, hours = ?, break_time = ?, comment = ?, startTime = ?, endTime = ?
-    WHERE id = ?
+    SET name = $1, date = $2, hours = $3, break_time = $4, comment = $5, startTime = $6, endTime = $7
+    WHERE id = $8
   `;
-  db.run(query, [name, date, netHours, breakTimeHours, comment, startTime, endTime, id], function(err) {
-    if (err) {
-      return res.status(500).send('Error updating working hours.');
-    }
-    res.send('Working hours updated successfully.');
-  });
+  db.query(query, [name, date, netHours, breakTimeHours, comment, startTime, endTime, id])
+    .then(() => res.send('Working hours updated successfully.'))
+    .catch(err => res.status(500).send('Error updating working hours.'));
 });
 
 app.delete('/api/admin/delete-hours/:id', isAdmin, (req, res) => {
   const { id } = req.params;
-  const query = 'DELETE FROM work_hours WHERE id = ?';
-  db.run(query, [id], function(err) {
-    if (err) {
-      return res.status(500).send('Error deleting working hours.');
-    }
-    res.send('Working hours deleted successfully.');
-  });
+  const query = 'DELETE FROM work_hours WHERE id = $1';
+  db.query(query, [id])
+    .then(() => res.send('Working hours deleted successfully.'))
+    .catch(err => res.status(500).send('Error deleting working hours.'));
 });
 
 app.post('/log-hours', (req, res) => {
@@ -196,30 +125,26 @@ app.post('/log-hours', (req, res) => {
   }
   const checkQuery = `
     SELECT * FROM work_hours
-    WHERE LOWER(name) = LOWER(?) AND date = ?
+    WHERE LOWER(name) = LOWER($1) AND date = $2
   `;
-  db.get(checkQuery, [name, date], (err, row) => {
-    if (err) {
-      return res.status(500).send('Fehler beim Überprüfen der Daten.');
-    }
-    if (row) {
-      return res.status(400).json({ error: 'Eintrag für diesen Tag existiert bereits.' });
-    }
-    const totalHours = calculateWorkHours(startTime, endTime);
-    const breakTimeMinutes = parseInt(breakTime, 10) || 0;
-    const breakTimeHours = breakTimeMinutes / 60;
-    const netHours = totalHours - breakTimeHours;
-    const insertQuery = `
-      INSERT INTO work_hours (name, date, hours, break_time, comment, startTime, endTime)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
-    `;
-    db.run(insertQuery, [name, date, netHours, breakTimeHours, comment, startTime, endTime], function(err) {
-      if (err) {
-        return res.status(500).send('Fehler beim Speichern der Daten.');
+  db.query(checkQuery, [name, date])
+    .then(result => {
+      if (result.rows.length > 0) {
+        return res.status(400).json({ error: 'Eintrag für diesen Tag existiert bereits.' });
       }
-      res.send('Daten erfolgreich gespeichert.');
-    });
-  });
+      const totalHours = calculateWorkHours(startTime, endTime);
+      const breakTimeMinutes = parseInt(breakTime, 10) || 0;
+      const breakTimeHours = breakTimeMinutes / 60;
+      const netHours = totalHours - breakTimeHours;
+      const insertQuery = `
+        INSERT INTO work_hours (name, date, hours, break_time, comment, startTime, endTime)
+        VALUES ($1, $2, $3, $4, $5, $6, $7)
+      `;
+      db.query(insertQuery, [name, date, netHours, breakTimeHours, comment, startTime, endTime])
+        .then(() => res.send('Daten erfolgreich gespeichert.'))
+        .catch(err => res.status(500).send('Fehler beim Speichern der Daten.'));
+    })
+    .catch(err => res.status(500).send('Fehler beim Überprüfen der Daten.'));
 });
 
 app.get('/get-all-hours', (req, res) => {
@@ -229,44 +154,37 @@ app.get('/get-all-hours', (req, res) => {
   }
   const query = `
     SELECT * FROM work_hours
-    WHERE LOWER(name) = LOWER(?)
+    WHERE LOWER(name) = LOWER($1)
     ORDER BY date ASC
   `;
-  db.all(query, [name], (err, rows) => {
-    if (err) {
-      return res.status(500).send('Fehler beim Abrufen der Daten.');
-    }
-    res.json(rows);
-  });
+  db.query(query, [name])
+    .then(result => res.json(result.rows))
+    .catch(err => res.status(500).send('Fehler beim Abrufen der Daten.'));
 });
 
 app.get('/get-hours', (req, res) => {
   const { name, date } = req.query;
   const query = `
     SELECT * FROM work_hours
-    WHERE LOWER(name) = LOWER(?) AND date = ?
+    WHERE LOWER(name) = LOWER($1) AND date = $2
   `;
-  db.get(query, [name, date], (err, row) => {
-    if (err) {
-      return res.status(500).send('Fehler beim Abrufen der Daten.');
-    }
-    if (!row) {
-      return res.status(404).send('Keine Daten gefunden.');
-    }
-    res.json(row);
-  });
+  db.query(query, [name, date])
+    .then(result => {
+      if (result.rows.length === 0) {
+        return res.status(404).send('Keine Daten gefunden.');
+      }
+      res.json(result.rows[0]);
+    })
+    .catch(err => res.status(500).send('Fehler beim Abrufen der Daten.'));
 });
 
 app.delete('/delete-hours', (req, res) => {
   const { password, confirmDelete } = req.body;
   if (password === 'admin' && (confirmDelete === true || confirmDelete === 'true')) {
     const deleteQuery = 'DELETE FROM work_hours';
-    db.run(deleteQuery, function(err) {
-      if (err) {
-        return res.status(500).send('Fehler beim Löschen der Daten.');
-      }
-      res.send('Daten erfolgreich gelöscht.');
-    });
+    db.query(deleteQuery, [])
+      .then(() => res.send('Daten erfolgreich gelöscht.'))
+      .catch(err => res.status(500).send('Fehler beim Löschen der Daten.'));
   } else {
     res.status(401).send('Löschen abgebrochen. Passwort erforderlich oder Bestätigung fehlt.');
   }
@@ -287,12 +205,9 @@ app.post('/admin-login', (req, res) => {
 // --------------------------
 app.get('/admin/employees', isAdmin, (req, res) => {
   const query = 'SELECT * FROM employees';
-  db.all(query, [], (err, rows) => {
-    if (err) {
-      return res.status(500).send('Fehler beim Abrufen der Mitarbeiter.');
-    }
-    res.json(rows);
-  });
+  db.query(query, [])
+    .then(result => res.json(result.rows))
+    .catch(err => res.status(500).send('Fehler beim Abrufen der Mitarbeiter.'));
 });
 
 app.post('/admin/employees', isAdmin, (req, res) => {
@@ -300,13 +215,10 @@ app.post('/admin/employees', isAdmin, (req, res) => {
   if (!name) {
     return res.status(400).send('Name ist erforderlich.');
   }
-  const query = 'INSERT INTO employees (name, contract_hours, mo_hours, di_hours, mi_hours, do_hours, fr_hours) VALUES (?, ?, ?, ?, ?, ?, ?)';
-  db.run(query, [name, contract_hours || 0, mo_hours || 0, di_hours || 0, mi_hours || 0, do_hours || 0, fr_hours || 0], function(err) {
-    if (err) {
-      return res.status(500).send('Fehler beim Hinzufügen des Mitarbeiters.');
-    }
-    res.send({ id: this.lastID, name, contract_hours, mo_hours, di_hours, mi_hours, do_hours, fr_hours });
-  });
+  const query = 'INSERT INTO employees (name, contract_hours, mo_hours, di_hours, mi_hours, do_hours, fr_hours) VALUES ($1, $2, $3, $4, $5, $6, $7)';
+  db.query(query, [name, contract_hours || 0, mo_hours || 0, di_hours || 0, mi_hours || 0, do_hours || 0, fr_hours || 0])
+    .then(result => res.send({ id: result.rowCount, name, contract_hours, mo_hours, di_hours, mi_hours, do_hours, fr_hours }))
+    .catch(err => res.status(500).send('Fehler beim Hinzufügen des Mitarbeiters.'));
 });
 
 app.put('/admin/employees/:id', isAdmin, (req, res) => {
@@ -315,37 +227,26 @@ app.put('/admin/employees/:id', isAdmin, (req, res) => {
   if (!name) {
     return res.status(400).send('Name ist erforderlich.');
   }
-  const query = 'UPDATE employees SET name = ?, contract_hours = ?, mo_hours = ?, di_hours = ?, mi_hours = ?, do_hours = ?, fr_hours = ? WHERE id = ?';
-  db.run(query, [name, contract_hours || 0, mo_hours || 0, di_hours || 0, mi_hours || 0, do_hours || 0, fr_hours || 0, id], function(err) {
-    if (err) {
-      return res.status(500).send('Fehler beim Aktualisieren des Mitarbeiters.');
-    }
-    res.send('Mitarbeiter erfolgreich aktualisiert.');
-  });
+  const query = 'UPDATE employees SET name = $1, contract_hours = $2, mo_hours = $3, di_hours = $4, mi_hours = $5, do_hours = $6, fr_hours = $7 WHERE id = $8';
+  db.query(query, [name, contract_hours || 0, mo_hours || 0, di_hours || 0, mi_hours || 0, do_hours || 0, fr_hours || 0, id])
+    .then(() => res.send('Mitarbeiter erfolgreich aktualisiert.'))
+    .catch(err => res.status(500).send('Fehler beim Aktualisieren des Mitarbeiters.'));
 });
 
 app.delete('/admin/employees/:id', isAdmin, (req, res) => {
   const { id } = req.params;
-  const query = 'DELETE FROM employees WHERE id = ?';
-  db.run(query, [id], function(err) {
-    if (err) {
-      return res.status(500).send('Fehler beim Löschen des Mitarbeiters.');
-    }
-    res.send('Mitarbeiter erfolgreich gelöscht.');
-  });
+  const query = 'DELETE FROM employees WHERE id = $1';
+  db.query(query, [id])
+    .then(() => res.send('Mitarbeiter erfolgreich gelöscht.'))
+    .catch(err => res.status(500).send('Fehler beim Löschen des Mitarbeiters.'));
 });
 
-// --------------------------
 // Neuer, öffentlicher Endpunkt für Mitarbeiter (Variante 1)
-// --------------------------
 app.get('/employees', (req, res) => {
   const query = 'SELECT id, name FROM employees';
-  db.all(query, [], (err, rows) => {
-    if (err) {
-      return res.status(500).send('Fehler beim Abrufen der Mitarbeiter.');
-    }
-    res.json(rows);
-  });
+  db.query(query, [])
+    .then(result => res.json(result.rows))
+    .catch(err => res.status(500).send('Fehler beim Abrufen der Mitarbeiter.'));
 });
 
 // --------------------------
@@ -364,51 +265,34 @@ function convertDecimalHoursToHoursMinutes(decimalHours) {
   return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
 }
 
-// Hilfsfunktion, um die Soll-Arbeitszeit anhand des Datums und der Mitarbeiterstammdaten zu berechnen
 function getExpectedHours(row, dateStr) {
   const d = new Date(dateStr);
   const day = d.getDay(); // 0 = Sonntag, 1 = Montag, …, 5 = Freitag, 6 = Samstag
-  if (day === 1) { // Montag
-    return row.mo_hours || 0;
-  } else if (day === 2) { // Dienstag
-    return row.di_hours || 0;
-  } else if (day === 3) { // Mittwoch
-    return row.mi_hours || 0;
-  } else if (day === 4) { // Donnerstag
-    return row.do_hours || 0;
-  } else if (day === 5) { // Freitag
-    return row.fr_hours || 0;
-  } else {
-    return 0;
-  }
+  if (day === 1) return row.mo_hours || 0;
+  else if (day === 2) return row.di_hours || 0;
+  else if (day === 3) return row.mi_hours || 0;
+  else if (day === 4) return row.do_hours || 0;
+  else if (day === 5) return row.fr_hours || 0;
+  else return 0;
 }
 
 /**
  * CSV-Funktion mit den gewünschten Spalten in folgender Reihenfolge:
- * 1. Name
- * 2. Datum
- * 3. Arbeitsbeginn
- * 4. Arbeitsende
- * 5. Pause (Minuten)
- * 6. SollArbeitszeit
- * 7. IstArbeitszeit (vormals "Ist Arbeitszeit")
- * 8. Differenz
- * 9. Bemerkung
+ * 1. Name, 2. Datum, 3. Arbeitsbeginn, 4. Arbeitsende,
+ * 5. Pause (Minuten), 6. SollArbeitszeit, 7. IstArbeitszeit,
+ * 8. Differenz, 9. Bemerkung
  */
 function convertToCSV(data) {
-  if (!data || data.length === 0) {
-    return '';
-  }
+  if (!data || data.length === 0) return '';
   const csvRows = [];
-  // Neuer Header
   csvRows.push([
     "Name",
     "Datum",
     "Arbeitsbeginn",
     "Arbeitsende",
     "Pause (Minuten)",
-    "SollArbeitszeit",    // <- NEU an Position 6
-    "IstArbeitszeit",     // <- umbenannt und an Position 7
+    "SollArbeitszeit",
+    "IstArbeitszeit",
     "Differenz",
     "Bemerkung"
   ].join(','));
@@ -418,23 +302,19 @@ function convertToCSV(data) {
     const istHours = row.hours;
     const expected = getExpectedHours(row, row.date);
     const diff = istHours - expected;
-
-    // Formatierung (z.B. 2 Nachkommastellen)
     const istFormatted = istHours.toFixed(2);
     const expectedFormatted = expected.toFixed(2);
     const diffFormatted = diff.toFixed(2);
-
-    // Spaltenreihenfolge gemäß Header
     const values = [
-      row.name,            // Name
-      row.date,            // Datum
-      row.startTime,       // Arbeitsbeginn
-      row.endTime,         // Arbeitsende
-      breakMinutes,        // Pause (Minuten)
-      expectedFormatted,   // SollArbeitszeit
-      istFormatted,        // IstArbeitszeit
-      diffFormatted,       // Differenz
-      row.comment || ''    // Bemerkung
+      row.name,
+      row.date,
+      row.startTime,
+      row.endTime,
+      breakMinutes,
+      expectedFormatted,
+      istFormatted,
+      diffFormatted,
+      row.comment || ''
     ];
     csvRows.push(values.join(','));
   }
