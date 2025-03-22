@@ -12,6 +12,22 @@
     .hidden { display: none; }
     form > div { margin-bottom: 1rem; }
     label { display: block; margin-bottom: 0.3rem; }
+
+    /* --- NEU: Tabellen-Layout für Admin-Bereich --- */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    th, td {
+      border: 1px solid #ccc;
+      padding: 8px;
+      vertical-align: middle;
+      text-align: left;
+    }
+    /* Optional: Buttons in einer Zeile */
+    td button {
+      margin-right: 5px;
+    }
   </style>
 </head>
 <body>
@@ -203,14 +219,15 @@
       return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
     }
 
-    function formatDate(date) {
-      // Erwartet das Format "YYYY-MM-DD"
-      const [year, month, day] = date.split('-');
-      return `${day.padStart(2, '0')}.${month.padStart(2, '0')}.${year}`;
+    // Neu: Datum formatieren über toLocaleDateString
+    function formatDate(dateStr) {
+      if (!dateStr) return "";
+      // Erzeugt z. B. "19.03.2025"
+      return new Date(dateStr).toLocaleDateString("de-DE");
     }
 
+    // Neu: Zeit formatieren ("HH:MM:SS" => "HH:MM")
     function formatTime(timeStr) {
-      // Erwartet das Format "HH:MM:SS", gibt "HH:MM" zurück
       if (!timeStr) return "";
       return timeStr.slice(0,5);
     }
@@ -282,6 +299,7 @@
       let sumHours = 0;
       data.forEach(entry => {
         const listItem = document.createElement('li');
+        // Datum und Stunden formatieren
         listItem.textContent = `ID: ${entry.id}, Datum: ${formatDate(entry.date)}, Stunden: ${formatDecimalHours(entry.hours)}, Bemerkung: ${entry.comment}`;
         workHoursList.appendChild(listItem);
         sumHours += entry.hours;
@@ -319,13 +337,16 @@
       tableBody.innerHTML = '';
       data.forEach(entry => {
         const row = document.createElement('tr');
+        // Datum & Zeit formatieren
+        const dateFormatted = formatDate(entry.date);
+        const timeFormatted = `${formatTime(entry.startTime)} - ${formatTime(entry.endTime)}`;
         row.innerHTML = `
           <td>${entry.id}</td>
           <td>${entry.name}</td>
-          <td>${formatDate(entry.date)}</td>
-          <td>${formatTime(entry.startTime)} - ${formatTime(entry.endTime)}</td>
+          <td>${dateFormatted}</td>
+          <td>${timeFormatted}</td>
           <td>${formatDecimalHours(entry.hours)}</td>
-          <td>${entry.comment}</td>
+          <td>${entry.comment || ''}</td>
           <td>
             <button onclick="editEntry(${entry.id}, '${entry.name}', '${entry.date}', '${entry.startTime}', '${entry.endTime}', '${entry.comment}', ${entry.break_time})">Bearbeiten</button>
             <button onclick="deleteEntry(${entry.id})">Löschen</button>
@@ -342,6 +363,7 @@
       document.getElementById('editStartTime').value = startTime;
       document.getElementById('editEndTime').value = endTime;
       document.getElementById('editComment').value = comment;
+      // breakTime in Stunden -> Umrechnung in Minuten
       document.getElementById('editBreakTime').value = breakTime ? Math.round(breakTime * 60) : 0;
     }
 
