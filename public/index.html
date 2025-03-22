@@ -106,6 +106,7 @@
             <th>ID</th>
             <th>Name</th>
             <th>Datum</th>
+            <th>Arbeitszeit</th>
             <th>Stunden</th>
             <th>Bemerkung</th>
             <th>Aktionen</th>
@@ -195,18 +196,29 @@
   </div>
 
   <script>
-    // Hilfsfunktion zur Formatierung von Dezimalstunden in HH:MM
+    // Hilfsfunktionen
     function formatDecimalHours(decimalHours) {
       const hours = Math.floor(decimalHours);
       const minutes = Math.round((decimalHours - hours) * 60);
       return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
     }
 
+    function formatDate(date) {
+      // Erwartet das Format "YYYY-MM-DD"
+      const [year, month, day] = date.split('-');
+      return `${day.padStart(2, '0')}.${month.padStart(2, '0')}.${year}`;
+    }
+
+    function formatTime(timeStr) {
+      // Erwartet das Format "HH:MM:SS", gibt "HH:MM" zurück
+      if (!timeStr) return "";
+      return timeStr.slice(0,5);
+    }
+
     // --------------------------
     // Mitarbeiter-Dropdown laden
     // --------------------------
     async function loadEmployeeOptions() {
-      // Öffentlicher Endpunkt
       const response = await fetch('/employees');
       if (!response.ok) {
         console.error("Fehler beim Laden der Mitarbeiteroptionen.");
@@ -223,11 +235,11 @@
       });
     }
 
+    window.addEventListener('load', loadEmployeeOptions);
+
     // --------------------------
     // Arbeitszeiterfassung
     // --------------------------
-    window.addEventListener('load', loadEmployeeOptions);
-
     document.getElementById('workHoursForm').addEventListener('submit', async function(event) {
       event.preventDefault();
       const name = document.getElementById('employeeSelect').value;
@@ -277,11 +289,6 @@
       totalHoursElement.textContent = `Gesamtstunden: ${formatDecimalHours(sumHours)}`;
     }
 
-    function formatDate(date) {
-      const [year, month, day] = date.split('-');
-      return `${day.padStart(2, '0')}.${month.padStart(2, '0')}.${year}`;
-    }
-
     // --------------------------
     // Admin-Login & Arbeitszeiten bearbeiten
     // --------------------------
@@ -315,7 +322,8 @@
         row.innerHTML = `
           <td>${entry.id}</td>
           <td>${entry.name}</td>
-          <td>${entry.date}</td>
+          <td>${formatDate(entry.date)}</td>
+          <td>${formatTime(entry.startTime)} - ${formatTime(entry.endTime)}</td>
           <td>${formatDecimalHours(entry.hours)}</td>
           <td>${entry.comment}</td>
           <td>
@@ -334,7 +342,6 @@
       document.getElementById('editStartTime').value = startTime;
       document.getElementById('editEndTime').value = endTime;
       document.getElementById('editComment').value = comment;
-      // breakTime ist in Stunden, wir wollen Minuten => * 60
       document.getElementById('editBreakTime').value = breakTime ? Math.round(breakTime * 60) : 0;
     }
 
@@ -441,7 +448,6 @@
     }
 
     function editEmployee(emp) {
-      // Zeige das Formular zum Bearbeiten und fülle es mit den Mitarbeiterdaten
       document.getElementById('editEmployeeForm').classList.remove('hidden');
       document.getElementById('editEmployeeId').value = emp.id;
       document.getElementById('editEmployeeName').value = emp.name;
