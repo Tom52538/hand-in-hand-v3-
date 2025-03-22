@@ -53,7 +53,7 @@ db.query(`
   console.log("Tabelle employees erfolgreich erstellt oder bereits vorhanden.");
 }).catch(err => console.error("Fehler beim Erstellen der Tabelle employees:", err));
 
-// Die folgenden SQLite-spezifischen Blöcke (PRAGMA, ALTER TABLE) wurden entfernt,
+// Die folgenden SQLite-spezifischen Blöcke wurden entfernt,
 // da sie in PostgreSQL nicht benötigt werden.
 
 // Middleware, um Admin-Berechtigungen zu prüfen
@@ -93,7 +93,10 @@ app.get('/admin-download-csv', isAdmin, (req, res) => {
 
 app.put('/api/admin/update-hours', isAdmin, (req, res) => {
   const { id, name, date, startTime, endTime, comment, breakTime } = req.body;
-  if (startTime >= endTime) {
+  // Vergleiche Zeiten über Date-Objekte, nicht als Strings
+  const startDate = new Date(`1970-01-01T${startTime}:00`);
+  const endDate = new Date(`1970-01-01T${endTime}:00`);
+  if (startDate >= endDate) {
     return res.status(400).json({ error: 'Arbeitsbeginn darf nicht später als Arbeitsende sein.' });
   }
   const totalHours = calculateWorkHours(startTime, endTime);
@@ -120,7 +123,9 @@ app.delete('/api/admin/delete-hours/:id', isAdmin, (req, res) => {
 
 app.post('/log-hours', (req, res) => {
   const { name, date, startTime, endTime, comment, breakTime } = req.body;
-  if (startTime >= endTime) {
+  const startDate = new Date(`1970-01-01T${startTime}:00`);
+  const endDate = new Date(`1970-01-01T${endTime}:00`);
+  if (startDate >= endDate) {
     return res.status(400).json({ error: 'Arbeitsbeginn darf nicht später als Arbeitsende sein.' });
   }
   const checkQuery = `
@@ -298,8 +303,18 @@ function convertToCSV(data) {
   ].join(','));
 
   for (const row of data) {
+    // Datum formatieren: z.B. "19.03.2025"
+    const dateFormatted = row.date ? new Date(row.date).toLocaleDateString("de-DE") : "";
+    // Zeiten formatieren: "HH:MM"
+    function formatTime(timeStr) {
+      if (!timeStr) return "";
+      return timeStr.slice(0,5);
+    }
+    const startTimeFormatted = formatTime(row.startTime);
+    const endTimeFormatted = formatTime(row.endTime);
+
     const breakMinutes = (row.break_time * 60).toFixed(0);
-    const istHours = row.hours;
+    const istHours = row.hours || 0;
     const expected = getExpectedHours(row, row.date);
     const diff = istHours - expected;
     const istFormatted = istHours.toFixed(2);
@@ -307,9 +322,9 @@ function convertToCSV(data) {
     const diffFormatted = diff.toFixed(2);
     const values = [
       row.name,
-      row.date,
-      row.startTime,
-      row.endTime,
+      dateFormatted,
+      startTimeFormatted,
+      endTimeFormatted,
       breakMinutes,
       expectedFormatted,
       istFormatted,
