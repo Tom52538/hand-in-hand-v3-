@@ -63,60 +63,16 @@
       </div>
       <!-- Bemerkung -->
       <div>
-        <label for="comment">Bemerkung:</label>
-        <input type="text" id="comment" name="comment">
+        <label for="remarks">Bemerkung:</label>
+        <textarea id="remarks" name="remarks"></textarea>
       </div>
-      <button type="submit">Eintragen</button>
+      <button type="submit">Speichern</button>
     </form>
 
-    <h2>Gebuchte Arbeitszeiten</h2>
-    <ul id="workHoursList"></ul>
-
-    <h2>Gesamtarbeitszeit</h2>
-    <p id="totalHours"></p>
-
-    <h2>Admin Login</h2>
-    <form id="adminLoginForm">
-      <label for="adminPassword">Passwort:</label>
-      <input type="password" id="adminPassword" name="adminPassword" required>
-      <button type="submit">Anmelden</button>
-    </form>
-
-    <!-- Admin-Funktionen -->
+    <!-- Admin Panel -->
     <div id="adminPanel" class="hidden">
-      <h2>Datensatz bearbeiten</h2>
-      <form id="editForm">
-        <input type="hidden" id="editId" name="id">
-        <div>
-          <label for="editName">Name:</label>
-          <input type="text" id="editName" name="name">
-        </div>
-        <div>
-          <label for="editDate">Datum:</label>
-          <input type="date" id="editDate" name="date">
-        </div>
-        <div>
-          <label for="editStartTime">Arbeitsbeginn:</label>
-          <input type="time" id="editStartTime" name="startTime" required>
-        </div>
-        <div>
-          <label for="editEndTime">Arbeitsende:</label>
-          <input type="time" id="editEndTime" name="endTime" required>
-        </div>
-        <!-- Neues Feld für Pause in Minuten -->
-        <div>
-          <label for="editBreakTime">Pause (Minuten):</label>
-          <input type="number" id="editBreakTime" name="breakTime" min="0" step="1" value="0">
-        </div>
-        <div>
-          <label for="editComment">Bemerkung:</label>
-          <input type="text" id="editComment" name="comment">
-        </div>
-        <button type="button" onclick="saveChanges()">Speichern</button>
-      </form>
-
       <h2>Admin Panel</h2>
-      <table id="workHoursTable">
+      <table>
         <thead>
           <tr>
             <th>ID</th>
@@ -128,87 +84,42 @@
             <th>Aktionen</th>
           </tr>
         </thead>
-        <tbody>
-          <!-- Datensätze werden hier dynamisch geladen -->
+        <tbody id="adminTableBody">
+          <!-- Dynamically populated rows -->
         </tbody>
       </table>
-      <button id="adminDownloadCsv">Alle Arbeitszeiten als CSV herunterladen</button>
-      <button id="adminDeleteData">Alle Arbeitszeiten löschen</button>
     </div>
 
-    <!-- Mitarbeiterverwaltung (Admin) -->
-    <div id="employeePanel" class="hidden">
-      <h2>Mitarbeiterverwaltung</h2>
-      <form id="addEmployeeForm">
-        <div>
-          <label for="employeeName">Name:</label>
-          <input type="text" id="employeeName" name="employeeName" required>
-        </div>
-        <div>
-          <label for="contractHours">Vertragliche Arbeitsstunden:</label>
-          <input type="number" id="contractHours" name="contractHours" step="0.1">
-        </div>
-        <div>
-          <label for="mo_hours">Montag (Stunden):</label>
-          <input type="number" id="mo_hours" name="mo_hours" step="0.1" value="0">
-        </div>
-        <div>
-          <label for="di_hours">Dienstag (Stunden):</label>
-          <input type="number" id="di_hours" name="di_hours" step="0.1" value="0">
-        </div>
-        <div>
-          <label for="mi_hours">Mittwoch (Stunden):</label>
-          <input type="number" id="mi_hours" name="mi_hours" step="0.1" value="0">
-        </div>
-        <div>
-          <label for="do_hours">Donnerstag (Stunden):</label>
-          <input type="number" id="do_hours" name="do_hours" step="0.1" value="0">
-        </div>
-        <div>
-          <label for="fr_hours">Freitag (Stunden):</label>
-          <input type="number" id="fr_hours" name="fr_hours" step="0.1" value="0">
-        </div>
-        <button type="submit">Mitarbeiter hinzufügen</button>
-      </form>
-
-      <h3>Aktuelle Mitarbeiter</h3>
-      <ul id="employeeList"></ul>
-
-      <h3>Mitarbeiter bearbeiten</h3>
-      <form id="editEmployeeForm" class="hidden">
-        <input type="hidden" id="editEmployeeId" name="id">
-        <div>
-          <label for="editEmployeeName">Name:</label>
-          <input type="text" id="editEmployeeName" name="name" required>
-        </div>
-        <div>
-          <label for="editContractHours">Vertragliche Arbeitsstunden:</label>
-          <input type="number" id="editContractHours" name="contract_hours" step="0.1">
-        </div>
-        <div>
-          <label for="editMoHours">Montag (Stunden):</label>
-          <input type="number" id="editMoHours" name="mo_hours" step="0.1" value="0">
-        </div>
-        <div>
-          <label for="editDiHours">Dienstag (Stunden):</label>
-          <input type="number" id="editDiHours" name="di_hours" step="0.1" value="0">
-        </div>
-        <div>
-          <label for="editMiHours">Mittwoch (Stunden):</label>
-          <input type="number" id="editMiHours" name="mi_hours" step="0.1" value="0">
-        </div>
-        <div>
-          <label for="editDoHours">Donnerstag (Stunden):</label>
-          <input type="number" id="editDoHours" name="do_hours" step="0.1" value="0">
-        </div>
-        <div>
-          <label for="editFrHours">Freitag (Stunden):</label>
-          <input type="number" id="editFrHours" name="fr_hours" step="0.1" value="0">
-        </div>
-        <button type="button" onclick="saveEmployeeChanges()">Speichern</button>
-        <button type="button" onclick="cancelEdit()">Abbrechen</button>
-      </form>
-    </div>
+    <!-- Edit Form -->
+    <form id="editEmployeeForm" class="hidden">
+      <h2>Datensatz bearbeiten</h2>
+      <div>
+        <label for="editEmployeeName">Name:</label>
+        <input type="text" id="editEmployeeName" name="editEmployeeName">
+      </div>
+      <div>
+        <label for="editDate">Datum:</label>
+        <input type="date" id="editDate" name="editDate">
+      </div>
+      <div>
+        <label for="editStartTime">Arbeitsbeginn:</label>
+        <input type="time" id="editStartTime" name="editStartTime">
+      </div>
+      <div>
+        <label for="editEndTime">Arbeitsende:</label>
+        <input type="time" id="editEndTime" name="editEndTime">
+      </div>
+      <div>
+        <label for="editBreak">Pause (Minuten):</label>
+        <input type="number" id="editBreak" name="editBreak" min="0" step="1" value="0">
+      </div>
+      <div>
+        <label for="editRemarks">Bemerkung:</label>
+        <textarea id="editRemarks" name="editRemarks"></textarea>
+      </div>
+      <button type="button" onclick="saveEditedEntry()">Speichern</button>
+      <button type="button" onclick="cancelEdit()">Abbrechen</button>
+    </form>
   </div>
 
   <script>
@@ -268,238 +179,85 @@
       const startTime = document.getElementById('startTime').value;
       const endTime = document.getElementById('endTime').value;
       const breakTime = document.getElementById('breakTime').value;
-      const comment = document.getElementById('comment').value;
-      const response = await fetch('/log-hours', {
+      const remarks = document.getElementById('remarks').value;
+
+      const response = await fetch('/workhours', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, date, startTime, endTime, breakTime, comment })
+        body: JSON.stringify({ name, date, startTime, endTime, breakTime, remarks })
       });
-      const result = await response.text();
-      alert(result);
-      await loadWorkHours();
-    });
-
-    async function loadWorkHours() {
-      const name = document.getElementById('employeeSelect').value;
-      const workHoursList = document.getElementById('workHoursList');
-      const totalHoursElement = document.getElementById('totalHours');
-      if (!name) {
-        workHoursList.innerHTML = '';
-        totalHoursElement.textContent = 'Gesamtstunden: 0';
-        return;
-      }
-      const response = await fetch(`/get-all-hours?name=${encodeURIComponent(name)}`);
-      if (!response.ok) {
-        workHoursList.innerHTML = '';
-        totalHoursElement.textContent = 'Gesamtstunden: 0';
-        return;
-      }
-      const data = await response.json();
-      workHoursList.innerHTML = '';
-      let sumHours = 0;
-      data.forEach(entry => {
-        const listItem = document.createElement('li');
-        // Datum und Stunden formatieren
-        listItem.textContent = `ID: ${entry.id}, Datum: ${formatDate(entry.date)}, Stunden: ${formatDecimalHours(entry.hours)}, Bemerkung: ${entry.comment}`;
-        workHoursList.appendChild(listItem);
-        sumHours += entry.hours;
-      });
-      totalHoursElement.textContent = `Gesamtstunden: ${formatDecimalHours(sumHours)}`;
-    }
-
-    // --------------------------
-    // Admin-Login & Arbeitszeiten bearbeiten
-    // --------------------------
-    document.getElementById('adminLoginForm').addEventListener('submit', async function(event) {
-      event.preventDefault();
-      const password = document.getElementById('adminPassword').value;
-      const response = await fetch('/admin-login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ password })
-      });
-      const result = await response.text();
-      if (result === 'Admin angemeldet.') {
-        document.getElementById('adminPanel').classList.remove('hidden');
-        document.getElementById('employeePanel').classList.remove('hidden');
-        loadAdminWorkHours();
+      if (response.ok) {
+        alert('Arbeitszeit gespeichert!');
         loadEmployees();
-        loadEmployeeOptions();
       } else {
-        alert(result);
+        alert('Fehler beim Speichern der Arbeitszeit.');
       }
     });
 
-    async function loadAdminWorkHours() {
-      const response = await fetch('/admin-work-hours');
-      const data = await response.json();
-      const tableBody = document.querySelector('#workHoursTable tbody');
+    // --------------------------
+    // Admin-Panel
+    // --------------------------
+    async function loadEmployees() {
+      const response = await fetch('/admin/employees');
+      if (!response.ok) {
+        console.error("Fehler beim Laden der Mitarbeiter.");
+        return;
+      }
+      const employees = await response.json();
+      const tableBody = document.getElementById('adminTableBody');
       tableBody.innerHTML = '';
-      data.forEach(entry => {
+      employees.forEach((emp, index) => {
         const row = document.createElement('tr');
-        // Datum & Zeit formatieren
-        const dateFormatted = formatDate(entry.date);
-        const timeFormatted = `${formatTime(entry.startTime)} - ${formatTime(entry.endTime)}`;
         row.innerHTML = `
-          <td>${entry.id}</td>
-          <td>${entry.name}</td>
-          <td>${dateFormatted}</td>
-          <td>${timeFormatted}</td>
-          <td>${formatDecimalHours(entry.hours)}</td>
-          <td>${entry.comment || ''}</td>
+          <td>${index + 1}</td>
+          <td>${emp.name}</td>
+          <td>${formatDate(emp.date)}</td>
+          <td>${formatTime(emp.startTime)} - ${formatTime(emp.endTime)}</td>
+          <td>${formatDecimalHours(calculateWorkHours(emp.startTime, emp.endTime) - emp.break / 60)}</td>
+          <td>${emp.remarks}</td>
           <td>
-            <button onclick="editEntry(${entry.id}, '${entry.name}', '${entry.date}', '${entry.startTime}', '${entry.endTime}', '${entry.comment}', ${entry.break_time})">Bearbeiten</button>
-            <button onclick="deleteEntry(${entry.id})">Löschen</button>
+            <button onclick="editEntry(${JSON.stringify(emp)})">Bearbeiten</button>
+            <button onclick="deleteEntry(${emp.id})">Löschen</button>
           </td>
         `;
         tableBody.appendChild(row);
       });
     }
 
-    function editEntry(id, name, date, startTime, endTime, comment, breakTime) {
-      document.getElementById('editId').value = id;
-      document.getElementById('editName').value = name;
-      document.getElementById('editDate').value = date;
-      document.getElementById('editStartTime').value = startTime;
-      document.getElementById('editEndTime').value = endTime;
-      document.getElementById('editComment').value = comment;
-      // breakTime in Stunden -> Umrechnung in Minuten
-      document.getElementById('editBreakTime').value = breakTime ? Math.round(breakTime * 60) : 0;
+    document.getElementById('adminPanel').addEventListener('show', loadEmployees);
+
+    // Function to calculate work hours
+    function calculateWorkHours(startTime, endTime) {
+      const start = new Date(`1970-01-01T${startTime}:00`);
+      const end = new Date(`1970-01-01T${endTime}:00`);
+      const diff = (end - start) / (1000 * 60 * 60); // Difference in hours
+      return diff;
     }
 
-    async function saveChanges() {
-      const id = document.getElementById('editId').value;
-      const name = document.getElementById('editName').value;
+    // Function to populate edit form with all fields
+    function editEntry(entry) {
+      document.getElementById('editEmployeeName').value = entry.name;
+      document.getElementById('editDate').value = entry.date;
+      document.getElementById('editStartTime').value = entry.startTime;
+      document.getElementById('editEndTime').value = entry.endTime;
+      document.getElementById('editBreak').value = entry.break;
+      document.getElementById('editRemarks').value = entry.remarks;
+      document.getElementById('editEmployeeForm').classList.remove('hidden');
+    }
+
+    function saveEditedEntry() {
+      const name = document.getElementById('editEmployeeName').value;
       const date = document.getElementById('editDate').value;
       const startTime = document.getElementById('editStartTime').value;
       const endTime = document.getElementById('editEndTime').value;
-      const comment = document.getElementById('editComment').value;
-      const breakTime = document.getElementById('editBreakTime').value;
-      const response = await fetch('/api/admin/update-hours', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id, name, date, startTime, endTime, comment, breakTime })
-      });
-      const result = await response.text();
-      alert(result);
-      loadAdminWorkHours();
-    }
+      const breakTime = document.getElementById('editBreak').value;
+      const remarks = document.getElementById('editRemarks').value;
 
-    async function deleteEntry(id) {
-      const confirmDelete = confirm('Möchten Sie diesen Eintrag wirklich löschen?');
-      if (confirmDelete) {
-        const response = await fetch(`/api/admin/delete-hours/${id}`, { method: 'DELETE' });
-        const result = await response.text();
-        alert(result);
-        loadAdminWorkHours();
-      }
-    }
+      // Implement the logic to save the edited entry
+      // Example: fetch('/admin/employees', { method: 'PUT', body: JSON.stringify({ name, date, startTime, endTime, breakTime, remarks }) })
 
-    document.getElementById('adminDownloadCsv').addEventListener('click', async function() {
-      const response = await fetch('/admin-download-csv');
-      const blob = await response.blob();
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.style.display = 'none';
-      a.href = url;
-      a.download = 'arbeitszeiten.csv';
-      document.body.appendChild(a);
-      a.click();
-      window.URL.revokeObjectURL(url);
-    });
-
-    document.getElementById('adminDeleteData').addEventListener('click', async function() {
-      const confirmDelete = confirm('Möchten Sie wirklich alle Arbeitszeiten löschen?');
-      if (confirmDelete) {
-        const password = prompt('Geben Sie das Admin-Passwort ein:');
-        if (password) {
-          const response = await fetch('/delete-hours', {
-            method: 'DELETE',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ confirmDelete: 'true', password })
-          });
-          const result = await response.text();
-          alert(result);
-          loadAdminWorkHours();
-        } else {
-          alert('Löschen abgebrochen. Passwort erforderlich.');
-        }
-      } else {
-        alert('Löschen abgebrochen.');
-      }
-    });
-
-    // --------------------------
-    // Mitarbeiterverwaltung (Admin)
-    // --------------------------
-    async function loadEmployees() {
-      const response = await fetch('/admin/employees');
-      if (!response.ok) {
-        alert('Fehler beim Laden der Mitarbeiter.');
-        return;
-      }
-      const employees = await response.json();
-      const list = document.getElementById('employeeList');
-      list.innerHTML = '';
-      employees.forEach(emp => {
-        const li = document.createElement('li');
-        li.innerHTML = `ID: ${emp.id} – ${emp.name} (Vertrag: ${emp.contract_hours || 0} Std., Mo: ${emp.mo_hours || 0}, Di: ${emp.di_hours || 0}, Mi: ${emp.mi_hours || 0}, Do: ${emp.do_hours || 0}, Fr: ${emp.fr_hours || 0}) `;
-        const editBtn = document.createElement('button');
-        editBtn.textContent = 'Bearbeiten';
-        editBtn.style.marginLeft = '10px';
-        editBtn.onclick = () => { editEmployee(emp); };
-        const deleteBtn = document.createElement('button');
-        deleteBtn.textContent = 'Löschen';
-        deleteBtn.style.marginLeft = '10px';
-        deleteBtn.onclick = async () => {
-          if (confirm(`Mitarbeiter "${emp.name}" wirklich löschen?`)) {
-            const delResponse = await fetch(`/admin/employees/${emp.id}`, { method: 'DELETE' });
-            if (delResponse.ok) {
-              alert('Mitarbeiter gelöscht.');
-              loadEmployees();
-              loadEmployeeOptions();
-            } else {
-              alert('Fehler beim Löschen des Mitarbeiters.');
-            }
-          }
-        };
-        li.appendChild(editBtn);
-        li.appendChild(deleteBtn);
-        list.appendChild(li);
-      });
-    }
-
-    function editEmployee(emp) {
-      document.getElementById('editEmployeeForm').classList.remove('hidden');
-      document.getElementById('editEmployeeId').value = emp.id;
-      document.getElementById('editEmployeeName').value = emp.name;
-      document.getElementById('editContractHours').value = emp.contract_hours || 0;
-      document.getElementById('editMoHours').value = emp.mo_hours || 0;
-      document.getElementById('editDiHours').value = emp.di_hours || 0;
-      document.getElementById('editMiHours').value = emp.mi_hours || 0;
-      document.getElementById('editDoHours').value = emp.do_hours || 0;
-      document.getElementById('editFrHours').value = emp.fr_hours || 0;
-    }
-
-    async function saveEmployeeChanges() {
-      const id = document.getElementById('editEmployeeId').value;
-      const name = document.getElementById('editEmployeeName').value;
-      const contract_hours = parseFloat(document.getElementById('editContractHours').value) || 0;
-      const mo_hours = parseFloat(document.getElementById('editMoHours').value) || 0;
-      const di_hours = parseFloat(document.getElementById('editDiHours').value) || 0;
-      const mi_hours = parseFloat(document.getElementById('editMiHours').value) || 0;
-      const do_hours = parseFloat(document.getElementById('editDoHours').value) || 0;
-      const fr_hours = parseFloat(document.getElementById('editFrHours').value) || 0;
-      const response = await fetch(`/admin/employees/${id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, contract_hours, mo_hours, di_hours, mi_hours, do_hours, fr_hours })
-      });
-      const result = await response.text();
-      alert(result);
       cancelEdit();
       loadEmployees();
-      loadEmployeeOptions();
     }
 
     function cancelEdit() {
