@@ -359,10 +359,15 @@
     function editEntry(id, name, date, startTime, endTime, comment, breakTime) {
       document.getElementById('editId').value = id;
       document.getElementById('editName').value = name;
-      document.getElementById('editDate').value = date;
-      document.getElementById('editStartTime').value = startTime;
-      document.getElementById('editEndTime').value = endTime;
-      document.getElementById('editComment').value = comment;
+      // Datum: z. B. "19.3.2025" → "2025-03-19"
+const [day, month, year] = date.split('.');
+const formattedDate = `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+document.getElementById('editDate').value = formattedDate;
+
+// Uhrzeiten absichern
+document.getElementById('editStartTime').value = startTime || '';
+document.getElementById('editEndTime').value = endTime || '';
+document.getElementById('editComment').value = comment;
       // breakTime in Stunden -> Umrechnung in Minuten
       document.getElementById('editBreakTime').value = breakTime ? Math.round(breakTime * 60) : 0;
     }
