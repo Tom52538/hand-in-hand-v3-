@@ -12,7 +12,7 @@ app.use(express.static('public'));
 
 // Session-Middleware konfigurieren
 app.use(session({
-  secret: 'dein-geheimes-schluessel', // Ersetze dies durch einen sicheren Schlüssel
+  secret: 'dein-geheimes-schluessel', // Bitte anpassen!
   resave: false,
   saveUninitialized: true,
   cookie: { secure: false } // Auf true setzen, wenn du HTTPS verwendest
@@ -24,7 +24,13 @@ const db = new Pool({
   ssl: { rejectUnauthorized: false }
 });
 
-// Tabellen erstellen
+/**
+ * 1) Tabelle work_hours:
+ *    - starttime und endtime als TIME (klein geschrieben).
+ *
+ * 2) Tabelle employees:
+ *    - enthält Sollstunden pro Wochentag
+ */
 db.query(`
   CREATE TABLE IF NOT EXISTS work_hours (
     id SERIAL PRIMARY KEY,
@@ -33,8 +39,8 @@ db.query(`
     hours DOUBLE PRECISION,
     break_time DOUBLE PRECISION,
     comment TEXT,
-    startTime TIME,
-    endTime TIME
+    starttime TIME,
+    endtime TIME
   );
 `).catch(err => console.error("Fehler beim Erstellen der Tabelle work_hours:", err));
 
@@ -65,32 +71,34 @@ function isAdmin(req, res, next) {
 // Hilfsfunktionen für Zeitformatierung
 // --------------------------
 
-// Wandelt einen HH:MM-Zeitstring in Minuten seit Mitternacht um
+/**
+ * parseTime("HH:MM") -> Anzahl Minuten seit 00:00
+ */
 function parseTime(timeStr) {
-  const parts = timeStr.split(':');
-  return parseInt(parts[0], 10) * 60 + parseInt(parts[1], 10);
+  const [hh, mm] = timeStr.split(':');
+  return parseInt(hh, 10) * 60 + parseInt(mm, 10);
 }
 
-// Berechnet die Arbeitsstunden anhand der Zeitstrings
+/**
+ * calculateWorkHours("HH:MM", "HH:MM") -> Anzahl Stunden als Zahl (z. B. 7.5)
+ */
 function calculateWorkHours(startTime, endTime) {
-  return (parseTime(endTime) - parseTime(startTime)) / 60; // Stunden
+  const diffInMin = parseTime(endTime) - parseTime(startTime);
+  return diffInMin / 60; // Stunden
 }
 
-function convertDecimalHoursToHoursMinutes(decimalHours) {
-  const hours = Math.floor(decimalHours);
-  const minutes = Math.round((decimalHours - hours) * 60);
-  return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
-}
-
+/**
+ * Ermittelt anhand des Wochentags die Soll-Stunden (aus employees.*_hours)
+ */
 function getExpectedHours(row, dateStr) {
   const d = new Date(dateStr);
-  const day = d.getDay();
+  const day = d.getDay(); // 0=So, 1=Mo, ...
   if (day === 1) return row.mo_hours || 0;
-  else if (day === 2) return row.di_hours || 0;
-  else if (day === 3) return row.mi_hours || 0;
-  else if (day === 4) return row.do_hours || 0;
-  else if (day === 5) return row.fr_hours || 0;
-  else return 0;
+  if (day === 2) return row.di_hours || 0;
+  if (day === 3) return row.mi_hours || 0;
+  if (day === 4) return row.do_hours || 0;
+  if (day === 5) return row.fr_hours || 0;
+  return 0;
 }
 
 /**
@@ -101,6 +109,7 @@ function getExpectedHours(row, dateStr) {
  */
 function convertToCSV(data) {
   if (!data || data.length === 0) return '';
+  
   const csvRows = [];
   csvRows.push([
     "Name",
@@ -115,21 +124,24 @@ function convertToCSV(data) {
   ].join(','));
 
   for (const row of data) {
-    const dateFormatted = row.date ? new Date(row.date).toLocaleDateString("de-DE") : "";
-    function formatTime(timeVal) {
-      if (!timeVal) return "";
-      // Da wir konsistent Strings im Format HH:MM speichern, reicht slice(0,5)
-      return timeVal.toString().slice(0,5);
-    }
-    const startTimeFormatted = formatTime(row.startTime);
-    const endTimeFormatted = formatTime(row.endTime);
+    const dateFormatted = row.date
+      ? new Date(row.date).toLocaleDateString("de-DE")
+      : "";
+    
+    // Die SELECT-Abfrage liefert starttime und endtime bereits als "HH:MM"-Strings.
+    const startTimeFormatted = row.starttime || "";
+    const endTimeFormatted   = row.endtime   || "";
+
+    // break_time ist in Stunden gespeichert, also * 60 für Minuten
     const breakMinutes = (row.break_time * 60).toFixed(0);
     const istHours = row.hours || 0;
     const expected = getExpectedHours(row, row.date);
     const diff = istHours - expected;
+
     const istFormatted = istHours.toFixed(2);
     const expectedFormatted = expected.toFixed(2);
     const diffFormatted = diff.toFixed(2);
+
     const values = [
       row.name,
       dateFormatted,
@@ -147,8 +159,14 @@ function convertToCSV(data) {
 }
 
 // --------------------------
-// API-Endpunkte für Arbeitszeiten
+// API-Endpunkte für Arbeitszeiten (Admin)
 // --------------------------
+
+/**
+ * Liefert alle Einträge an den Admin.
+ * Hier verwenden wir TO_CHAR, damit wir
+ * starttime und endtime als "HH24:MI"-String zurückbekommen.
+ */
 app.get('/admin-work-hours', isAdmin, (req, res) => {
   const query = `
     SELECT
@@ -156,23 +174,41 @@ app.get('/admin-work-hours', isAdmin, (req, res) => {
       name,
       date,
       hours,
-      break_time AS "breakTime",
+      break_time,
       comment,
-      startTime,
-      endTime
+      TO_CHAR(starttime, 'HH24:MI') AS starttime,
+      TO_CHAR(endtime,   'HH24:MI') AS endtime
     FROM work_hours
+    ORDER BY date ASC
   `;
   db.query(query, [])
     .then(result => res.json(result.rows))
     .catch(err => res.status(500).send('Error fetching work hours.'));
 });
 
+/**
+ * CSV-Download
+ * Hier ebenfalls die Umwandlung via TO_CHAR.
+ */
 app.get('/admin-download-csv', isAdmin, (req, res) => {
   const query = `
-    SELECT w.id, w.name, w.date, w.startTime, w.endTime, w.break_time, w.comment, w.hours,
-           e.mo_hours, e.di_hours, e.mi_hours, e.do_hours, e.fr_hours
+    SELECT 
+      w.id,
+      w.name,
+      w.date,
+      TO_CHAR(w.starttime, 'HH24:MI') AS starttime,
+      TO_CHAR(w.endtime,   'HH24:MI') AS endtime,
+      w.break_time,
+      w.comment,
+      w.hours,
+      e.mo_hours,
+      e.di_hours,
+      e.mi_hours,
+      e.do_hours,
+      e.fr_hours
     FROM work_hours w
     LEFT JOIN employees e ON LOWER(w.name) = LOWER(e.name)
+    ORDER BY w.date ASC
   `;
   db.query(query, [])
     .then(result => {
@@ -184,10 +220,13 @@ app.get('/admin-download-csv', isAdmin, (req, res) => {
     .catch(err => res.status(500).send('Error fetching work hours.'));
 });
 
+/**
+ * Update von Arbeitszeiten
+ */
 app.put('/api/admin/update-hours', isAdmin, (req, res) => {
   const { id, name, date, startTime, endTime, comment, breakTime } = req.body;
 
-  // Validierung: Arbeitsbeginn muss vor Arbeitsende liegen
+  // Validierung
   if (parseTime(startTime) >= parseTime(endTime)) {
     return res.status(400).json({ error: 'Arbeitsbeginn darf nicht später als Arbeitsende sein.' });
   }
@@ -199,15 +238,24 @@ app.put('/api/admin/update-hours', isAdmin, (req, res) => {
 
   const query = `
     UPDATE work_hours
-    SET name = $1, date = $2, hours = $3, break_time = $4, comment = $5, startTime = $6, endTime = $7
+    SET
+      name = $1,
+      date = $2,
+      hours = $3,
+      break_time = $4,
+      comment = $5,
+      starttime = $6,
+      endtime = $7
     WHERE id = $8
   `;
-  // Übergabe der Zeiten als HH:MM-Strings
   db.query(query, [name, date, netHours, breakTimeHours, comment, startTime, endTime, id])
     .then(() => res.send('Working hours updated successfully.'))
     .catch(err => res.status(500).send('Error updating working hours.'));
 });
 
+/**
+ * Löschen eines einzelnen Eintrags
+ */
 app.delete('/api/admin/delete-hours/:id', isAdmin, (req, res) => {
   const { id } = req.params;
   const query = 'DELETE FROM work_hours WHERE id = $1';
@@ -216,14 +264,21 @@ app.delete('/api/admin/delete-hours/:id', isAdmin, (req, res) => {
     .catch(err => res.status(500).send('Error deleting working hours.'));
 });
 
+// --------------------------
+// API-Endpunkte (öffentlicher Teil) zum Eintragen und Abfragen
+// --------------------------
+
+/**
+ * Neue Arbeitszeit eintragen
+ */
 app.post('/log-hours', (req, res) => {
   const { name, date, startTime, endTime, comment, breakTime } = req.body;
-  
-  // Validierung: Arbeitsbeginn muss vor Arbeitsende liegen
+
+  // Validierung
   if (parseTime(startTime) >= parseTime(endTime)) {
     return res.status(400).json({ error: 'Arbeitsbeginn darf nicht später als Arbeitsende sein.' });
   }
-  
+
   const checkQuery = `
     SELECT * FROM work_hours
     WHERE LOWER(name) = LOWER($1) AND date = $2
@@ -237,8 +292,9 @@ app.post('/log-hours', (req, res) => {
       const breakTimeMinutes = parseInt(breakTime, 10) || 0;
       const breakTimeHours = breakTimeMinutes / 60;
       const netHours = totalHours - breakTimeHours;
+
       const insertQuery = `
-        INSERT INTO work_hours (name, date, hours, break_time, comment, startTime, endTime)
+        INSERT INTO work_hours (name, date, hours, break_time, comment, starttime, endtime)
         VALUES ($1, $2, $3, $4, $5, $6, $7)
       `;
       db.query(insertQuery, [name, date, netHours, breakTimeHours, comment, startTime, endTime])
@@ -248,13 +304,26 @@ app.post('/log-hours', (req, res) => {
     .catch(err => res.status(500).send('Fehler beim Überprüfen der Daten.'));
 });
 
+/**
+ * Alle Arbeitszeiten einer Person abrufen
+ */
 app.get('/get-all-hours', (req, res) => {
   const { name } = req.query;
   if (!name) {
     return res.status(400).send('Name ist erforderlich.');
   }
+  // Hier ebenfalls TO_CHAR für die Zeitfelder
   const query = `
-    SELECT * FROM work_hours
+    SELECT
+      id,
+      name,
+      date,
+      hours,
+      break_time,
+      comment,
+      TO_CHAR(starttime, 'HH24:MI') AS starttime,
+      TO_CHAR(endtime,   'HH24:MI') AS endtime
+    FROM work_hours
     WHERE LOWER(name) = LOWER($1)
     ORDER BY date ASC
   `;
@@ -263,11 +332,24 @@ app.get('/get-all-hours', (req, res) => {
     .catch(err => res.status(500).send('Fehler beim Abrufen der Daten.'));
 });
 
+/**
+ * Spezifische Arbeitszeit (Tag) einer Person abrufen
+ */
 app.get('/get-hours', (req, res) => {
   const { name, date } = req.query;
   const query = `
-    SELECT * FROM work_hours
-    WHERE LOWER(name) = LOWER($1) AND date = $2
+    SELECT
+      id,
+      name,
+      date,
+      hours,
+      break_time,
+      comment,
+      TO_CHAR(starttime, 'HH24:MI') AS starttime,
+      TO_CHAR(endtime,   'HH24:MI') AS endtime
+    FROM work_hours
+    WHERE LOWER(name) = LOWER($1)
+      AND date = $2
   `;
   db.query(query, [name, date])
     .then(result => {
@@ -279,6 +361,9 @@ app.get('/get-hours', (req, res) => {
     .catch(err => res.status(500).send('Fehler beim Abrufen der Daten.'));
 });
 
+/**
+ * Gesamte Tabelle work_hours löschen (mit Admin-Passwort)
+ */
 app.delete('/delete-hours', (req, res) => {
   const { password, confirmDelete } = req.body;
   if (password === 'admin' && (confirmDelete === true || confirmDelete === 'true')) {
@@ -291,6 +376,9 @@ app.delete('/delete-hours', (req, res) => {
   }
 });
 
+// --------------------------
+// Admin-Login
+// --------------------------
 app.post('/admin-login', (req, res) => {
   const { password } = req.body;
   if (password === 'admin') {
@@ -316,9 +404,20 @@ app.post('/admin/employees', isAdmin, (req, res) => {
   if (!name) {
     return res.status(400).send('Name ist erforderlich.');
   }
-  const query = 'INSERT INTO employees (name, mo_hours, di_hours, mi_hours, do_hours, fr_hours) VALUES ($1, $2, $3, $4, $5, $6)';
+  const query = `
+    INSERT INTO employees (name, mo_hours, di_hours, mi_hours, do_hours, fr_hours)
+    VALUES ($1, $2, $3, $4, $5, $6)
+  `;
   db.query(query, [name, mo_hours || 0, di_hours || 0, mi_hours || 0, do_hours || 0, fr_hours || 0])
-    .then(result => res.send({ id: result.rowCount, name, mo_hours, di_hours, mi_hours, do_hours, fr_hours }))
+    .then(result => res.send({ 
+      id: result.rowCount, 
+      name, 
+      mo_hours, 
+      di_hours, 
+      mi_hours, 
+      do_hours, 
+      fr_hours 
+    }))
     .catch(err => res.status(500).send('Fehler beim Hinzufügen des Mitarbeiters.'));
 });
 
@@ -328,7 +427,16 @@ app.put('/admin/employees/:id', isAdmin, (req, res) => {
   if (!name) {
     return res.status(400).send('Name ist erforderlich.');
   }
-  const query = 'UPDATE employees SET name = $1, mo_hours = $2, di_hours = $3, mi_hours = $4, do_hours = $5, fr_hours = $6 WHERE id = $7';
+  const query = `
+    UPDATE employees
+    SET name = $1,
+        mo_hours = $2,
+        di_hours = $3,
+        mi_hours = $4,
+        do_hours = $5,
+        fr_hours = $6
+    WHERE id = $7
+  `;
   db.query(query, [name, mo_hours || 0, di_hours || 0, mi_hours || 0, do_hours || 0, fr_hours || 0, id])
     .then(() => res.send('Mitarbeiter erfolgreich aktualisiert.'))
     .catch(err => res.status(500).send('Fehler beim Aktualisieren des Mitarbeiters.'));
@@ -342,7 +450,7 @@ app.delete('/admin/employees/:id', isAdmin, (req, res) => {
     .catch(err => res.status(500).send('Fehler beim Löschen des Mitarbeiters.'));
 });
 
-// Neuer, öffentlicher Endpunkt für Mitarbeiter (Variante 1)
+// Öffentlich: Nur die Namen und IDs
 app.get('/employees', (req, res) => {
   const query = 'SELECT id, name FROM employees';
   db.query(query, [])
