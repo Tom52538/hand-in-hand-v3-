@@ -447,7 +447,7 @@
         const editBtn = document.createElement('button');
         editBtn.textContent = 'Bearbeiten';
         editBtn.style.marginLeft = '10px';
-        editBtn.onclick = () => { editEmployee(emp); };
+        editBtn.onclick = () => { editEmployeeEntry(emp); };
         const deleteBtn = document.createElement('button');
         deleteBtn.textContent = 'Löschen';
         deleteBtn.style.marginLeft = '10px';
@@ -544,15 +544,18 @@
         return diff;
       }
 
-      // Ensure editEntry function populates all fields
-      function editEntry(entry) {
-        document.getElementById('editEmployeeName').value = entry.name;
-        document.getElementById('editDate').value = entry.date;
-        document.getElementById('editStartTime').value = entry.startTime;
-        document.getElementById('editEndTime').value = entry.endTime;
-        document.getElementById('editBreak').value = entry.break;
-        document.getElementById('editRemarks').value = entry.remarks;
-        document.getElementById('editEmployeeForm').classList.remove('hidden');
+    function editEmployeeEntry(entry) {
+  document.getElementById('editEmployeeName').value = entry.name;
+  document.getElementById('editContractHours').value = entry.contract_hours || 0;
+  document.getElementById('editMoHours').value = entry.mo_hours || 0;
+  document.getElementById('editDiHours').value = entry.di_hours || 0;
+  document.getElementById('editMiHours').value = entry.mi_hours || 0;
+  document.getElementById('editDoHours').value = entry.do_hours || 0;
+  document.getElementById('editFrHours').value = entry.fr_hours || 0;
+
+  document.getElementById('editEmployeeForm').classList.remove('hidden');
+}
+
       }
     </script>
 </body>
