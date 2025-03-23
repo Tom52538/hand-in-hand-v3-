@@ -42,7 +42,6 @@ db.query(`
   CREATE TABLE IF NOT EXISTS employees (
     id SERIAL PRIMARY KEY,
     name TEXT NOT NULL,
-    contract_hours DOUBLE PRECISION,
     mo_hours DOUBLE PRECISION,
     di_hours DOUBLE PRECISION,
     mi_hours DOUBLE PRECISION,
@@ -216,24 +215,24 @@ app.get('/admin/employees', isAdmin, (req, res) => {
 });
 
 app.post('/admin/employees', isAdmin, (req, res) => {
-  const { name, contract_hours, mo_hours, di_hours, mi_hours, do_hours, fr_hours } = req.body;
+  const { name, mo_hours, di_hours, mi_hours, do_hours, fr_hours } = req.body;
   if (!name) {
     return res.status(400).send('Name ist erforderlich.');
   }
-  const query = 'INSERT INTO employees (name, contract_hours, mo_hours, di_hours, mi_hours, do_hours, fr_hours) VALUES ($1, $2, $3, $4, $5, $6, $7)';
-  db.query(query, [name, contract_hours || 0, mo_hours || 0, di_hours || 0, mi_hours || 0, do_hours || 0, fr_hours || 0])
-    .then(result => res.send({ id: result.rowCount, name, contract_hours, mo_hours, di_hours, mi_hours, do_hours, fr_hours }))
+  const query = 'INSERT INTO employees (name, mo_hours, di_hours, mi_hours, do_hours, fr_hours) VALUES ($1, $2, $3, $4, $5, $6)';
+  db.query(query, [name, mo_hours || 0, di_hours || 0, mi_hours || 0, do_hours || 0, fr_hours || 0])
+    .then(result => res.send({ id: result.rowCount, name, mo_hours, di_hours, mi_hours, do_hours, fr_hours }))
     .catch(err => res.status(500).send('Fehler beim Hinzufügen des Mitarbeiters.'));
 });
 
 app.put('/admin/employees/:id', isAdmin, (req, res) => {
   const { id } = req.params;
-  const { name, contract_hours, mo_hours, di_hours, mi_hours, do_hours, fr_hours } = req.body;
+  const { name, mo_hours, di_hours, mi_hours, do_hours, fr_hours } = req.body;
   if (!name) {
     return res.status(400).send('Name ist erforderlich.');
   }
-  const query = 'UPDATE employees SET name = $1, contract_hours = $2, mo_hours = $3, di_hours = $4, mi_hours = $5, do_hours = $6, fr_hours = $7 WHERE id = $8';
-  db.query(query, [name, contract_hours || 0, mo_hours || 0, di_hours || 0, mi_hours || 0, do_hours || 0, fr_hours || 0, id])
+  const query = 'UPDATE employees SET name = $1, mo_hours = $2, di_hours = $3, mi_hours = $4, do_hours = $5, fr_hours = $6 WHERE id = $7';
+  db.query(query, [name, mo_hours || 0, di_hours || 0, mi_hours || 0, do_hours || 0, fr_hours || 0, id])
     .then(() => res.send('Mitarbeiter erfolgreich aktualisiert.'))
     .catch(err => res.status(500).send('Fehler beim Aktualisieren des Mitarbeiters.'));
 });
@@ -303,16 +302,13 @@ function convertToCSV(data) {
   ].join(','));
 
   for (const row of data) {
-    // Datum formatieren: z.B. "19.03.2025"
     const dateFormatted = row.date ? new Date(row.date).toLocaleDateString("de-DE") : "";
-    // Zeiten formatieren: "HH:MM"
     function formatTime(timeStr) {
       if (!timeStr) return "";
       return timeStr.slice(0,5);
     }
     const startTimeFormatted = formatTime(row.startTime);
     const endTimeFormatted = formatTime(row.endTime);
-
     const breakMinutes = (row.break_time * 60).toFixed(0);
     const istHours = row.hours || 0;
     const expected = getExpectedHours(row, row.date);
