@@ -82,11 +82,12 @@ app.get('/admin-work-hours', isAdmin, (req, res) => {
     .catch(err => res.status(500).send('Error fetching work hours.'));
 });
 app.get('/admin-download-csv', isAdmin, (req, res) => {
-  const query = `
-    SELECT w.*, e.mo_hours, e.di_hours, e.mi_hours, e.do_hours, e.fr_hours
-    FROM work_hours w
-    LEFT JOIN employees e ON LOWER(w.name) = LOWER(e.name)
-  `;
+const query = `
+  SELECT w.id, w.name, w.date, w.starttime, w.endtime, w.break_time, w.comment, w.hours,
+         e.mo_hours, e.di_hours, e.mi_hours, e.do_hours, e.fr_hours
+  FROM work_hours w
+  LEFT JOIN employees e ON LOWER(w.name) = LOWER(e.name)
+`;
   db.query(query, [])
     .then(result => {
       const csv = convertToCSV(result.rows);
