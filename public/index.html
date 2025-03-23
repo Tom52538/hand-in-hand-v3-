@@ -1,527 +1,341 @@
-<!DOCTYPE html>
-<html lang="de">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Arbeitszeiterfassung</title>
-  <link rel="stylesheet" href="style.css">
-  <link rel="manifest" href="/icons/manifest.json">
-  <meta name="theme-color" content="#ffffff">
-  <link rel="apple-touch-icon" sizes="180x180" href="/icons/Hand-in-Hand-Logo-192x192.png">
-  <style>
-    .hidden { display: none; }
-    form > div { margin-bottom: 1rem; }
-    label { display: block; margin-bottom: 0.3rem; }
+const express = require('express');
+const { Pool } = require('pg');
+const bodyParser = require('body-parser');
+const session = require('express-session');
+const path = require('path');
+const app = express();
+const port = process.env.PORT || 3000;
 
-    /* Tabellen-Layout für Admin-Bereich */
-    table {
-      width: 100%;
-      border-collapse: collapse;
-    }
-    th, td {
-      border: 1px solid #ccc;
-      padding: 8px;
-      vertical-align: middle;
-      text-align: left;
-    }
-    td button {
-      margin-right: 5px;
-    }
-  </style>
-</head>
-<body>
-  <div class="container">
-    <h1>Arbeitszeiterfassung</h1>
-    <form id="workHoursForm">
-      <!-- Mitarbeiter-Auswahl -->
-      <div>
-        <label for="employeeSelect">Mitarbeiter:</label>
-        <select id="employeeSelect" name="employeeSelect" required>
-          <option value="">Bitte auswählen</option>
-        </select>
-      </div>
-      <!-- Datum -->
-      <div>
-        <label for="date">Datum:</label>
-        <input type="date" id="date" name="date" required>
-      </div>
-      <!-- Arbeitsbeginn -->
-      <div>
-        <label for="startTime">Arbeitsbeginn:</label>
-        <input type="time" id="startTime" name="startTime" required>
-      </div>
-      <!-- Arbeitsende -->
-      <div>
-        <label for="endTime">Arbeitsende:</label>
-        <input type="time" id="endTime" name="endTime" required>
-      </div>
-      <!-- Pause in Minuten -->
-      <div>
-        <label for="breakTime">Pause (Minuten):</label>
-        <input type="number" id="breakTime" name="breakTime" min="0" step="1" value="0" required>
-      </div>
-      <!-- Bemerkung -->
-      <div>
-        <label for="comment">Bemerkung:</label>
-        <input type="text" id="comment" name="comment">
-      </div>
-      <button type="submit">Eintragen</button>
-    </form>
+// Middleware
+app.use(bodyParser.json());
+app.use(express.static('public'));
 
-    <h2>Gebuchte Arbeitszeiten</h2>
-    <ul id="workHoursList"></ul>
+// Session-Middleware konfigurieren
+app.use(session({
+  secret: 'dein-geheimes-schluessel', // Ersetze dies durch einen sicheren Schlüssel
+  resave: false,
+  saveUninitialized: true,
+  cookie: { secure: false } // Auf true setzen, wenn du HTTPS verwendest
+}));
 
-    <h2>Gesamtarbeitszeit</h2>
-    <p id="totalHours"></p>
+// PostgreSQL Datenbank einrichten
+const db = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: { rejectUnauthorized: false }
+});
 
-    <h2>Admin Login</h2>
-    <form id="adminLoginForm">
-      <label for="adminPassword">Passwort:</label>
-      <input type="password" id="adminPassword" name="adminPassword" required>
-      <button type="submit">Anmelden</button>
-    </form>
+// Tabellen erstellen
+db.query(`
+  CREATE TABLE IF NOT EXISTS work_hours (
+    id SERIAL PRIMARY KEY,
+    name TEXT NOT NULL,
+    date DATE NOT NULL,
+    hours DOUBLE PRECISION,
+    break_time DOUBLE PRECISION,
+    comment TEXT,
+    startTime TIME,
+    endTime TIME
+  );
+`).catch(err => console.error("Fehler beim Erstellen der Tabelle work_hours:", err));
 
-    <!-- Admin-Funktionen -->
-    <div id="adminPanel" class="hidden">
-      <h2>Datensatz bearbeiten</h2>
-      <form id="editForm">
-        <input type="hidden" id="editId" name="id">
-        <div>
-          <label for="editName">Name:</label>
-          <input type="text" id="editName" name="name">
-        </div>
-        <div>
-          <label for="editDate">Datum:</label>
-          <input type="date" id="editDate" name="date">
-        </div>
-        <div>
-          <label for="editStartTime">Arbeitsbeginn:</label>
-          <input type="time" id="editStartTime" name="startTime" required>
-        </div>
-        <div>
-          <label for="editEndTime">Arbeitsende:</label>
-          <input type="time" id="editEndTime" name="endTime" required>
-        </div>
-        <!-- Neues Feld für Pause in Minuten -->
-        <div>
-          <label for="editBreakTime">Pause (Minuten):</label>
-          <input type="number" id="editBreakTime" name="breakTime" min="0" step="1" value="0">
-        </div>
-        <div>
-          <label for="editComment">Bemerkung:</label>
-          <input type="text" id="editComment" name="comment">
-        </div>
-        <button type="button" onclick="saveChanges()">Speichern</button>
-      </form>
+db.query(`
+  CREATE TABLE IF NOT EXISTS employees (
+    id SERIAL PRIMARY KEY,
+    name TEXT NOT NULL,
+    contract_hours DOUBLE PRECISION,
+    mo_hours DOUBLE PRECISION,
+    di_hours DOUBLE PRECISION,
+    mi_hours DOUBLE PRECISION,
+    do_hours DOUBLE PRECISION,
+    fr_hours DOUBLE PRECISION
+  );
+`).then(() => {
+  console.log("Tabelle employees erfolgreich erstellt oder bereits vorhanden.");
+}).catch(err => console.error("Fehler beim Erstellen der Tabelle employees:", err));
 
-      <h2>Admin Panel</h2>
-      <table id="workHoursTable">
-        <thead>
-          <tr>
-            <th>ID</th>
-            <th>Name</th>
-            <th>Datum</th>
-            <th>Arbeitszeit</th>
-            <th>Stunden</th>
-            <th>Bemerkung</th>
-            <th>Aktionen</th>
-          </tr>
-        </thead>
-        <tbody>
-          <!-- Datensätze werden hier dynamisch geladen -->
-        </tbody>
-      </table>
-      <button id="adminDownloadCsv">Alle Arbeitszeiten als CSV herunterladen</button>
-      <button id="adminDeleteData">Alle Arbeitszeiten löschen</button>
-    </div>
+// Die folgenden SQLite-spezifischen Blöcke wurden entfernt,
+// da sie in PostgreSQL nicht benötigt werden.
 
-    <!-- Mitarbeiterverwaltung (Admin) -->
-    <div id="employeePanel" class="hidden">
-      <h2>Mitarbeiterverwaltung</h2>
-      <form id="addEmployeeForm">
-        <div>
-          <label for="employeeName">Name:</label>
-          <input type="text" id="employeeName" name="employeeName" required>
-        </div>
-        <!-- Das Feld für vertragliche Arbeitsstunden wurde entfernt -->
-        <div>
-          <label for="mo_hours">Montag (Stunden):</label>
-          <input type="number" id="mo_hours" name="mo_hours" step="0.1" value="0">
-        </div>
-        <div>
-          <label for="di_hours">Dienstag (Stunden):</label>
-          <input type="number" id="di_hours" name="di_hours" step="0.1" value="0">
-        </div>
-        <div>
-          <label for="mi_hours">Mittwoch (Stunden):</label>
-          <input type="number" id="mi_hours" name="mi_hours" step="0.1" value="0">
-        </div>
-        <div>
-          <label for="do_hours">Donnerstag (Stunden):</label>
-          <input type="number" id="do_hours" name="do_hours" step="0.1" value="0">
-        </div>
-        <div>
-          <label for="fr_hours">Freitag (Stunden):</label>
-          <input type="number" id="fr_hours" name="fr_hours" step="0.1" value="0">
-        </div>
-        <button type="submit">Mitarbeiter hinzufügen</button>
-      </form>
+// Middleware, um Admin-Berechtigungen zu prüfen
+function isAdmin(req, res, next) {
+  if (req.session.isAdmin) {
+    next();
+  } else {
+    res.status(403).send('Access denied. Admin privileges required.');
+  }
+}
 
-      <h3>Aktuelle Mitarbeiter</h3>
-      <ul id="employeeList"></ul>
+// --------------------------
+// API-Endpunkte für Arbeitszeiten
+// --------------------------
+app.get('/admin-work-hours', isAdmin, (req, res) => {
+  const query = 'SELECT * FROM work_hours';
+  db.query(query, [])
+    .then(result => res.json(result.rows))
+    .catch(err => res.status(500).send('Error fetching work hours.'));
+});
 
-      <h3>Mitarbeiter bearbeiten</h3>
-      <form id="editEmployeeForm" class="hidden">
-        <input type="hidden" id="editEmployeeId" name="id">
-        <div>
-          <label for="editEmployeeName">Name:</label>
-          <input type="text" id="editEmployeeName" name="name" required>
-        </div>
-        <!-- Das Feld für vertragliche Arbeitsstunden wurde entfernt -->
-        <div>
-          <label for="editMoHours">Montag (Stunden):</label>
-          <input type="number" id="editMoHours" name="mo_hours" step="0.1" value="0">
-        </div>
-        <div>
-          <label for="editDiHours">Dienstag (Stunden):</label>
-          <input type="number" id="editDiHours" name="di_hours" step="0.1" value="0">
-        </div>
-        <div>
-          <label for="editMiHours">Mittwoch (Stunden):</label>
-          <input type="number" id="editMiHours" name="mi_hours" step="0.1" value="0">
-        </div>
-        <div>
-          <label for="editDoHours">Donnerstag (Stunden):</label>
-          <input type="number" id="editDoHours" name="do_hours" step="0.1" value="0">
-        </div>
-        <div>
-          <label for="editFrHours">Freitag (Stunden):</label>
-          <input type="number" id="editFrHours" name="fr_hours" step="0.1" value="0">
-        </div>
-        <button type="button" onclick="saveEmployeeChanges()">Speichern</button>
-        <button type="button" onclick="cancelEdit()">Abbrechen</button>
-      </form>
-    </div>
-  </div>
+app.get('/admin-download-csv', isAdmin, (req, res) => {
+  const query = `
+    SELECT w.*, e.mo_hours, e.di_hours, e.mi_hours, e.do_hours, e.fr_hours
+    FROM work_hours w
+    LEFT JOIN employees e ON LOWER(w.name) = LOWER(e.name)
+  `;
+  db.query(query, [])
+    .then(result => {
+      const csv = convertToCSV(result.rows);
+      res.setHeader('Content-Type', 'text/csv');
+      res.setHeader('Content-Disposition', 'attachment; filename="arbeitszeiten.csv"');
+      res.send(csv);
+    })
+    .catch(err => res.status(500).send('Error fetching work hours.'));
+});
 
-  <script>
-    // Hilfsfunktionen
-    function formatDecimalHours(decimalHours) {
-      const hours = Math.floor(decimalHours);
-      const minutes = Math.round((decimalHours - hours) * 60);
-      return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
-    }
+app.put('/api/admin/update-hours', isAdmin, (req, res) => {
+  const { id, name, date, startTime, endTime, comment, breakTime } = req.body;
+  // Vergleiche Zeiten über Date-Objekte, nicht als Strings
+  const startDate = new Date(`1970-01-01T${startTime}:00`);
+  const endDate = new Date(`1970-01-01T${endTime}:00`);
+  if (startDate >= endDate) {
+    return res.status(400).json({ error: 'Arbeitsbeginn darf nicht später als Arbeitsende sein.' });
+  }
+  const totalHours = calculateWorkHours(startTime, endTime);
+  const breakTimeMinutes = parseInt(breakTime, 10) || 0;
+  const breakTimeHours = breakTimeMinutes / 60;
+  const netHours = totalHours - breakTimeHours;
+  const query = `
+    UPDATE work_hours
+    SET name = $1, date = $2, hours = $3, break_time = $4, comment = $5, startTime = $6, endTime = $7
+    WHERE id = $8
+  `;
+  db.query(query, [name, date, netHours, breakTimeHours, comment, startTime, endTime, id])
+    .then(() => res.send('Working hours updated successfully.'))
+    .catch(err => res.status(500).send('Error updating working hours.'));
+});
 
-    function formatDate(dateStr) {
-      if (!dateStr) return "";
-      // Erzeugt z. B. "19.03.2025"
-      return new Date(dateStr).toLocaleDateString("de-DE");
-    }
+app.delete('/api/admin/delete-hours/:id', isAdmin, (req, res) => {
+  const { id } = req.params;
+  const query = 'DELETE FROM work_hours WHERE id = $1';
+  db.query(query, [id])
+    .then(() => res.send('Working hours deleted successfully.'))
+    .catch(err => res.status(500).send('Error deleting working hours.'));
+});
 
+app.post('/log-hours', (req, res) => {
+  const { name, date, startTime, endTime, comment, breakTime } = req.body;
+  const startDate = new Date(`1970-01-01T${startTime}:00`);
+  const endDate = new Date(`1970-01-01T${endTime}:00`);
+  if (startDate >= endDate) {
+    return res.status(400).json({ error: 'Arbeitsbeginn darf nicht später als Arbeitsende sein.' });
+  }
+  const checkQuery = `
+    SELECT * FROM work_hours
+    WHERE LOWER(name) = LOWER($1) AND date = $2
+  `;
+  db.query(checkQuery, [name, date])
+    .then(result => {
+      if (result.rows.length > 0) {
+        return res.status(400).json({ error: 'Eintrag für diesen Tag existiert bereits.' });
+      }
+      const totalHours = calculateWorkHours(startTime, endTime);
+      const breakTimeMinutes = parseInt(breakTime, 10) || 0;
+      const breakTimeHours = breakTimeMinutes / 60;
+      const netHours = totalHours - breakTimeHours;
+      const insertQuery = `
+        INSERT INTO work_hours (name, date, hours, break_time, comment, startTime, endTime)
+        VALUES ($1, $2, $3, $4, $5, $6, $7)
+      `;
+      db.query(insertQuery, [name, date, netHours, breakTimeHours, comment, startTime, endTime])
+        .then(() => res.send('Daten erfolgreich gespeichert.'))
+        .catch(err => res.status(500).send('Fehler beim Speichern der Daten.'));
+    })
+    .catch(err => res.status(500).send('Fehler beim Überprüfen der Daten.'));
+});
+
+app.get('/get-all-hours', (req, res) => {
+  const { name } = req.query;
+  if (!name) {
+    return res.status(400).send('Name ist erforderlich.');
+  }
+  const query = `
+    SELECT * FROM work_hours
+    WHERE LOWER(name) = LOWER($1)
+    ORDER BY date ASC
+  `;
+  db.query(query, [name])
+    .then(result => res.json(result.rows))
+    .catch(err => res.status(500).send('Fehler beim Abrufen der Daten.'));
+});
+
+app.get('/get-hours', (req, res) => {
+  const { name, date } = req.query;
+  const query = `
+    SELECT * FROM work_hours
+    WHERE LOWER(name) = LOWER($1) AND date = $2
+  `;
+  db.query(query, [name, date])
+    .then(result => {
+      if (result.rows.length === 0) {
+        return res.status(404).send('Keine Daten gefunden.');
+      }
+      res.json(result.rows[0]);
+    })
+    .catch(err => res.status(500).send('Fehler beim Abrufen der Daten.'));
+});
+
+app.delete('/delete-hours', (req, res) => {
+  const { password, confirmDelete } = req.body;
+  if (password === 'admin' && (confirmDelete === true || confirmDelete === 'true')) {
+    const deleteQuery = 'DELETE FROM work_hours';
+    db.query(deleteQuery, [])
+      .then(() => res.send('Daten erfolgreich gelöscht.'))
+      .catch(err => res.status(500).send('Fehler beim Löschen der Daten.'));
+  } else {
+    res.status(401).send('Löschen abgebrochen. Passwort erforderlich oder Bestätigung fehlt.');
+  }
+});
+
+app.post('/admin-login', (req, res) => {
+  const { password } = req.body;
+  if (password === 'admin') {
+    req.session.isAdmin = true;
+    res.send('Admin angemeldet.');
+  } else {
+    res.status(401).send('Ungültiges Passwort.');
+  }
+});
+
+// --------------------------
+// API-Endpunkte für Mitarbeiterverwaltung (admin-geschützt)
+// --------------------------
+app.get('/admin/employees', isAdmin, (req, res) => {
+  const query = 'SELECT * FROM employees';
+  db.query(query, [])
+    .then(result => res.json(result.rows))
+    .catch(err => res.status(500).send('Fehler beim Abrufen der Mitarbeiter.'));
+});
+
+app.post('/admin/employees', isAdmin, (req, res) => {
+  const { name, contract_hours, mo_hours, di_hours, mi_hours, do_hours, fr_hours } = req.body;
+  if (!name) {
+    return res.status(400).send('Name ist erforderlich.');
+  }
+  const query = 'INSERT INTO employees (name, contract_hours, mo_hours, di_hours, mi_hours, do_hours, fr_hours) VALUES ($1, $2, $3, $4, $5, $6, $7)';
+  db.query(query, [name, contract_hours || 0, mo_hours || 0, di_hours || 0, mi_hours || 0, do_hours || 0, fr_hours || 0])
+    .then(result => res.send({ id: result.rowCount, name, contract_hours, mo_hours, di_hours, mi_hours, do_hours, fr_hours }))
+    .catch(err => res.status(500).send('Fehler beim Hinzufügen des Mitarbeiters.'));
+});
+
+app.put('/admin/employees/:id', isAdmin, (req, res) => {
+  const { id } = req.params;
+  const { name, contract_hours, mo_hours, di_hours, mi_hours, do_hours, fr_hours } = req.body;
+  if (!name) {
+    return res.status(400).send('Name ist erforderlich.');
+  }
+  const query = 'UPDATE employees SET name = $1, contract_hours = $2, mo_hours = $3, di_hours = $4, mi_hours = $5, do_hours = $6, fr_hours = $7 WHERE id = $8';
+  db.query(query, [name, contract_hours || 0, mo_hours || 0, di_hours || 0, mi_hours || 0, do_hours || 0, fr_hours || 0, id])
+    .then(() => res.send('Mitarbeiter erfolgreich aktualisiert.'))
+    .catch(err => res.status(500).send('Fehler beim Aktualisieren des Mitarbeiters.'));
+});
+
+app.delete('/admin/employees/:id', isAdmin, (req, res) => {
+  const { id } = req.params;
+  const query = 'DELETE FROM employees WHERE id = $1';
+  db.query(query, [id])
+    .then(() => res.send('Mitarbeiter erfolgreich gelöscht.'))
+    .catch(err => res.status(500).send('Fehler beim Löschen des Mitarbeiters.'));
+});
+
+// Neuer, öffentlicher Endpunkt für Mitarbeiter (Variante 1)
+app.get('/employees', (req, res) => {
+  const query = 'SELECT id, name FROM employees';
+  db.query(query, [])
+    .then(result => res.json(result.rows))
+    .catch(err => res.status(500).send('Fehler beim Abrufen der Mitarbeiter.'));
+});
+
+// --------------------------
+// Hilfsfunktionen
+// --------------------------
+function calculateWorkHours(startTime, endTime) {
+  const start = new Date(`1970-01-01T${startTime}:00`);
+  const end = new Date(`1970-01-01T${endTime}:00`);
+  const diff = end - start;
+  return diff / 1000 / 60 / 60; // Stunden
+}
+
+function convertDecimalHoursToHoursMinutes(decimalHours) {
+  const hours = Math.floor(decimalHours);
+  const minutes = Math.round((decimalHours - hours) * 60);
+  return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
+}
+
+function getExpectedHours(row, dateStr) {
+  const d = new Date(dateStr);
+  const day = d.getDay(); // 0 = Sonntag, 1 = Montag, …, 5 = Freitag, 6 = Samstag
+  if (day === 1) return row.mo_hours || 0;
+  else if (day === 2) return row.di_hours || 0;
+  else if (day === 3) return row.mi_hours || 0;
+  else if (day === 4) return row.do_hours || 0;
+  else if (day === 5) return row.fr_hours || 0;
+  else return 0;
+}
+
+/**
+ * CSV-Funktion mit den gewünschten Spalten in folgender Reihenfolge:
+ * 1. Name, 2. Datum, 3. Arbeitsbeginn, 4. Arbeitsende,
+ * 5. Pause (Minuten), 6. SollArbeitszeit, 7. IstArbeitszeit,
+ * 8. Differenz, 9. Bemerkung
+ */
+function convertToCSV(data) {
+  if (!data || data.length === 0) return '';
+  const csvRows = [];
+  csvRows.push([
+    "Name",
+    "Datum",
+    "Arbeitsbeginn",
+    "Arbeitsende",
+    "Pause (Minuten)",
+    "SollArbeitszeit",
+    "IstArbeitszeit",
+    "Differenz",
+    "Bemerkung"
+  ].join(','));
+
+  for (const row of data) {
+    // Datum formatieren: z.B. "19.03.2025"
+    const dateFormatted = row.date ? new Date(row.date).toLocaleDateString("de-DE") : "";
+    // Zeiten formatieren: "HH:MM"
     function formatTime(timeStr) {
       if (!timeStr) return "";
       return timeStr.slice(0,5);
     }
+    const startTimeFormatted = formatTime(row.startTime);
+    const endTimeFormatted = formatTime(row.endTime);
 
-    // --------------------------
-    // Mitarbeiter-Dropdown laden
-    // --------------------------
-    async function loadEmployeeOptions() {
-      const response = await fetch('/employees');
-      if (!response.ok) {
-        console.error("Fehler beim Laden der Mitarbeiteroptionen.");
-        return;
-      }
-      const employees = await response.json();
-      const select = document.getElementById('employeeSelect');
-      select.innerHTML = '<option value="">Bitte auswählen</option>';
-      employees.forEach(emp => {
-        const option = document.createElement('option');
-        option.value = emp.name;
-        option.textContent = emp.name;
-        select.appendChild(option);
-      });
-    }
+    const breakMinutes = (row.break_time * 60).toFixed(0);
+    const istHours = row.hours || 0;
+    const expected = getExpectedHours(row, row.date);
+    const diff = istHours - expected;
+    const istFormatted = istHours.toFixed(2);
+    const expectedFormatted = expected.toFixed(2);
+    const diffFormatted = diff.toFixed(2);
+    const values = [
+      row.name,
+      dateFormatted,
+      startTimeFormatted,
+      endTimeFormatted,
+      breakMinutes,
+      expectedFormatted,
+      istFormatted,
+      diffFormatted,
+      row.comment || ''
+    ];
+    csvRows.push(values.join(','));
+  }
+  return csvRows.join('\n');
+}
 
-    window.addEventListener('load', loadEmployeeOptions);
-
-    // --------------------------
-    // Arbeitszeiterfassung
-    // --------------------------
-    document.getElementById('workHoursForm').addEventListener('submit', async function(event) {
-      event.preventDefault();
-      const name = document.getElementById('employeeSelect').value;
-      if (!name) {
-        alert("Bitte wählen Sie einen Mitarbeiter aus.");
-        return;
-      }
-      const date = document.getElementById('date').value;
-      const startTime = document.getElementById('startTime').value;
-      const endTime = document.getElementById('endTime').value;
-      const breakTime = document.getElementById('breakTime').value;
-      const comment = document.getElementById('comment').value;
-      const response = await fetch('/log-hours', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, date, startTime, endTime, breakTime, comment })
-      });
-      const result = await response.text();
-      alert(result);
-      await loadWorkHours();
-    });
-
-    async function loadWorkHours() {
-      const name = document.getElementById('employeeSelect').value;
-      const workHoursList = document.getElementById('workHoursList');
-      const totalHoursElement = document.getElementById('totalHours');
-      if (!name) {
-        workHoursList.innerHTML = '';
-        totalHoursElement.textContent = 'Gesamtstunden: 0';
-        return;
-      }
-      const response = await fetch(`/get-all-hours?name=${encodeURIComponent(name)}`);
-      if (!response.ok) {
-        workHoursList.innerHTML = '';
-        totalHoursElement.textContent = 'Gesamtstunden: 0';
-        return;
-      }
-      const data = await response.json();
-      workHoursList.innerHTML = '';
-      let sumHours = 0;
-      data.forEach(entry => {
-        const listItem = document.createElement('li');
-        listItem.textContent = `ID: ${entry.id}, Datum: ${formatDate(entry.date)}, Stunden: ${formatDecimalHours(entry.hours)}, Bemerkung: ${entry.comment}`;
-        workHoursList.appendChild(listItem);
-        sumHours += entry.hours;
-      });
-      totalHoursElement.textContent = `Gesamtstunden: ${formatDecimalHours(sumHours)}`;
-    }
-
-    // --------------------------
-    // Admin-Login & Arbeitszeiten bearbeiten
-    // --------------------------
-    document.getElementById('adminLoginForm').addEventListener('submit', async function(event) {
-      event.preventDefault();
-      const password = document.getElementById('adminPassword').value;
-      const response = await fetch('/admin-login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ password })
-      });
-      const result = await response.text();
-      if (result === 'Admin angemeldet.') {
-        document.getElementById('adminPanel').classList.remove('hidden');
-        document.getElementById('employeePanel').classList.remove('hidden');
-        loadAdminWorkHours();
-        loadEmployees();
-        loadEmployeeOptions();
-      } else {
-        alert(result);
-      }
-    });
-
-    async function loadAdminWorkHours() {
-      const response = await fetch('/admin-work-hours');
-      const data = await response.json();
-      const tableBody = document.querySelector('#workHoursTable tbody');
-      tableBody.innerHTML = '';
-      data.forEach(entry => {
-        const row = document.createElement('tr');
-        const dateFormatted = formatDate(entry.date);
-        const timeFormatted = `${formatTime(entry.startTime)} - ${formatTime(entry.endTime)}`;
-        row.innerHTML = `
-          <td>${entry.id}</td>
-          <td>${entry.name}</td>
-          <td>${dateFormatted}</td>
-          <td>${timeFormatted}</td>
-          <td>${formatDecimalHours(entry.hours)}</td>
-          <td>${entry.comment || ''}</td>
-          <td>
-            <button onclick="editEntry(${entry.id}, '${entry.name}', '${entry.date}', '${entry.startTime}', '${entry.endTime}', '${entry.comment}', ${entry.break_time})">Bearbeiten</button>
-            <button onclick="deleteEntry(${entry.id})">Löschen</button>
-          </td>
-        `;
-        tableBody.appendChild(row);
-      });
-    }
-
-    function editEntry(id, name, date, startTime, endTime, comment, breakTime) {
-      document.getElementById('editId').value = id;
-      document.getElementById('editName').value = name;
-      document.getElementById('editDate').value = date;
-      document.getElementById('editStartTime').value = startTime;
-      document.getElementById('editEndTime').value = endTime;
-      document.getElementById('editComment').value = comment;
-      document.getElementById('editBreakTime').value = breakTime ? Math.round(breakTime * 60) : 0;
-    }
-
-    async function saveChanges() {
-      const id = document.getElementById('editId').value;
-      const name = document.getElementById('editName').value;
-      const date = document.getElementById('editDate').value;
-      const startTime = document.getElementById('editStartTime').value;
-      const endTime = document.getElementById('editEndTime').value;
-      const comment = document.getElementById('editComment').value;
-      const breakTime = document.getElementById('editBreakTime').value;
-      const response = await fetch('/api/admin/update-hours', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id, name, date, startTime, endTime, comment, breakTime })
-      });
-      const result = await response.text();
-      alert(result);
-      loadAdminWorkHours();
-    }
-
-    async function deleteEntry(id) {
-      const confirmDelete = confirm('Möchten Sie diesen Eintrag wirklich löschen?');
-      if (confirmDelete) {
-        const response = await fetch(`/api/admin/delete-hours/${id}`, { method: 'DELETE' });
-        const result = await response.text();
-        alert(result);
-        loadAdminWorkHours();
-      }
-    }
-
-    document.getElementById('adminDownloadCsv').addEventListener('click', async function() {
-      const response = await fetch('/admin-download-csv');
-      const blob = await response.blob();
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.style.display = 'none';
-      a.href = url;
-      a.download = 'arbeitszeiten.csv';
-      document.body.appendChild(a);
-      a.click();
-      window.URL.revokeObjectURL(url);
-    });
-
-    document.getElementById('adminDeleteData').addEventListener('click', async function() {
-      const confirmDelete = confirm('Möchten Sie wirklich alle Arbeitszeiten löschen?');
-      if (confirmDelete) {
-        const password = prompt('Geben Sie das Admin-Passwort ein:');
-        if (password) {
-          const response = await fetch('/delete-hours', {
-            method: 'DELETE',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ confirmDelete: 'true', password })
-          });
-          const result = await response.text();
-          alert(result);
-          loadAdminWorkHours();
-        } else {
-          alert('Löschen abgebrochen. Passwort erforderlich.');
-        }
-      } else {
-        alert('Löschen abgebrochen.');
-      }
-    });
-
-    // --------------------------
-    // Mitarbeiterverwaltung (Admin)
-    // --------------------------
-    async function loadEmployees() {
-      const response = await fetch('/admin/employees');
-      if (!response.ok) {
-        alert('Fehler beim Laden der Mitarbeiter.');
-        return;
-      }
-      const employees = await response.json();
-      const list = document.getElementById('employeeList');
-      list.innerHTML = '';
-      employees.forEach(emp => {
-        const li = document.createElement('li');
-        li.innerHTML = `ID: ${emp.id} – ${emp.name} (Mo: ${emp.mo_hours || 0}, Di: ${emp.di_hours || 0}, Mi: ${emp.mi_hours || 0}, Do: ${emp.do_hours || 0}, Fr: ${emp.fr_hours || 0}) `;
-        const editBtn = document.createElement('button');
-        editBtn.textContent = 'Bearbeiten';
-        editBtn.style.marginLeft = '10px';
-        editBtn.onclick = () => { editEmployee(emp); };
-        const deleteBtn = document.createElement('button');
-        deleteBtn.textContent = 'Löschen';
-        deleteBtn.style.marginLeft = '10px';
-        deleteBtn.onclick = async () => {
-          if (confirm(`Mitarbeiter "${emp.name}" wirklich löschen?`)) {
-            const delResponse = await fetch(`/admin/employees/${emp.id}`, { method: 'DELETE' });
-            if (delResponse.ok) {
-              alert('Mitarbeiter gelöscht.');
-              loadEmployees();
-              loadEmployeeOptions();
-            } else {
-              alert('Fehler beim Löschen des Mitarbeiters.');
-            }
-          }
-        };
-        li.appendChild(editBtn);
-        li.appendChild(deleteBtn);
-        list.appendChild(li);
-      });
-    }
-
-    function editEmployee(emp) {
-      document.getElementById('editEmployeeForm').classList.remove('hidden');
-      document.getElementById('editEmployeeId').value = emp.id;
-      document.getElementById('editEmployeeName').value = emp.name;
-      // Das Feld für vertragliche Arbeitsstunden entfällt
-      document.getElementById('editMoHours').value = emp.mo_hours || 0;
-      document.getElementById('editDiHours').value = emp.di_hours || 0;
-      document.getElementById('editMiHours').value = emp.mi_hours || 0;
-      document.getElementById('editDoHours').value = emp.do_hours || 0;
-      document.getElementById('editFrHours').value = emp.fr_hours || 0;
-    }
-
-    async function saveEmployeeChanges() {
-      const id = document.getElementById('editEmployeeId').value;
-      const name = document.getElementById('editEmployeeName').value;
-      // Das Feld für vertragliche Arbeitsstunden entfällt
-      const mo_hours = parseFloat(document.getElementById('editMoHours').value) || 0;
-      const di_hours = parseFloat(document.getElementById('editDiHours').value) || 0;
-      const mi_hours = parseFloat(document.getElementById('editMiHours').value) || 0;
-      const do_hours = parseFloat(document.getElementById('editDoHours').value) || 0;
-      const fr_hours = parseFloat(document.getElementById('editFrHours').value) || 0;
-      const response = await fetch(`/admin/employees/${id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, mo_hours, di_hours, mi_hours, do_hours, fr_hours })
-      });
-      const result = await response.text();
-      alert(result);
-      cancelEdit();
-      loadEmployees();
-      loadEmployeeOptions();
-    }
-
-    function cancelEdit() {
-      document.getElementById('editEmployeeForm').classList.add('hidden');
-    }
-
-    document.getElementById('addEmployeeForm').addEventListener('submit', async function(event) {
-      event.preventDefault();
-      const name = document.getElementById('employeeName').value;
-      // Das Feld für vertragliche Arbeitsstunden entfällt
-      const mo_hours = parseFloat(document.getElementById('mo_hours').value) || 0;
-      const di_hours = parseFloat(document.getElementById('di_hours').value) || 0;
-      const mi_hours = parseFloat(document.getElementById('mi_hours').value) || 0;
-      const do_hours = parseFloat(document.getElementById('do_hours').value) || 0;
-      const fr_hours = parseFloat(document.getElementById('fr_hours').value) || 0;
-      const response = await fetch('/admin/employees', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, mo_hours, di_hours, mi_hours, do_hours, fr_hours })
-      });
-      if (response.ok) {
-        alert('Mitarbeiter hinzugefügt!');
-        document.getElementById('employeeName').value = '';
-        document.getElementById('mo_hours').value = '0';
-        document.getElementById('di_hours').value = '0';
-        document.getElementById('mi_hours').value = '0';
-        document.getElementById('do_hours').value = '0';
-        document.getElementById('fr_hours').value = '0';
-        loadEmployees();
-        loadEmployeeOptions();
-      } else {
-        alert('Fehler beim Hinzufügen des Mitarbeiters.');
-      }
-    });
-  </script>
-</body>
-</html>
+app.listen(port, () => {
+  console.log(`Server läuft auf http://localhost:${port}`);
+});
