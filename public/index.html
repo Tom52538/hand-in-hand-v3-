@@ -102,7 +102,7 @@
           <label for="editEndTime">Arbeitsende:</label>
           <input type="time" id="editEndTime" name="endTime" required>
         </div>
-        <!-- Neues Feld für Pause in Minuten -->
+        <!-- Feld für Pause in Minuten -->
         <div>
           <label for="editBreakTime">Pause (Minuten):</label>
           <input type="number" id="editBreakTime" name="breakTime" min="0" step="1" value="0">
@@ -143,7 +143,7 @@
           <label for="employeeName">Name:</label>
           <input type="text" id="employeeName" name="employeeName" required>
         </div>
-        <!-- Das Feld für vertragliche Arbeitsstunden wurde entfernt -->
+        <!-- Feld für vertragliche Arbeitsstunden wurde entfernt -->
         <div>
           <label for="mo_hours">Montag (Stunden):</label>
           <input type="number" id="mo_hours" name="mo_hours" step="0.1" value="0">
@@ -177,7 +177,7 @@
           <label for="editEmployeeName">Name:</label>
           <input type="text" id="editEmployeeName" name="name" required>
         </div>
-        <!-- Das Feld für vertragliche Arbeitsstunden wurde entfernt -->
+        <!-- Feld für vertragliche Arbeitsstunden wurde entfernt -->
         <div>
           <label for="editMoHours">Montag (Stunden):</label>
           <input type="number" id="editMoHours" name="mo_hours" step="0.1" value="0">
@@ -212,13 +212,11 @@
       return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
     }
 
-    // Neu: Datum formatieren über toLocaleDateString
     function formatDate(dateStr) {
       if (!dateStr) return "";
       return new Date(dateStr).toLocaleDateString("de-DE");
     }
 
-    // Neu: Zeit formatieren ("HH:MM:SS" => "HH:MM")
     function formatTime(timeStr) {
       if (!timeStr) return "";
       return timeStr.slice(0,5);
