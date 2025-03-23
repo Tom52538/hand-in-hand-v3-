@@ -52,9 +52,6 @@ db.query(`
   console.log("Tabelle employees erfolgreich erstellt oder bereits vorhanden.");
 }).catch(err => console.error("Fehler beim Erstellen der Tabelle employees:", err));
 
-// Die folgenden SQLite-spezifischen Blöcke wurden entfernt,
-// da sie in PostgreSQL nicht benötigt werden.
-
 // Middleware, um Admin-Berechtigungen zu prüfen
 function isAdmin(req, res, next) {
   if (req.session.isAdmin) {
@@ -92,7 +89,7 @@ app.get('/admin-download-csv', isAdmin, (req, res) => {
 
 app.put('/api/admin/update-hours', isAdmin, (req, res) => {
   const { id, name, date, startTime, endTime, comment, breakTime } = req.body;
-  // Vergleiche Zeiten über Date-Objekte, nicht als Strings
+  // Zeiten als Date-Objekte vergleichen
   const startDate = new Date(`1970-01-01T${startTime}:00`);
   const endDate = new Date(`1970-01-01T${endTime}:00`);
   if (startDate >= endDate) {
@@ -271,7 +268,7 @@ function convertDecimalHoursToHoursMinutes(decimalHours) {
 
 function getExpectedHours(row, dateStr) {
   const d = new Date(dateStr);
-  const day = d.getDay(); // 0 = Sonntag, 1 = Montag, …, 5 = Freitag, 6 = Samstag
+  const day = d.getDay();
   if (day === 1) return row.mo_hours || 0;
   else if (day === 2) return row.di_hours || 0;
   else if (day === 3) return row.mi_hours || 0;
@@ -281,9 +278,9 @@ function getExpectedHours(row, dateStr) {
 }
 
 /**
- * CSV-Funktion mit den gewünschten Spalten in folgender Reihenfolge:
+ * CSV-Funktion mit den Spalten:
  * 1. Name, 2. Datum, 3. Arbeitsbeginn, 4. Arbeitsende,
- * 5. Pause (Minuten), 6. SollArbeitszeit, 7. IstArbeitszeit,
+ * 5. Pause (Minuten), 6. Soll-Arbeitszeit, 7. Ist-Arbeitszeit,
  * 8. Differenz, 9. Bemerkung
  */
 function convertToCSV(data) {
