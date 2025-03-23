@@ -62,6 +62,91 @@ function isAdmin(req, res, next) {
 }
 
 // --------------------------
+// Hilfsfunktionen für Zeitformatierung
+// --------------------------
+
+// Wandelt einen HH:MM-Zeitstring in Minuten seit Mitternacht um
+function parseTime(timeStr) {
+  const parts = timeStr.split(':');
+  return parseInt(parts[0], 10) * 60 + parseInt(parts[1], 10);
+}
+
+// Berechnet die Arbeitsstunden anhand der Zeitstrings
+function calculateWorkHours(startTime, endTime) {
+  return (parseTime(endTime) - parseTime(startTime)) / 60; // Stunden
+}
+
+function convertDecimalHoursToHoursMinutes(decimalHours) {
+  const hours = Math.floor(decimalHours);
+  const minutes = Math.round((decimalHours - hours) * 60);
+  return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
+}
+
+function getExpectedHours(row, dateStr) {
+  const d = new Date(dateStr);
+  const day = d.getDay();
+  if (day === 1) return row.mo_hours || 0;
+  else if (day === 2) return row.di_hours || 0;
+  else if (day === 3) return row.mi_hours || 0;
+  else if (day === 4) return row.do_hours || 0;
+  else if (day === 5) return row.fr_hours || 0;
+  else return 0;
+}
+
+/**
+ * CSV-Funktion mit den Spalten:
+ * 1. Name, 2. Datum, 3. Arbeitsbeginn, 4. Arbeitsende,
+ * 5. Pause (Minuten), 6. Soll-Arbeitszeit, 7. Ist-Arbeitszeit,
+ * 8. Differenz, 9. Bemerkung
+ */
+function convertToCSV(data) {
+  if (!data || data.length === 0) return '';
+  const csvRows = [];
+  csvRows.push([
+    "Name",
+    "Datum",
+    "Arbeitsbeginn",
+    "Arbeitsende",
+    "Pause (Minuten)",
+    "SollArbeitszeit",
+    "IstArbeitszeit",
+    "Differenz",
+    "Bemerkung"
+  ].join(','));
+
+  for (const row of data) {
+    const dateFormatted = row.date ? new Date(row.date).toLocaleDateString("de-DE") : "";
+    function formatTime(timeVal) {
+      if (!timeVal) return "";
+      // Da wir konsistent Strings im Format HH:MM speichern, reicht slice(0,5)
+      return timeVal.toString().slice(0,5);
+    }
+    const startTimeFormatted = formatTime(row.startTime);
+    const endTimeFormatted = formatTime(row.endTime);
+    const breakMinutes = (row.break_time * 60).toFixed(0);
+    const istHours = row.hours || 0;
+    const expected = getExpectedHours(row, row.date);
+    const diff = istHours - expected;
+    const istFormatted = istHours.toFixed(2);
+    const expectedFormatted = expected.toFixed(2);
+    const diffFormatted = diff.toFixed(2);
+    const values = [
+      row.name,
+      dateFormatted,
+      startTimeFormatted,
+      endTimeFormatted,
+      breakMinutes,
+      expectedFormatted,
+      istFormatted,
+      diffFormatted,
+      row.comment || ''
+    ];
+    csvRows.push(values.join(','));
+  }
+  return csvRows.join('\n');
+}
+
+// --------------------------
 // API-Endpunkte für Arbeitszeiten
 // --------------------------
 app.get('/admin-work-hours', isAdmin, (req, res) => {
@@ -73,21 +158,22 @@ app.get('/admin-work-hours', isAdmin, (req, res) => {
       hours,
       break_time AS "breakTime",
       comment,
-      starttime AS "startTime",
-      endtime AS "endTime"
+      startTime,
+      endTime
     FROM work_hours
   `;
   db.query(query, [])
     .then(result => res.json(result.rows))
     .catch(err => res.status(500).send('Error fetching work hours.'));
 });
+
 app.get('/admin-download-csv', isAdmin, (req, res) => {
-const query = `
-  SELECT w.id, w.name, w.date, w.starttime, w.endtime, w.break_time, w.comment, w.hours,
-         e.mo_hours, e.di_hours, e.mi_hours, e.do_hours, e.fr_hours
-  FROM work_hours w
-  LEFT JOIN employees e ON LOWER(w.name) = LOWER(e.name)
-`;
+  const query = `
+    SELECT w.id, w.name, w.date, w.startTime, w.endTime, w.break_time, w.comment, w.hours,
+           e.mo_hours, e.di_hours, e.mi_hours, e.do_hours, e.fr_hours
+    FROM work_hours w
+    LEFT JOIN employees e ON LOWER(w.name) = LOWER(e.name)
+  `;
   db.query(query, [])
     .then(result => {
       const csv = convertToCSV(result.rows);
@@ -101,12 +187,8 @@ const query = `
 app.put('/api/admin/update-hours', isAdmin, (req, res) => {
   const { id, name, date, startTime, endTime, comment, breakTime } = req.body;
 
-  // Zeiten als echte Date-Objekte parsen
-  const startDate = new Date(`1970-01-01T${startTime}:00`);
-  const endDate = new Date(`1970-01-01T${endTime}:00`);
-
-  // Validierung
-  if (startDate >= endDate) {
+  // Validierung: Arbeitsbeginn muss vor Arbeitsende liegen
+  if (parseTime(startTime) >= parseTime(endTime)) {
     return res.status(400).json({ error: 'Arbeitsbeginn darf nicht später als Arbeitsende sein.' });
   }
 
@@ -117,14 +199,15 @@ app.put('/api/admin/update-hours', isAdmin, (req, res) => {
 
   const query = `
     UPDATE work_hours
-    SET name = $1, date = $2, hours = $3, break_time = $4, comment = $5, starttime = $6, endtime = $7
+    SET name = $1, date = $2, hours = $3, break_time = $4, comment = $5, startTime = $6, endTime = $7
     WHERE id = $8
   `;
-
-  db.query(query, [name, date, netHours, breakTimeHours, comment, startDate, endDate, id])
+  // Übergabe der Zeiten als HH:MM-Strings
+  db.query(query, [name, date, netHours, breakTimeHours, comment, startTime, endTime, id])
     .then(() => res.send('Working hours updated successfully.'))
     .catch(err => res.status(500).send('Error updating working hours.'));
 });
+
 app.delete('/api/admin/delete-hours/:id', isAdmin, (req, res) => {
   const { id } = req.params;
   const query = 'DELETE FROM work_hours WHERE id = $1';
@@ -135,11 +218,12 @@ app.delete('/api/admin/delete-hours/:id', isAdmin, (req, res) => {
 
 app.post('/log-hours', (req, res) => {
   const { name, date, startTime, endTime, comment, breakTime } = req.body;
-  const startDate = new Date(`1970-01-01T${startTime}:00`);
-  const endDate = new Date(`1970-01-01T${endTime}:00`);
-  if (startDate >= endDate) {
+  
+  // Validierung: Arbeitsbeginn muss vor Arbeitsende liegen
+  if (parseTime(startTime) >= parseTime(endTime)) {
     return res.status(400).json({ error: 'Arbeitsbeginn darf nicht später als Arbeitsende sein.' });
   }
+  
   const checkQuery = `
     SELECT * FROM work_hours
     WHERE LOWER(name) = LOWER($1) AND date = $2
@@ -267,84 +351,8 @@ app.get('/employees', (req, res) => {
 });
 
 // --------------------------
-// Hilfsfunktionen
+// Server starten
 // --------------------------
-function calculateWorkHours(startTime, endTime) {
-  const start = new Date(`1970-01-01T${startTime}:00`);
-  const end = new Date(`1970-01-01T${endTime}:00`);
-  const diff = end - start;
-  return diff / 1000 / 60 / 60; // Stunden
-}
-
-function convertDecimalHoursToHoursMinutes(decimalHours) {
-  const hours = Math.floor(decimalHours);
-  const minutes = Math.round((decimalHours - hours) * 60);
-  return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
-}
-
-function getExpectedHours(row, dateStr) {
-  const d = new Date(dateStr);
-  const day = d.getDay();
-  if (day === 1) return row.mo_hours || 0;
-  else if (day === 2) return row.di_hours || 0;
-  else if (day === 3) return row.mi_hours || 0;
-  else if (day === 4) return row.do_hours || 0;
-  else if (day === 5) return row.fr_hours || 0;
-  else return 0;
-}
-
-/**
- * CSV-Funktion mit den Spalten:
- * 1. Name, 2. Datum, 3. Arbeitsbeginn, 4. Arbeitsende,
- * 5. Pause (Minuten), 6. Soll-Arbeitszeit, 7. Ist-Arbeitszeit,
- * 8. Differenz, 9. Bemerkung
- */
-function convertToCSV(data) {
-  if (!data || data.length === 0) return '';
-  const csvRows = [];
-  csvRows.push([
-    "Name",
-    "Datum",
-    "Arbeitsbeginn",
-    "Arbeitsende",
-    "Pause (Minuten)",
-    "SollArbeitszeit",
-    "IstArbeitszeit",
-    "Differenz",
-    "Bemerkung"
-  ].join(','));
-
-  for (const row of data) {
-    const dateFormatted = row.date ? new Date(row.date).toLocaleDateString("de-DE") : "";
-    function formatTime(timeStr) {
-      if (!timeStr) return "";
-      return timeStr.slice(0,5);
-    }
-    const startTimeFormatted = formatTime(row.startTime);
-    const endTimeFormatted = formatTime(row.endTime);
-    const breakMinutes = (row.break_time * 60).toFixed(0);
-    const istHours = row.hours || 0;
-    const expected = getExpectedHours(row, row.date);
-    const diff = istHours - expected;
-    const istFormatted = istHours.toFixed(2);
-    const expectedFormatted = expected.toFixed(2);
-    const diffFormatted = diff.toFixed(2);
-    const values = [
-      row.name,
-      dateFormatted,
-      startTimeFormatted,
-      endTimeFormatted,
-      breakMinutes,
-      expectedFormatted,
-      istFormatted,
-      diffFormatted,
-      row.comment || ''
-    ];
-    csvRows.push(values.join(','));
-  }
-  return csvRows.join('\n');
-}
-
 app.listen(port, () => {
   console.log(`Server läuft auf http://localhost:${port}`);
 });
