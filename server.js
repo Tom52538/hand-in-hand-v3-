@@ -65,12 +65,22 @@ function isAdmin(req, res, next) {
 // API-Endpunkte für Arbeitszeiten
 // --------------------------
 app.get('/admin-work-hours', isAdmin, (req, res) => {
-  const query = 'SELECT * FROM work_hours';
+  const query = `
+    SELECT
+      id,
+      name,
+      date,
+      hours,
+      break_time AS "breakTime",
+      comment,
+      starttime AS "startTime",
+      endtime AS "endTime"
+    FROM work_hours
+  `;
   db.query(query, [])
     .then(result => res.json(result.rows))
     .catch(err => res.status(500).send('Error fetching work hours.'));
 });
-
 app.get('/admin-download-csv', isAdmin, (req, res) => {
   const query = `
     SELECT w.*, e.mo_hours, e.di_hours, e.mi_hours, e.do_hours, e.fr_hours
