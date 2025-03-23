@@ -348,7 +348,16 @@
           <td>${formatDecimalHours(entry.hours)}</td>
           <td>${entry.comment || ''}</td>
           <td>
-            <button onclick="editEntry(${entry.id}, '${entry.name}', '${entry.date}', '${entry.startTime}', '${entry.endTime}', '${entry.comment}', ${entry.break_time})">Bearbeiten</button>
+<button onclick='editEntry(
+  ${entry.id},
+  ${JSON.stringify(entry.name)},
+  ${JSON.stringify(formatDate(entry.date))},
+  ${JSON.stringify(formatTime(entry.startTime))},
+  ${JSON.stringify(formatTime(entry.endTime))},
+  ${JSON.stringify(entry.comment || "")},
+  ${entry.break_time || 0}
+)'>Bearbeiten</button>
+           
             <button onclick="deleteEntry(${entry.id})">Löschen</button>
           </td>
         `;
