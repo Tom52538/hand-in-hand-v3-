@@ -355,22 +355,28 @@
         tableBody.appendChild(row);
       });
     }
+function editEntry(id, name, date, startTime, endTime, comment, breakTime) {
+  document.getElementById('editId').value = id;
+  document.getElementById('editName').value = name;
 
-    function editEntry(id, name, date, startTime, endTime, comment, breakTime) {
-      document.getElementById('editId').value = id;
-      document.getElementById('editName').value = name;
-      // Datum: z. B. "19.3.2025" → "2025-03-19"
-const [day, month, year] = date.split('.');
-const formattedDate = `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
-document.getElementById('editDate').value = formattedDate;
+  // Datum absichern und formatieren (z. B. "19.3.2025" → "2025-03-19")
+  let formattedDate = '';
+  if (date && date.includes('.')) {
+    const [day, month, year] = date.split('.');
+    formattedDate = `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+  }
+  document.getElementById('editDate').value = formattedDate;
 
-// Uhrzeiten absichern
-document.getElementById('editStartTime').value = startTime || '';
-document.getElementById('editEndTime').value = endTime || '';
-document.getElementById('editComment').value = comment;
-      // breakTime in Stunden -> Umrechnung in Minuten
-      document.getElementById('editBreakTime').value = breakTime ? Math.round(breakTime * 60) : 0;
-    }
+  // Zeiten absichern (nur übernehmen, wenn im Format HH:mm)
+  const safeStart = (startTime && startTime.includes(':')) ? startTime : '';
+  const safeEnd = (endTime && endTime.includes(':')) ? endTime : '';
+  document.getElementById('editStartTime').value = safeStart;
+  document.getElementById('editEndTime').value = safeEnd;
+
+  // Kommentar + Pause
+  document.getElementById('editComment').value = comment || '';
+  document.getElementById('editBreakTime').value = breakTime ? Math.round(breakTime * 60) : 0;
+}
 
     async function saveChanges() {
       const id = document.getElementById('editId').value;
