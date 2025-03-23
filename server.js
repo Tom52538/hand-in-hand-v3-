@@ -25,11 +25,10 @@ const db = new Pool({
 });
 
 /**
- * 1) Tabelle work_hours:
- *    - starttime und endtime als TIME (klein geschrieben).
- *
- * 2) Tabelle employees:
- *    - enthält Sollstunden pro Wochentag
+ * Tabelle work_hours:
+ * - starttime und endtime als TIME (klein geschrieben in der DB).
+ * Tabelle employees:
+ * - enthält Sollstunden pro Wochentag
  */
 db.query(`
   CREATE TABLE IF NOT EXISTS work_hours (
@@ -70,7 +69,6 @@ function isAdmin(req, res, next) {
 // --------------------------
 // Hilfsfunktionen für Zeitformatierung
 // --------------------------
-
 /**
  * parseTime("HH:MM") -> Anzahl Minuten seit 00:00
  */
@@ -128,11 +126,11 @@ function convertToCSV(data) {
       ? new Date(row.date).toLocaleDateString("de-DE")
       : "";
     
-    // Die SELECT-Abfrage liefert starttime und endtime bereits als "HH:MM"-Strings.
-    const startTimeFormatted = row.starttime || "";
-    const endTimeFormatted   = row.endtime   || "";
+    // Hier greifen wir auf die konsistenten Felder zu:
+    const startTimeFormatted = row.startTime || "";
+    const endTimeFormatted   = row.endTime   || "";
 
-    // break_time ist in Stunden gespeichert, also * 60 für Minuten
+    // break_time ist in Stunden gespeichert, daher * 60 für Minuten
     const breakMinutes = (row.break_time * 60).toFixed(0);
     const istHours = row.hours || 0;
     const expected = getExpectedHours(row, row.date);
@@ -161,11 +159,10 @@ function convertToCSV(data) {
 // --------------------------
 // API-Endpunkte für Arbeitszeiten (Admin)
 // --------------------------
-
 /**
  * Liefert alle Einträge an den Admin.
- * Hier verwenden wir TO_CHAR, damit wir
- * starttime und endtime als "HH24:MI"-String zurückbekommen.
+ * Hier wird TO_CHAR verwendet, um starttime und endtime als "HH24:MI" zurückzugeben,
+ * mit Alias "startTime" und "endTime".
  */
 app.get('/admin-work-hours', isAdmin, (req, res) => {
   const query = `
@@ -176,8 +173,8 @@ app.get('/admin-work-hours', isAdmin, (req, res) => {
       hours,
       break_time,
       comment,
-      TO_CHAR(starttime, 'HH24:MI') AS starttime,
-      TO_CHAR(endtime,   'HH24:MI') AS endtime
+      TO_CHAR(starttime, 'HH24:MI') AS "startTime",
+      TO_CHAR(endtime,   'HH24:MI') AS "endTime"
     FROM work_hours
     ORDER BY date ASC
   `;
@@ -188,7 +185,7 @@ app.get('/admin-work-hours', isAdmin, (req, res) => {
 
 /**
  * CSV-Download
- * Hier ebenfalls die Umwandlung via TO_CHAR.
+ * Hier erfolgt ebenfalls die Umwandlung via TO_CHAR und die Aliasnamen werden angepasst.
  */
 app.get('/admin-download-csv', isAdmin, (req, res) => {
   const query = `
@@ -196,8 +193,8 @@ app.get('/admin-download-csv', isAdmin, (req, res) => {
       w.id,
       w.name,
       w.date,
-      TO_CHAR(w.starttime, 'HH24:MI') AS starttime,
-      TO_CHAR(w.endtime,   'HH24:MI') AS endtime,
+      TO_CHAR(w.starttime, 'HH24:MI') AS "startTime",
+      TO_CHAR(w.endtime,   'HH24:MI') AS "endTime",
       w.break_time,
       w.comment,
       w.hours,
@@ -226,7 +223,7 @@ app.get('/admin-download-csv', isAdmin, (req, res) => {
 app.put('/api/admin/update-hours', isAdmin, (req, res) => {
   const { id, name, date, startTime, endTime, comment, breakTime } = req.body;
 
-  // Validierung
+  // Validierung: Arbeitsbeginn muss vor Arbeitsende liegen
   if (parseTime(startTime) >= parseTime(endTime)) {
     return res.status(400).json({ error: 'Arbeitsbeginn darf nicht später als Arbeitsende sein.' });
   }
@@ -267,14 +264,13 @@ app.delete('/api/admin/delete-hours/:id', isAdmin, (req, res) => {
 // --------------------------
 // API-Endpunkte (öffentlicher Teil) zum Eintragen und Abfragen
 // --------------------------
-
 /**
  * Neue Arbeitszeit eintragen
  */
 app.post('/log-hours', (req, res) => {
   const { name, date, startTime, endTime, comment, breakTime } = req.body;
 
-  // Validierung
+  // Validierung: Arbeitsbeginn muss vor Arbeitsende liegen
   if (parseTime(startTime) >= parseTime(endTime)) {
     return res.status(400).json({ error: 'Arbeitsbeginn darf nicht später als Arbeitsende sein.' });
   }
@@ -312,7 +308,7 @@ app.get('/get-all-hours', (req, res) => {
   if (!name) {
     return res.status(400).send('Name ist erforderlich.');
   }
-  // Hier ebenfalls TO_CHAR für die Zeitfelder
+  // Hier ebenfalls TO_CHAR für die Zeitfelder mit konsistenten Aliasnamen
   const query = `
     SELECT
       id,
@@ -321,8 +317,8 @@ app.get('/get-all-hours', (req, res) => {
       hours,
       break_time,
       comment,
-      TO_CHAR(starttime, 'HH24:MI') AS starttime,
-      TO_CHAR(endtime,   'HH24:MI') AS endtime
+      TO_CHAR(starttime, 'HH24:MI') AS "startTime",
+      TO_CHAR(endtime,   'HH24:MI') AS "endTime"
     FROM work_hours
     WHERE LOWER(name) = LOWER($1)
     ORDER BY date ASC
@@ -345,8 +341,8 @@ app.get('/get-hours', (req, res) => {
       hours,
       break_time,
       comment,
-      TO_CHAR(starttime, 'HH24:MI') AS starttime,
-      TO_CHAR(endtime,   'HH24:MI') AS endtime
+      TO_CHAR(starttime, 'HH24:MI') AS "startTime",
+      TO_CHAR(endtime,   'HH24:MI') AS "endTime"
     FROM work_hours
     WHERE LOWER(name) = LOWER($1)
       AND date = $2
