@@ -98,11 +98,16 @@ app.get('/admin-download-csv', isAdmin, (req, res) => {
 });
 
 app.put('/api/admin/update-hours', isAdmin, (req, res) => {
-  let { id, name, date, startTime, endTime, comment, breakTime } = req.body;
+  const { id, name, date, startTime, endTime, comment, breakTime } = req.body;
 
-  // Leere oder ungültige Werte zu null
-  startTime = startTime?.trim() || null;
-  endTime = endTime?.trim() || null;
+  // Zeiten als echte Date-Objekte parsen
+  const startDate = new Date(`1970-01-01T${startTime}:00`);
+  const endDate = new Date(`1970-01-01T${endTime}:00`);
+
+  // Validierung
+  if (startDate >= endDate) {
+    return res.status(400).json({ error: 'Arbeitsbeginn darf nicht später als Arbeitsende sein.' });
+  }
 
   const totalHours = calculateWorkHours(startTime, endTime);
   const breakTimeMinutes = parseInt(breakTime, 10) || 0;
@@ -114,9 +119,8 @@ app.put('/api/admin/update-hours', isAdmin, (req, res) => {
     SET name = $1, date = $2, hours = $3, break_time = $4, comment = $5, starttime = $6, endtime = $7
     WHERE id = $8
   `;
-  const values = [name, date, netHours, breakTimeHours, comment, startTime, endTime, id];
 
-  db.query(query, values)
+  db.query(query, [name, date, netHours, breakTimeHours, comment, startDate, endDate, id])
     .then(() => res.send('Working hours updated successfully.'))
     .catch(err => res.status(500).send('Error updating working hours.'));
 });
