@@ -457,7 +457,7 @@ function editEntry(id, name, date, startTime, endTime, comment, breakTime) {
       list.innerHTML = '';
       employees.forEach(emp => {
         const li = document.createElement('li');
-        li.innerHTML = `ID: ${emp.id} – ${emp.name} (Vertrag: ${emp.contract_hours || 0} Std., Mo: ${emp.mo_hours || 0}, Di: ${emp.di_hours || 0}, Mi: ${emp.mi_hours || 0}, Do: ${emp.do_hours || 0}, Fr: ${emp.fr_hours || 0}) `;
+      li.innerHTML = `ID: ${emp.id} – ${emp.name} (Mo: ${emp.mo_hours || 0}, Di: ${emp.di_hours || 0}, Mi: ${emp.mi_hours || 0}, Do: ${emp.do_hours || 0}, Fr: ${emp.fr_hours || 0})`;
         const editBtn = document.createElement('button');
         editBtn.textContent = 'Bearbeiten';
         editBtn.style.marginLeft = '10px';
