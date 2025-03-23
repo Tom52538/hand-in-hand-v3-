@@ -13,7 +13,7 @@
     form > div { margin-bottom: 1rem; }
     label { display: block; margin-bottom: 0.3rem; }
 
-    /* Tabellen-Layout für Admin-Bereich */
+    /* --- NEU: Tabellen-Layout für Admin-Bereich --- */
     table {
       width: 100%;
       border-collapse: collapse;
@@ -24,6 +24,7 @@
       vertical-align: middle;
       text-align: left;
     }
+    /* Optional: Buttons in einer Zeile */
     td button {
       margin-right: 5px;
     }
@@ -102,7 +103,7 @@
           <label for="editEndTime">Arbeitsende:</label>
           <input type="time" id="editEndTime" name="endTime" required>
         </div>
-        <!-- Feld für Pause in Minuten -->
+        <!-- Neues Feld für Pause in Minuten -->
         <div>
           <label for="editBreakTime">Pause (Minuten):</label>
           <input type="number" id="editBreakTime" name="breakTime" min="0" step="1" value="0">
@@ -143,7 +144,10 @@
           <label for="employeeName">Name:</label>
           <input type="text" id="employeeName" name="employeeName" required>
         </div>
-        <!-- Feld für vertragliche Arbeitsstunden wurde entfernt -->
+        <div>
+          <label for="contractHours">Vertragliche Arbeitsstunden:</label>
+          <input type="number" id="contractHours" name="contractHours" step="0.1">
+        </div>
         <div>
           <label for="mo_hours">Montag (Stunden):</label>
           <input type="number" id="mo_hours" name="mo_hours" step="0.1" value="0">
@@ -177,7 +181,10 @@
           <label for="editEmployeeName">Name:</label>
           <input type="text" id="editEmployeeName" name="name" required>
         </div>
-        <!-- Feld für vertragliche Arbeitsstunden wurde entfernt -->
+        <div>
+          <label for="editContractHours">Vertragliche Arbeitsstunden:</label>
+          <input type="number" id="editContractHours" name="contract_hours" step="0.1">
+        </div>
         <div>
           <label for="editMoHours">Montag (Stunden):</label>
           <input type="number" id="editMoHours" name="mo_hours" step="0.1" value="0">
@@ -212,11 +219,14 @@
       return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
     }
 
+    // Neu: Datum formatieren über toLocaleDateString
     function formatDate(dateStr) {
       if (!dateStr) return "";
+      // Erzeugt z. B. "19.03.2025"
       return new Date(dateStr).toLocaleDateString("de-DE");
     }
 
+    // Neu: Zeit formatieren ("HH:MM:SS" => "HH:MM")
     function formatTime(timeStr) {
       if (!timeStr) return "";
       return timeStr.slice(0,5);
@@ -289,6 +299,7 @@
       let sumHours = 0;
       data.forEach(entry => {
         const listItem = document.createElement('li');
+        // Datum und Stunden formatieren
         listItem.textContent = `ID: ${entry.id}, Datum: ${formatDate(entry.date)}, Stunden: ${formatDecimalHours(entry.hours)}, Bemerkung: ${entry.comment}`;
         workHoursList.appendChild(listItem);
         sumHours += entry.hours;
@@ -326,6 +337,7 @@
       tableBody.innerHTML = '';
       data.forEach(entry => {
         const row = document.createElement('tr');
+        // Datum & Zeit formatieren
         const dateFormatted = formatDate(entry.date);
         const timeFormatted = `${formatTime(entry.startTime)} - ${formatTime(entry.endTime)}`;
         row.innerHTML = `
@@ -351,6 +363,7 @@
       document.getElementById('editStartTime').value = startTime;
       document.getElementById('editEndTime').value = endTime;
       document.getElementById('editComment').value = comment;
+      // breakTime in Stunden -> Umrechnung in Minuten
       document.getElementById('editBreakTime').value = breakTime ? Math.round(breakTime * 60) : 0;
     }
 
@@ -430,7 +443,7 @@
       list.innerHTML = '';
       employees.forEach(emp => {
         const li = document.createElement('li');
-        li.innerHTML = `ID: ${emp.id} – ${emp.name} (Mo: ${emp.mo_hours || 0}, Di: ${emp.di_hours || 0}, Mi: ${emp.mi_hours || 0}, Do: ${emp.do_hours || 0}, Fr: ${emp.fr_hours || 0}) `;
+        li.innerHTML = `ID: ${emp.id} – ${emp.name} (Vertrag: ${emp.contract_hours || 0} Std., Mo: ${emp.mo_hours || 0}, Di: ${emp.di_hours || 0}, Mi: ${emp.mi_hours || 0}, Do: ${emp.do_hours || 0}, Fr: ${emp.fr_hours || 0}) `;
         const editBtn = document.createElement('button');
         editBtn.textContent = 'Bearbeiten';
         editBtn.style.marginLeft = '10px';
@@ -460,6 +473,7 @@
       document.getElementById('editEmployeeForm').classList.remove('hidden');
       document.getElementById('editEmployeeId').value = emp.id;
       document.getElementById('editEmployeeName').value = emp.name;
+      document.getElementById('editContractHours').value = emp.contract_hours || 0;
       document.getElementById('editMoHours').value = emp.mo_hours || 0;
       document.getElementById('editDiHours').value = emp.di_hours || 0;
       document.getElementById('editMiHours').value = emp.mi_hours || 0;
@@ -470,15 +484,16 @@
     async function saveEmployeeChanges() {
       const id = document.getElementById('editEmployeeId').value;
       const name = document.getElementById('editEmployeeName').value;
+      const contract_hours = parseFloat(document.getElementById('editContractHours').value) || 0;
       const mo_hours = parseFloat(document.getElementById('editMoHours').value) || 0;
       const di_hours = parseFloat(document.getElementById('editDiHours').value) || 0;
       const mi_hours = parseFloat(document.getElementById('editMiHours').value) || 0;
       const do_hours = parseFloat(document.getElementById('editDoHours').value) || 0;
       const fr_hours = parseFloat(document.getElementById('editFrHours').value) || 0;
-      const response = await fetch(`/admin/employees/${document.getElementById('editEmployeeId').value}`, {
+      const response = await fetch(`/admin/employees/${id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, mo_hours, di_hours, mi_hours, do_hours, fr_hours })
+        body: JSON.stringify({ name, contract_hours, mo_hours, di_hours, mi_hours, do_hours, fr_hours })
       });
       const result = await response.text();
       alert(result);
@@ -494,6 +509,7 @@
     document.getElementById('addEmployeeForm').addEventListener('submit', async function(event) {
       event.preventDefault();
       const name = document.getElementById('employeeName').value;
+      const contract_hours = parseFloat(document.getElementById('contractHours').value) || 0;
       const mo_hours = parseFloat(document.getElementById('mo_hours').value) || 0;
       const di_hours = parseFloat(document.getElementById('di_hours').value) || 0;
       const mi_hours = parseFloat(document.getElementById('mi_hours').value) || 0;
@@ -502,11 +518,12 @@
       const response = await fetch('/admin/employees', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, mo_hours, di_hours, mi_hours, do_hours, fr_hours })
+        body: JSON.stringify({ name, contract_hours, mo_hours, di_hours, mi_hours, do_hours, fr_hours })
       });
       if (response.ok) {
         alert('Mitarbeiter hinzugefügt!');
         document.getElementById('employeeName').value = '';
+        document.getElementById('contractHours').value = '';
         document.getElementById('mo_hours').value = '0';
         document.getElementById('di_hours').value = '0';
         document.getElementById('mi_hours').value = '0';
@@ -518,6 +535,25 @@
         alert('Fehler beim Hinzufügen des Mitarbeiters.');
       }
     });
-  </script>
+  
+      // Function to calculate work hours
+      function calculateWorkHours(startTime, endTime) {
+        const start = new Date(`1970-01-01T${startTime}:00`);
+        const end = new Date(`1970-01-01T${endTime}:00`);
+        const diff = (end - start) / (1000 * 60 * 60); // Difference in hours
+        return diff;
+      }
+
+      // Ensure editEntry function populates all fields
+      function editEntry(entry) {
+        document.getElementById('editEmployeeName').value = entry.name;
+        document.getElementById('editDate').value = entry.date;
+        document.getElementById('editStartTime').value = entry.startTime;
+        document.getElementById('editEndTime').value = entry.endTime;
+        document.getElementById('editBreak').value = entry.break;
+        document.getElementById('editRemarks').value = entry.remarks;
+        document.getElementById('editEmployeeForm').classList.remove('hidden');
+      }
+    </script>
 </body>
 </html>
