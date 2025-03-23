@@ -487,7 +487,6 @@ function editEntry(id, name, date, startTime, endTime, comment, breakTime) {
       document.getElementById('editEmployeeForm').classList.remove('hidden');
       document.getElementById('editEmployeeId').value = emp.id;
       document.getElementById('editEmployeeName').value = emp.name;
-      document.getElementById('editContractHours').value = emp.contract_hours || 0;
       document.getElementById('editMoHours').value = emp.mo_hours || 0;
       document.getElementById('editDiHours').value = emp.di_hours || 0;
       document.getElementById('editMiHours').value = emp.mi_hours || 0;
@@ -498,7 +497,6 @@ function editEntry(id, name, date, startTime, endTime, comment, breakTime) {
     async function saveEmployeeChanges() {
       const id = document.getElementById('editEmployeeId').value;
       const name = document.getElementById('editEmployeeName').value;
-      const contract_hours = parseFloat(document.getElementById('editContractHours').value) || 0;
       const mo_hours = parseFloat(document.getElementById('editMoHours').value) || 0;
       const di_hours = parseFloat(document.getElementById('editDiHours').value) || 0;
       const mi_hours = parseFloat(document.getElementById('editMiHours').value) || 0;
@@ -523,8 +521,7 @@ function editEntry(id, name, date, startTime, endTime, comment, breakTime) {
     document.getElementById('addEmployeeForm').addEventListener('submit', async function(event) {
       event.preventDefault();
       const name = document.getElementById('employeeName').value;
-      const contract_hours = parseFloat(document.getElementById('contractHours').value) || 0;
-      const mo_hours = parseFloat(document.getElementById('mo_hours').value) || 0;
+     const mo_hours = parseFloat(document.getElementById('mo_hours').value) || 0;
       const di_hours = parseFloat(document.getElementById('di_hours').value) || 0;
       const mi_hours = parseFloat(document.getElementById('mi_hours').value) || 0;
       const do_hours = parseFloat(document.getElementById('do_hours').value) || 0;
@@ -537,7 +534,6 @@ function editEntry(id, name, date, startTime, endTime, comment, breakTime) {
       if (response.ok) {
         alert('Mitarbeiter hinzugefügt!');
         document.getElementById('employeeName').value = '';
-        document.getElementById('contractHours').value = '';
         document.getElementById('mo_hours').value = '0';
         document.getElementById('di_hours').value = '0';
         document.getElementById('mi_hours').value = '0';
@@ -560,7 +556,6 @@ function editEntry(id, name, date, startTime, endTime, comment, breakTime) {
 
     function editEmployeeEntry(entry) {
   document.getElementById('editEmployeeName').value = entry.name;
-  document.getElementById('editContractHours').value = entry.contract_hours || 0;
   document.getElementById('editMoHours').value = entry.mo_hours || 0;
   document.getElementById('editDiHours').value = entry.di_hours || 0;
   document.getElementById('editMiHours').value = entry.mi_hours || 0;
