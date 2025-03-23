@@ -505,7 +505,7 @@ function editEntry(id, name, date, startTime, endTime, comment, breakTime) {
       const response = await fetch(`/admin/employees/${id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, contract_hours, mo_hours, di_hours, mi_hours, do_hours, fr_hours })
+        body: JSON.stringify({ name, mo_hours, di_hours, mi_hours, do_hours, fr_hours })
       });
       const result = await response.text();
       alert(result);
@@ -529,7 +529,7 @@ function editEntry(id, name, date, startTime, endTime, comment, breakTime) {
       const response = await fetch('/admin/employees', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, contract_hours, mo_hours, di_hours, mi_hours, do_hours, fr_hours })
+       body: JSON.stringify({ name, mo_hours, di_hours, mi_hours, do_hours, fr_hours })
       });
       if (response.ok) {
         alert('Mitarbeiter hinzugefügt!');
