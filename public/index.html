@@ -5,7 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Arbeitszeiterfassung</title>
   <link rel="stylesheet" href="style.css">
-  <link rel="manifest" href="/icons/manifest.json">
+  <!-- Falls du kein Manifest benötigst, kannst du den folgenden Link entfernen oder auskommentieren -->
+  <!-- <link rel="manifest" href="/icons/manifest.json"> -->
   <meta name="theme-color" content="#ffffff">
   <link rel="apple-touch-icon" sizes="180x180" href="/icons/Hand-in-Hand-Logo-192x192.png">
   <style>
@@ -441,7 +442,8 @@
     // Mitarbeiterverwaltung (Admin)
     // --------------------------
     async function loadEmployees() {
-      const response = await fetch('/admin-employees');
+      // WICHTIG: URL hier anpassen auf /admin/employees statt /admin-employees
+      const response = await fetch('/admin/employees');
       if (!response.ok) {
         alert('Fehler beim Laden der Mitarbeiter.');
         return;
