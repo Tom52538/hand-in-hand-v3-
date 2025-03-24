@@ -57,6 +57,13 @@ li {
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 
+/* Neu: Wrapper für Tabellen, um horizontales Scrollen zu ermöglichen */
+.table-wrapper {
+  width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
 @media (max-width: 600px) {
   .container {
     width: 95%;
