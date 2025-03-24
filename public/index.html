@@ -13,7 +13,7 @@
     form > div { margin-bottom: 1rem; }
     label { display: block; margin-bottom: 0.3rem; }
 
-    /* --- NEU: Tabellen-Layout für Admin-Bereich --- */
+    /* --- Tabellen-Layout für Admin-Bereich --- */
     table {
       width: 100%;
       border-collapse: collapse;
@@ -116,22 +116,25 @@
       </form>
 
       <h2>Admin Panel</h2>
-      <table id="workHoursTable">
-        <thead>
-          <tr>
-            <th>ID</th>
-            <th>Name</th>
-            <th>Datum</th>
-            <th>Arbeitszeit</th>
-            <th>Stunden</th>
-            <th>Bemerkung</th>
-            <th>Aktionen</th>
-          </tr>
-        </thead>
-        <tbody>
-          <!-- Datensätze werden hier dynamisch geladen -->
-        </tbody>
-      </table>
+      <!-- Neuer Wrapper für responsives Layout -->
+      <div class="table-wrapper">
+        <table id="workHoursTable">
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Name</th>
+              <th>Datum</th>
+              <th>Arbeitszeit</th>
+              <th>Stunden</th>
+              <th>Bemerkung</th>
+              <th>Aktionen</th>
+            </tr>
+          </thead>
+          <tbody>
+            <!-- Datensätze werden hier dynamisch geladen -->
+          </tbody>
+        </table>
+      </div>
       <button id="adminDownloadCsv">Alle Arbeitszeiten als CSV herunterladen</button>
       <button id="adminDeleteData">Alle Arbeitszeiten löschen</button>
     </div>
@@ -213,14 +216,13 @@
       return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
     }
 
-    // Neu: Datum formatieren über toLocaleDateString
+    // Datum formatieren (z. B. "19.03.2025")
     function formatDate(dateStr) {
       if (!dateStr) return "";
-      // Erzeugt z. B. "19.03.2025"
       return new Date(dateStr).toLocaleDateString("de-DE");
     }
 
-    // Neu: Zeit formatieren ("HH:MM:SS" => "HH:MM")
+    // Zeit formatieren ("HH:MM:SS" => "HH:MM")
     function formatTime(timeStr) {
       if (!timeStr) return "";
       return timeStr.slice(0,5);
@@ -293,7 +295,6 @@
       let sumHours = 0;
       data.forEach(entry => {
         const listItem = document.createElement('li');
-        // Datum und Stunden formatieren
         listItem.textContent = `ID: ${entry.id}, Datum: ${formatDate(entry.date)}, Stunden: ${formatDecimalHours(entry.hours)}, Bemerkung: ${entry.comment}`;
         workHoursList.appendChild(listItem);
         sumHours += entry.hours;
@@ -331,7 +332,6 @@
       tableBody.innerHTML = '';
       data.forEach(entry => {
         const row = document.createElement('tr');
-        // Datum & Zeit formatieren
         const dateFormatted = formatDate(entry.date);
         const timeFormatted = `${formatTime(entry.startTime)} - ${formatTime(entry.endTime)}`;
         row.innerHTML = `
@@ -342,44 +342,38 @@
           <td>${formatDecimalHours(entry.hours)}</td>
           <td>${entry.comment || ''}</td>
           <td>
-<button onclick='editEntry(
-  ${entry.id},
-  ${JSON.stringify(entry.name)},
-  ${JSON.stringify(formatDate(entry.date))},
-  ${JSON.stringify(formatTime(entry.startTime))},
-  ${JSON.stringify(formatTime(entry.endTime))},
-  ${JSON.stringify(entry.comment || "")},
-  ${entry.break_time || 0}
-)'>Bearbeiten</button>
-           
+            <button onclick='editEntry(
+              ${entry.id},
+              ${JSON.stringify(entry.name)},
+              ${JSON.stringify(formatDate(entry.date))},
+              ${JSON.stringify(formatTime(entry.startTime))},
+              ${JSON.stringify(formatTime(entry.endTime))},
+              ${JSON.stringify(entry.comment || "")},
+              ${entry.break_time || 0}
+            )'>Bearbeiten</button>
             <button onclick="deleteEntry(${entry.id})">Löschen</button>
           </td>
         `;
         tableBody.appendChild(row);
       });
     }
-function editEntry(id, name, date, startTime, endTime, comment, breakTime) {
-  document.getElementById('editId').value = id;
-  document.getElementById('editName').value = name;
 
-  // Datum absichern und formatieren (z. B. "19.3.2025" → "2025-03-19")
-  let formattedDate = '';
-  if (date && date.includes('.')) {
-    const [day, month, year] = date.split('.');
-    formattedDate = `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
-  }
-  document.getElementById('editDate').value = formattedDate;
-
-  // Zeiten absichern (nur übernehmen, wenn im Format HH:mm)
-  const safeStart = (startTime && startTime.includes(':')) ? startTime : '';
-  const safeEnd = (endTime && endTime.includes(':')) ? endTime : '';
-  document.getElementById('editStartTime').value = safeStart;
-  document.getElementById('editEndTime').value = safeEnd;
-
-  // Kommentar + Pause
-  document.getElementById('editComment').value = comment || '';
-  document.getElementById('editBreakTime').value = breakTime ? Math.round(breakTime * 60) : 0;
-}
+    function editEntry(id, name, date, startTime, endTime, comment, breakTime) {
+      document.getElementById('editId').value = id;
+      document.getElementById('editName').value = name;
+      let formattedDate = '';
+      if (date && date.includes('.')) {
+        const [day, month, year] = date.split('.');
+        formattedDate = `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+      }
+      document.getElementById('editDate').value = formattedDate;
+      const safeStart = (startTime && startTime.includes(':')) ? startTime : '';
+      const safeEnd = (endTime && endTime.includes(':')) ? endTime : '';
+      document.getElementById('editStartTime').value = safeStart;
+      document.getElementById('editEndTime').value = safeEnd;
+      document.getElementById('editComment').value = comment || '';
+      document.getElementById('editBreakTime').value = breakTime ? Math.round(breakTime * 60) : 0;
+    }
 
     async function saveChanges() {
       const id = document.getElementById('editId').value;
@@ -447,7 +441,7 @@ function editEntry(id, name, date, startTime, endTime, comment, breakTime) {
     // Mitarbeiterverwaltung (Admin)
     // --------------------------
     async function loadEmployees() {
-      const response = await fetch('/admin/employees');
+      const response = await fetch('/admin-employees');
       if (!response.ok) {
         alert('Fehler beim Laden der Mitarbeiter.');
         return;
@@ -457,7 +451,7 @@ function editEntry(id, name, date, startTime, endTime, comment, breakTime) {
       list.innerHTML = '';
       employees.forEach(emp => {
         const li = document.createElement('li');
-      li.innerHTML = `ID: ${emp.id} – ${emp.name} (Mo: ${emp.mo_hours || 0}, Di: ${emp.di_hours || 0}, Mi: ${emp.mi_hours || 0}, Do: ${emp.do_hours || 0}, Fr: ${emp.fr_hours || 0})`;
+        li.innerHTML = `ID: ${emp.id} – ${emp.name} (Mo: ${emp.mo_hours || 0}, Di: ${emp.di_hours || 0}, Mi: ${emp.mi_hours || 0}, Do: ${emp.do_hours || 0}, Fr: ${emp.fr_hours || 0})`;
         const editBtn = document.createElement('button');
         editBtn.textContent = 'Bearbeiten';
         editBtn.style.marginLeft = '10px';
@@ -521,7 +515,7 @@ function editEntry(id, name, date, startTime, endTime, comment, breakTime) {
     document.getElementById('addEmployeeForm').addEventListener('submit', async function(event) {
       event.preventDefault();
       const name = document.getElementById('employeeName').value;
-     const mo_hours = parseFloat(document.getElementById('mo_hours').value) || 0;
+      const mo_hours = parseFloat(document.getElementById('mo_hours').value) || 0;
       const di_hours = parseFloat(document.getElementById('di_hours').value) || 0;
       const mi_hours = parseFloat(document.getElementById('mi_hours').value) || 0;
       const do_hours = parseFloat(document.getElementById('do_hours').value) || 0;
@@ -529,7 +523,7 @@ function editEntry(id, name, date, startTime, endTime, comment, breakTime) {
       const response = await fetch('/admin/employees', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-       body: JSON.stringify({ name, mo_hours, di_hours, mi_hours, do_hours, fr_hours })
+        body: JSON.stringify({ name, mo_hours, di_hours, mi_hours, do_hours, fr_hours })
       });
       if (response.ok) {
         alert('Mitarbeiter hinzugefügt!');
@@ -546,24 +540,13 @@ function editEntry(id, name, date, startTime, endTime, comment, breakTime) {
       }
     });
   
-      // Function to calculate work hours
-      function calculateWorkHours(startTime, endTime) {
-        const start = new Date(`1970-01-01T${startTime}:00`);
-        const end = new Date(`1970-01-01T${endTime}:00`);
-        const diff = (end - start) / (1000 * 60 * 60); // Difference in hours
-        return diff;
-      }
-
-    function editEmployeeEntry(entry) {
-  document.getElementById('editEmployeeName').value = entry.name;
-  document.getElementById('editMoHours').value = entry.mo_hours || 0;
-  document.getElementById('editDiHours').value = entry.di_hours || 0;
-  document.getElementById('editMiHours').value = entry.mi_hours || 0;
-  document.getElementById('editDoHours').value = entry.do_hours || 0;
-  document.getElementById('editFrHours').value = entry.fr_hours || 0;
-
-  document.getElementById('editEmployeeForm').classList.remove('hidden');
-}
-    </script>
+    // Funktion zum Berechnen der Arbeitsstunden
+    function calculateWorkHours(startTime, endTime) {
+      const start = new Date(`1970-01-01T${startTime}:00`);
+      const end = new Date(`1970-01-01T${endTime}:00`);
+      const diff = (end - start) / (1000 * 60 * 60);
+      return diff;
+    }
+  </script>
 </body>
 </html>
