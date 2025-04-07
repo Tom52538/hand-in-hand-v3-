@@ -62,11 +62,10 @@
         border-top: 1px solid #eee;
     }
     /* Stil für das neue Formular-Container, falls benötigt */
-    /* Beachte: Dieser Stil gilt jetzt für den Container an seiner *neuen* Position */
     #monthlyBalanceFormContainer {
         margin-top: 1.5rem;
         padding-top: 1.5rem;
-        border-top: 1px solid #eee; /* Visuelle Trennung (wird durch HR ersetzt, aber Stil bleibt) */
+        border-top: 1px solid #eee; /* Visuelle Trennung */
     }
      /* Neu: Readonly/Disabled-Felder optisch abgrenzen */
     input[readonly] {
@@ -207,12 +206,14 @@
         <button type="button" onclick="saveChanges()">Änderungen Speichern</button>
       </form>
 
-      </div> <div id="employeePanel" class="hidden">
-      <hr>
-      <h2>Mitarbeiterverwaltung</h2>
-      <form id="addEmployeeForm">
-         <h3>Neuen Mitarbeiter hinzufügen</h3>
+    </div> <div id="employeePanel" class="hidden">
+      <hr> <h2>Mitarbeiterverwaltung</h2>
 
+      <h3>Aktuelle Mitarbeiter</h3>
+      <ul id="employeeList"></ul>
+
+      <hr> <form id="addEmployeeForm">
+         <h3>Neuen Mitarbeiter hinzufügen</h3>
          <div>
           <label for="employeeName">Name:</label>
           <input type="text" id="employeeName" name="employeeName" required />
@@ -241,10 +242,6 @@
         </div>
         <button type="submit">Mitarbeiter hinzufügen</button>
       </form>
-
-      <hr>
-      <h3>Aktuelle Mitarbeiter</h3>
-      <ul id="employeeList"></ul>
 
       <form id="editEmployeeForm"
        class="hidden">
@@ -587,7 +584,7 @@
       }
     });
 
-    // Mitarbeiter Hinzufügen (Admin)
+    // Mitarbeiter Hinzufügen (Admin - jetzt nach der Liste)
     document.getElementById('addEmployeeForm').addEventListener('submit', async function(event) {
       event.preventDefault();
       const name = document.getElementById('employeeName').value;
@@ -621,7 +618,7 @@
       }
     });
 
-    // Monatsabschluss (jetzt am Ende der Seite)
+    // Monatsabschluss (am Ende der Seite)
     document.getElementById('monthlyBalanceForm').addEventListener('submit', async function(event) {
       event.preventDefault();
       const name = document.getElementById('balanceName').value.trim();
@@ -952,7 +949,7 @@
       editEmployeeForm.classList.add('hidden'); // Formular ausblenden
       editEmployeeForm.reset(); // Formular leeren
       document.getElementById('editEmployeeId').value = ''; // ID leeren
-      // Zeige das Hinzufügen-Formular wieder an
+      // Zeige das Hinzufügen-Formular wieder an (an seiner neuen Position)
       document.getElementById('addEmployeeForm').classList.remove('hidden');
     }
 
