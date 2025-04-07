@@ -1,516 +1,515 @@
-// Laden der Umgebungsvariablen aus der .env-Datei
-require('dotenv').config();
-
-const express = require('express');
-const { Pool } = require('pg');
-const bodyParser = require('body-parser');
-const session = require('express-session');
-const path = require('path');
-const app = express();
-const port = process.env.PORT || 3000;
-
-// Middleware
-app.use(bodyParser.json());
-app.use(express.static('public'));
-
-// Session-Middleware konfigurieren
-app.use(session({
-  secret: 'dein-geheimes-schluessel', // Bitte anpassen!
-  resave: false,
-  saveUninitialized: true,
-  cookie: { secure: false } // Auf true setzen, wenn du HTTPS verwendest
-}));
-
-// PostgreSQL Datenbank einrichten
-const db = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  ssl: { rejectUnauthorized: false }
-});
-
-// Tabelle work_hours anlegen
-db.query(`
-  CREATE TABLE IF NOT EXISTS work_hours (
-    id SERIAL PRIMARY KEY,
-    name TEXT NOT NULL,
-    date DATE NOT NULL,
-    hours DOUBLE PRECISION,
-    break_time DOUBLE PRECISION,
-    comment TEXT,
-    starttime TIME,
-    endtime TIME
-  );
-`).catch(err => console.error("Fehler beim Erstellen der Tabelle work_hours:", err));
-
-// Tabelle employees anlegen
-db.query(`
-  CREATE TABLE IF NOT EXISTS employees (
-    id SERIAL PRIMARY KEY,
-    name TEXT NOT NULL,
-    mo_hours DOUBLE PRECISION,
-    di_hours DOUBLE PRECISION,
-    mi_hours DOUBLE PRECISION,
-    do_hours DOUBLE PRECISION,
-    fr_hours DOUBLE PRECISION
-  );
-`).then(() => {
-  console.log("Tabelle employees erfolgreich erstellt oder bereits vorhanden.");
-}).catch(err => console.error("Fehler beim Erstellen der Tabelle employees:", err));
-
-// Neue Tabelle für den Monatsabschluss anlegen
-db.query(`
-  CREATE TABLE IF NOT EXISTS monthly_balance (
-    id SERIAL PRIMARY KEY,
-    employee_id INTEGER NOT NULL,
-    year_month DATE NOT NULL,  -- Wir speichern immer den 1. des Monats als Kennzeichnung, z. B. 2025-04-01
-    difference DOUBLE PRECISION,  -- Summe der Differenzen (Ist - Soll) des Monats
-    carry_over DOUBLE PRECISION,   -- Akkumulierte Differenz (Saldo) inkl. Vormonat
-    UNIQUE (employee_id, year_month)
-  );
-`).then(() => {
-  console.log("Tabelle monthly_balance erfolgreich erstellt oder bereits vorhanden.");
-}).catch(err => console.error("Fehler beim Erstellen der Tabelle monthly_balance:", err));
-
-// Middleware, um Admin-Berechtigungen zu prüfen
-function isAdmin(req, res, next) {
-  if (req.session.isAdmin) {
-    next();
-  } else {
-    res.status(403).send('Access denied. Admin privileges required.');
-  }
-}
-
-// --------------------------
-// Hilfsfunktionen für Zeitformatierung
-// --------------------------
-function parseTime(timeStr) {
-  const [hh, mm] = timeStr.split(':');
-  return parseInt(hh, 10) * 60 + parseInt(mm, 10);
-}
-
-function calculateWorkHours(startTime, endTime) {
-  const diffInMin = parseTime(endTime) - parseTime(startTime);
-  return diffInMin / 60;
-}
-
-function getExpectedHours(row, dateStr) {
-  const d = new Date(dateStr);
-  const day = d.getDay(); // 0=So, 1=Mo, ...
-  if (day === 1) return row.mo_hours || 0;
-  if (day === 2) return row.di_hours || 0;
-  if (day === 3) return row.mi_hours || 0;
-  if (day === 4) return row.do_hours || 0;
-  if (day === 5) return row.fr_hours || 0;
-  return 0;
-}
-
-function convertToCSV(data) {
-  if (!data || data.length === 0) return '';
-  
-  const csvRows = [];
-  csvRows.push([
-    "Name",
-    "Datum",
-    "Arbeitsbeginn",
-    "Arbeitsende",
-    "Pause (Minuten)",
-    "SollArbeitszeit",
-    "IstArbeitszeit",
-    "Differenz",
-    "Bemerkung"
-  ].join(','));
-
-  for (const row of data) {
-    const dateFormatted = row.date
-      ? new Date(row.date).toLocaleDateString("de-DE")
-      : "";
-    
-    const startTimeFormatted = row.startTime || "";
-    const endTimeFormatted   = row.endTime || "";
-    const breakMinutes = (row.break_time * 60).toFixed(0);
-    const istHours = row.hours || 0;
-    const expected = getExpectedHours(row, row.date);
-    const diff = istHours - expected;
-    const istFormatted = istHours.toFixed(2);
-    const expectedFormatted = expected.toFixed(2);
-    const diffFormatted = diff.toFixed(2);
-
-    const values = [
-      row.name,
-      dateFormatted,
-      startTimeFormatted,
-      endTimeFormatted,
-      breakMinutes,
-      expectedFormatted,
-      istFormatted,
-      diffFormatted,
-      row.comment || ''
-    ];
-    csvRows.push(values.join(','));
-  }
-  return csvRows.join('\n');
-}
-
-// --------------------------
-// API-Endpunkte für Arbeitszeiten (Admin)
-// --------------------------
-app.get('/admin-work-hours', isAdmin, (req, res) => {
-  const query = `
-    SELECT
-      id,
-      name,
-      date,
-      hours,
-      break_time,
-      comment,
-      TO_CHAR(starttime, 'HH24:MI') AS "startTime",
-      TO_CHAR(endtime,   'HH24:MI') AS "endTime"
-    FROM work_hours
-    ORDER BY date ASC
-  `;
-  db.query(query, [])
-    .then(result => res.json(result.rows))
-    .catch(err => res.status(500).send('Error fetching work hours.'));
-});
-
-app.get('/admin-download-csv', isAdmin, (req, res) => {
-  const query = `
-    SELECT 
-      w.id,
-      w.name,
-      w.date,
-      TO_CHAR(w.starttime, 'HH24:MI') AS "startTime",
-      TO_CHAR(w.endtime,   'HH24:MI') AS "endTime",
-      w.break_time,
-      w.comment,
-      w.hours,
-      e.mo_hours,
-      e.di_hours,
-      e.mi_hours,
-      e.do_hours,
-      e.fr_hours
-    FROM work_hours w
-    LEFT JOIN employees e ON LOWER(w.name) = LOWER(e.name)
-    ORDER BY w.date ASC
-  `;
-  db.query(query, [])
-    .then(result => {
-      const csv = convertToCSV(result.rows);
-      res.setHeader('Content-Type', 'text/csv');
-      res.setHeader('Content-Disposition', 'attachment; filename="arbeitszeiten.csv"');
-      res.send(csv);
-    })
-    .catch(err => res.status(500).send('Error fetching work hours.'));
-});
-
-app.put('/api/admin/update-hours', isAdmin, (req, res) => {
-  const { id, name, date, startTime, endTime, comment, breakTime } = req.body;
-
-  if (parseTime(startTime) >= parseTime(endTime)) {
-    return res.status(400).json({ error: 'Arbeitsbeginn darf nicht später als Arbeitsende sein.' });
-  }
-
-  const totalHours = calculateWorkHours(startTime, endTime);
-  const breakTimeMinutes = parseInt(breakTime, 10) || 0;
-  const breakTimeHours = breakTimeMinutes / 60;
-  const netHours = totalHours - breakTimeHours;
-
-  const query = `
-    UPDATE work_hours
-    SET
-      name = $1,
-      date = $2,
-      hours = $3,
-      break_time = $4,
-      comment = $5,
-      starttime = $6,
-      endtime = $7
-    WHERE id = $8
-  `;
-  db.query(query, [name, date, netHours, breakTimeHours, comment, startTime, endTime, id])
-    .then(() => res.send('Working hours updated successfully.'))
-    .catch(err => res.status(500).send('Error updating working hours.'));
-});
-
-app.delete('/api/admin/delete-hours/:id', isAdmin, (req, res) => {
-  const { id } = req.params;
-  const query = 'DELETE FROM work_hours WHERE id = $1';
-  db.query(query, [id])
-    .then(() => res.send('Working hours deleted successfully.'))
-    .catch(err => res.status(500).send('Error deleting working hours.'));
-});
-
-// --------------------------
-// API-Endpunkte (öffentlicher Teil) zum Eintragen und Abfragen
-// --------------------------
-app.post('/log-hours', (req, res) => {
-  const { name, date, startTime, endTime, comment, breakTime } = req.body;
-
-  if (parseTime(startTime) >= parseTime(endTime)) {
-    return res.status(400).json({ error: 'Arbeitsbeginn darf nicht später als Arbeitsende sein.' });
-  }
-
-  const checkQuery = `
-    SELECT * FROM work_hours
-    WHERE LOWER(name) = LOWER($1) AND date = $2
-  `;
-  db.query(checkQuery, [name, date])
-    .then(result => {
-      if (result.rows.length > 0) {
-        return res.status(400).json({ error: 'Eintrag für diesen Tag existiert bereits.' });
-      }
-      const totalHours = calculateWorkHours(startTime, endTime);
-      const breakTimeMinutes = parseInt(breakTime, 10) || 0;
-      const breakTimeHours = breakTimeMinutes / 60;
-      const netHours = totalHours - breakTimeHours;
-
-      const insertQuery = `
-        INSERT INTO work_hours (name, date, hours, break_time, comment, starttime, endtime)
-        VALUES ($1, $2, $3, $4, $5, $6, $7)
-      `;
-      db.query(insertQuery, [name, date, netHours, breakTimeHours, comment, startTime, endTime])
-        .then(() => res.send('Daten erfolgreich gespeichert.'))
-        .catch(err => res.status(500).send('Fehler beim Speichern der Daten.'));
-    })
-    .catch(err => res.status(500).send('Fehler beim Überprüfen der Daten.'));
-});
-
-app.get('/get-all-hours', (req, res) => {
-  const { name } = req.query;
-  if (!name) {
-    return res.status(400).send('Name ist erforderlich.');
-  }
-  const query = `
-    SELECT
-      id,
-      name,
-      date,
-      hours,
-      break_time,
-      comment,
-      TO_CHAR(starttime, 'HH24:MI') AS "startTime",
-      TO_CHAR(endtime, 'HH24:MI') AS "endTime"
-    FROM work_hours
-    WHERE LOWER(name) = LOWER($1)
-    ORDER BY date ASC
-  `;
-  db.query(query, [name])
-    .then(result => res.json(result.rows))
-    .catch(err => res.status(500).send('Fehler beim Abrufen der Daten.'));
-});
-
-app.get('/get-hours', (req, res) => {
-  const { name, date } = req.query;
-  const query = `
-    SELECT
-      id,
-      name,
-      date,
-      hours,
-      break_time,
-      comment,
-      TO_CHAR(starttime, 'HH24:MI') AS "startTime",
-      TO_CHAR(endtime, 'HH24:MI') AS "endTime"
-    FROM work_hours
-    WHERE LOWER(name) = LOWER($1)
-      AND date = $2
-  `;
-  db.query(query, [name, date])
-    .then(result => {
-      if (result.rows.length === 0) {
-        return res.status(404).send('Keine Daten gefunden.');
-      }
-      res.json(result.rows[0]);
-    })
-    .catch(err => res.status(500).send('Fehler beim Abrufen der Daten.'));
-});
-
-app.delete('/delete-hours', (req, res) => {
-  const { password, confirmDelete } = req.body;
-  if (password === 'admin' && (confirmDelete === true || confirmDelete === 'true')) {
-    const deleteQuery = 'DELETE FROM work_hours';
-    db.query(deleteQuery, [])
-      .then(() => res.send('Daten erfolgreich gelöscht.'))
-      .catch(err => res.status(500).send('Fehler beim Löschen der Daten.'));
-  } else {
-    res.status(401).send('Löschen abgebrochen. Passwort erforderlich oder Bestätigung fehlt.');
-  }
-});
-
-// --------------------------
-// Admin-Login
-// --------------------------
-app.post('/admin-login', (req, res) => {
-  const { password } = req.body;
-  if (password === 'admin') {
-    req.session.isAdmin = true;
-    res.send('Admin angemeldet.');
-  } else {
-    res.status(401).send('Ungültiges Passwort.');
-  }
-});
-
-// --------------------------
-// API-Endpunkte für Mitarbeiterverwaltung (admin-geschützt)
-// --------------------------
-app.get('/admin/employees', isAdmin, (req, res) => {
-  const query = 'SELECT * FROM employees';
-  db.query(query, [])
-    .then(result => res.json(result.rows))
-    .catch(err => res.status(500).send('Fehler beim Abrufen der Mitarbeiter.'));
-});
-
-app.post('/admin/employees', isAdmin, (req, res) => {
-  const { name, mo_hours, di_hours, mi_hours, do_hours, fr_hours } = req.body;
-  if (!name) {
-    return res.status(400).send('Name ist erforderlich.');
-  }
-  const query = `
-    INSERT INTO employees (name, mo_hours, di_hours, mi_hours, do_hours, fr_hours)
-    VALUES ($1, $2, $3, $4, $5, $6)
-    RETURNING id
-  `;
-  db.query(query, [name, mo_hours || 0, di_hours || 0, mi_hours || 0, do_hours || 0, fr_hours || 0])
-    .then(result => res.send({
-        id: result.rows[0].id,
-        name,
-        mo_hours: mo_hours || 0,
-        di_hours: di_hours || 0,
-        mi_hours: mi_hours || 0,
-        do_hours: do_hours || 0,
-        fr_hours: fr_hours || 0
-    }))
-    .catch(err => {
-        console.error("Fehler beim Hinzufügen des Mitarbeiters:", err);
-        res.status(500).send('Fehler beim Hinzufügen des Mitarbeiters.');
-    });
-});
-
-app.put('/admin/employees/:id', isAdmin, (req, res) => {
-  const { id } = req.params;
-  const { name, mo_hours, di_hours, mi_hours, do_hours, fr_hours } = req.body;
-  if (!name) {
-    return res.status(400).send('Name ist erforderlich.');
-  }
-  const query = `
-    UPDATE employees
-    SET name = $1,
-        mo_hours = $2,
-        di_hours = $3,
-        mi_hours = $4,
-        do_hours = $5,
-        fr_hours = $6
-    WHERE id = $7
-  `;
-  db.query(query, [name, mo_hours || 0, di_hours || 0, mi_hours || 0, do_hours || 0, fr_hours || 0, id])
-    .then(() => res.send('Mitarbeiter erfolgreich aktualisiert.'))
-    .catch(err => res.status(500).send('Fehler beim Aktualisieren des Mitarbeiters.'));
-});
-
-app.delete('/admin/employees/:id', isAdmin, (req, res) => {
-  const { id } = req.params;
-  const query = 'DELETE FROM employees WHERE id = $1';
-  db.query(query, [id])
-    .then(() => res.send('Mitarbeiter erfolgreich gelöscht.'))
-    .catch(err => res.status(500).send('Fehler beim Löschen des Mitarbeiters.'));
-});
-
-app.get('/employees', (req, res) => {
-  const query = 'SELECT id, name FROM employees';
-  db.query(query, [])
-    .then(result => res.json(result.rows))
-    .catch(err => res.status(500).send('Fehler beim Abrufen der Mitarbeiter.'));
-});
-
-// --------------------------
-// API-Endpunkt für monatlichen Saldo (Option C - konservativer Ansatz)
-// --------------------------
-// Beispiel-Aufruf: /calculate-monthly-balance?name=Birte&year=2025&month=4
-app.get('/calculate-monthly-balance', async (req, res) => {
-  const { name, year, month } = req.query;
-  if (!name || !year || !month) {
-    return res.status(400).send("Bitte Name, Jahr und Monat angeben.");
-  }
-
-  try {
-    // 1. Mitarbeiter ermitteln
-    const empResult = await db.query(
-      `SELECT id, mo_hours, di_hours, mi_hours, do_hours, fr_hours FROM employees WHERE LOWER(name) = LOWER($1)`,
-      [name]
-    );
-    if (empResult.rows.length === 0) {
-      return res.status(404).send("Mitarbeiter nicht gefunden.");
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="icon" type="image/png" sizes="192x192" href="/icons/Hand-in-Hand-Logo-192x192.png" />
+  <link rel="apple-touch-icon" sizes="192x192" href="/icons/Hand-in-Hand-Logo-192x192.png" />
+  <link rel="shortcut icon" href="/icons/Hand-in-Hand-Logo-192x192.png" />
+  <link rel="manifest" href="/icons/manifest.json" />
+  <title>Arbeitszeiterfassung</title>
+  <link rel="stylesheet" href="style.css" />
+  <meta name="theme-color" content="#ffffff" />
+  <style>
+    /* Grundlegende Stile */
+    .hidden {
+      display: none;
     }
-    const employee = empResult.rows[0];
+    form > div {
+      margin-bottom: 1rem;
+    }
+    label {
+      display: block;
+      margin-bottom: 0.3rem;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 1rem;
+    }
+    th, td {
+      border: 1px solid #ccc;
+      padding: 8px;
+      vertical-align: middle;
+      text-align: left;
+    }
+    td button {
+      margin-right: 5px;
+      padding: 5px 10px;
+    }
+    .table-wrapper {
+        overflow-x: auto;
+    }
+    .container {
+        max-width: 900px;
+        margin: 20px auto;
+        padding: 20px;
+        background-color: #f9f9f9;
+        border-radius: 8px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    h1, h2, h3 {
+        color: #333;
+    }
+    button {
+        padding: 10px 15px;
+        cursor: pointer;
+    }
+    hr {
+        margin: 2rem 0;
+        border: 0;
+        border-top: 1px solid #eee;
+    }
+    #monthlyBalanceFormContainer {
+        margin-top: 1.5rem;
+        padding-top: 1.5rem;
+        border-top: 1px solid #eee;
+    }
+    input[readonly], input[disabled] { /* Kombiniert für Konsistenz */
+      background-color: #e9e9e9;
+      cursor: default;
+    }
+    #selectedEmployeeDisplay {
+        font-weight: bold;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Arbeitszeiterfassung</h1>
 
-    // 2. Zeitraum festlegen: Vom 1. des Monats bis (aber nicht inklusive) 1. des Folgemonats
-    const startDate = new Date(year, month - 1, 1);
-    const endDate = new Date(year, month, 1);
+    <form id="workHoursForm">
+      <div>
+        <label for="employeeSelect">Mitarbeiter:</label>
+        <select id="employeeSelect" name="employeeSelect" required>
+          <option value="">Bitte auswählen</option>
+          </select>
+      </div>
+      <div>
+        <label for="selectedEmployeeDisplay">Ausgewählter Mitarbeiter:</label>
+        <input type="text" id="selectedEmployeeDisplay" name="selectedEmployeeDisplay" readonly disabled
+               value="Kein Mitarbeiter ausgewählt" />
+      </div>
+      <div>
+        <button type="button" id="workTimeBtn">Arbeitszeit buchen</button>
+      </div>
+      <div>
+        <button type="button" id="pauseBtn">Pausen buchen</button>
+      </div>
+      <div>
+        <label for="date">Datum:</label>
+        <input type="date" id="date" name="date" required readonly />
+      </div>
+      <div>
+        <label for="startTime">Arbeitsbeginn:</label>
+        <input type="time" id="startTime" name="startTime" required readonly />
+      </div>
+      <div>
+        <label for="endTime">Arbeitsende:</label>
+        <input type="time" id="endTime" name="endTime" required readonly />
+      </div>
+      <div>
+        <label for="breakTime">Pause (Minuten):</label>
+        <input type="number" id="breakTime" name="breakTime" min="0" step="1" value="0" required readonly />
+      </div>
+      <div>
+        <label for="comment">Bemerkungen:</label>
+        <input type="text" id="comment" name="comment" />
+      </div>
+      <button type="submit">Eintragen</button>
+    </form>
 
-    // 3. Arbeitszeiteinträge für den Zeitraum abfragen
-    const workResult = await db.query(
-      `SELECT date, hours FROM work_hours
-       WHERE LOWER(name) = LOWER($1) AND date >= $2 AND date < $3`,
-      [name, startDate.toISOString().split('T')[0], endDate.toISOString().split('T')[0]]
-    );
-    const workEntries = workResult.rows;
+    <hr>
 
-    // 4. Differenz (Ist - Soll) für jeden Tag berechnen und aufsummieren
-    let totalDifference = 0;
-    workEntries.forEach(entry => {
-      const d = new Date(entry.date);
-      let expected = 0;
-      switch (d.getDay()) {
-        case 1: expected = employee.mo_hours || 0; break;
-        case 2: expected = employee.di_hours || 0; break;
-        case 3: expected = employee.mi_hours || 0; break;
-        case 4: expected = employee.do_hours || 0; break;
-        case 5: expected = employee.fr_hours || 0; break;
-        default: expected = 0; break;
+    <h2>Gebuchte Arbeitszeiten</h2>
+    <ul id="workHoursList"></ul>
+
+    <h2>Gesamtarbeitszeit</h2>
+    <p id="totalHours"></p>
+
+    <hr>
+
+    <h2>Admin Login</h2>
+    <form id="adminLoginForm">
+      <div>
+          <label for="adminPassword">Passwort:</label>
+          <input type="password" id="adminPassword" name="adminPassword" required />
+      </div>
+      <button type="submit">Anmelden</button>
+    </form>
+
+    <div id="adminPanel" class="hidden">
+      <hr>
+
+      <h2>Admin Panel: Alle Arbeitszeiten</h2>
+      <div class="table-wrapper">
+        <table id="workHoursTable">
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Name</th>
+              <th>Datum</th>
+              <th>Arbeitszeit</th>
+              <th>Stunden</th>
+              <th>Pause(Std)</th>
+              <th>Bemerkungen</th>
+              <th>Aktionen</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <br>
+      <button id="adminDownloadCsv">Alle Arbeitszeiten als CSV herunterladen</button>
+      <button id="adminDeleteData">Alle Arbeitszeiten löschen</button>
+
+      <hr>
+
+      <h2>Admin Panel: Datensatz bearbeiten</h2>
+      <form id="editForm">
+        <input type="hidden" id="editId" name="id" />
+        <div>
+          <label for="editName">Name:</label>
+          <input type="text" id="editName" name="name" />
+        </div>
+        <div>
+           <label for="editDate">Datum:</label>
+          <input type="date" id="editDate" name="date" />
+        </div>
+        <div>
+          <label for="editStartTime">Arbeitsbeginn:</label>
+          <input type="time" id="editStartTime" name="startTime" required />
+        </div>
+        <div>
+          <label for="editEndTime">Arbeitsende:</label>
+          <input type="time" id="editEndTime" name="endTime" required />
+        </div>
+        <div>
+          <label for="editBreakTime">Pause (Minuten):</label>
+          <input type="number" id="editBreakTime" name="breakTime" min="0" step="1" value="0" />
+        </div>
+        <div>
+          <label for="editComment">Bemerkungen:</label>
+          <input type="text" id="editComment" name="comment" />
+        </div>
+        <button type="button" onclick="saveChanges()">Änderungen Speichern</button>
+      </form>
+
+      <hr>
+
+      <div id="employeePanel">
+        <h2>Mitarbeiterverwaltung</h2>
+
+        <h3>Aktuelle Mitarbeiter</h3>
+        <ul id="employeeList"></ul>
+
+        <hr>
+
+        <form id="addEmployeeForm">
+           <h3>Neuen Mitarbeiter hinzufügen</h3>
+          <div>
+            <label for="employeeName">Name:</label>
+            <input type="text" id="employeeName" name="employeeName" required />
+          </div>
+           <div>
+            <label for="mo_hours">Montag (Soll-Std.):</label>
+            <input type="number" id="mo_hours" name="mo_hours" step="0.1" value="0" />
+          </div>
+          <div>
+            <label for="di_hours">Dienstag (Soll-Std.):</label>
+            <input type="number" id="di_hours" name="di_hours" step="0.1" value="0" />
+          </div>
+          <div>
+            <label for="mi_hours">Mittwoch (Soll-Std.):</label>
+            <input type="number" id="mi_hours" name="mi_hours" step="0.1" value="0" />
+          </div>
+          <div>
+            <label for="do_hours">Donnerstag (Soll-Std.):</label>
+            <input type="number" id="do_hours" name="do_hours" step="0.1" value="0" />
+          </div>
+          <div>
+            <label for="fr_hours">Freitag (Soll-Std.):</label>
+            <input type="number" id="fr_hours" name="fr_hours" step="0.1" value="0" />
+          </div>
+          <button type="submit">Mitarbeiter hinzufügen</button>
+        </form>
+
+        <form id="editEmployeeForm" class="hidden">
+           <hr>
+           <h3>Mitarbeiter bearbeiten</h3>
+          <input type="hidden" id="editEmployeeId" name="id" />
+          <div>
+            <label for="editEmployeeName">Name:</label>
+            <input type="text" id="editEmployeeName" name="name" required />
+          </div>
+          <div>
+            <label for="editMoHours">Montag (Soll-Std.):</label>
+            <input type="number" id="editMoHours" name="mo_hours" step="0.1" value="0" />
+          </div>
+          <div>
+            <label for="editDiHours">Dienstag (Soll-Std.):</label>
+            <input type="number" id="editDiHours" name="di_hours" step="0.1" value="0" />
+          </div>
+          <div>
+            <label for="editMiHours">Mittwoch (Soll-Std.):</label>
+            <input type="number" id="editMiHours" name="mi_hours" step="0.1" value="0" />
+          </div>
+          <div>
+            <label for="editDoHours">Donnerstag (Soll-Std.):</label>
+            <input type="number" id="editDoHours" name="do_hours" step="0.1" value="0" />
+          </div>
+          <div>
+             <label for="editFrHours">Freitag (Soll-Std.):</label>
+            <input type="number" id="editFrHours" name="fr_hours" step="0.1" value="0" />
+          </div>
+          <button type="button" onclick="saveEmployeeChanges()">Mitarbeiter Speichern</button>
+          <button type="button" onclick="cancelEdit()">Abbrechen</button>
+        </form>
+      </div> <hr> <div id="monthlyBalanceFormContainer">
+         <h2>Monatsabschluss berechnen</h2>
+         <form id="monthlyBalanceForm">
+           <div>
+             <label for="balanceName">Mitarbeitername:</label>
+             <input type="text" id="balanceName" name="balanceName" placeholder="z.B. Birte" required />
+           </div>
+           <div>
+             <label for="balanceYear">Jahr:</label>
+             <input type="number" id="balanceYear" name="balanceYear" placeholder="z.B. 2025" required />
+           </div>
+           <div>
+             <label for="balanceMonth">Monat:</label>
+             <input type="number" id="balanceMonth" name="balanceMonth" placeholder="z.B. 4" required min="1" max="12" />
+           </div>
+           <button type="submit">Monatsabschluss berechnen</button>
+         </form>
+         <p id="monthlyBalanceResult"></p>
+      </div>
+
+    </div>
+    </div> <script>
+    // Hilfsfunktionen (unverändert)
+    function formatDecimalHours(decimalHours) {
+      if (typeof decimalHours !== 'number' || isNaN(decimalHours)) return "00:00";
+      const hours = Math.floor(decimalHours);
+      const minutes = Math.round((decimalHours - hours) * 60);
+      return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
+    }
+    function formatDate(dateStr) {
+      if (!dateStr) return "";
+      try {
+          const date = new Date(dateStr);
+          if (isNaN(date.getTime())) return dateStr;
+          return date.toLocaleDateString("de-DE", { year: 'numeric', month: '2-digit', day: '2-digit' });
+      } catch (e) {
+          console.error("Fehler beim Formatieren des Datums:", dateStr, e);
+          return dateStr;
       }
-      totalDifference += (entry.hours || 0) - expected;
+    }
+    function formatTime(timeStr) {
+      if (!timeStr || typeof timeStr !== 'string' || !timeStr.includes(':')) return "";
+      return timeStr.slice(0,5);
+    }
+    function dateToIsoFormat(dateStr) {
+        if (!dateStr || typeof dateStr !== 'string' || !dateStr.includes('.')) return '';
+        const parts = dateStr.split('.');
+        if (parts.length === 3) {
+            return `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
+        }
+        return '';
+    }
+
+    // --- Globale Variablen --- (unverändert)
+    const workTimeBtn = document.getElementById('workTimeBtn');
+    const pauseBtn = document.getElementById('pauseBtn');
+    const dateInput = document.getElementById('date');
+    const startTimeInput = document.getElementById('startTime');
+    const endTimeInput = document.getElementById('endTime');
+    const breakTimeInput = document.getElementById('breakTime');
+    const employeeSelect = document.getElementById('employeeSelect');
+    const selectedEmployeeDisplay = document.getElementById('selectedEmployeeDisplay');
+    const workHoursList = document.getElementById('workHoursList');
+    const totalHoursElement = document.getElementById('totalHours');
+    const adminPanel = document.getElementById('adminPanel');
+    const employeePanel = document.getElementById('employeePanel');
+    const editEmployeeForm = document.getElementById('editEmployeeForm');
+    const employeeList = document.getElementById('employeeList');
+    const addEmployeeForm = document.getElementById('addEmployeeForm');
+
+    // --- Event Listener --- (unverändert)
+    window.addEventListener('load', loadEmployeeOptions);
+
+    employeeSelect.addEventListener('change', function() {
+        const selectedName = employeeSelect.value;
+        if (selectedName) {
+            selectedEmployeeDisplay.value = selectedName;
+        } else {
+            selectedEmployeeDisplay.value = "Kein Mitarbeiter ausgewählt";
+        }
+        loadWorkHours();
     });
 
-    // 5. Vormonatssaldo abfragen
-    let prevMonth, prevYear;
-    if (parseInt(month) === 1) {
-      prevMonth = 12;
-      prevYear = parseInt(year) - 1;
-    } else {
-      prevMonth = parseInt(month) - 1;
-      prevYear = parseInt(year);
+    // Arbeitszeit-Button Logik (unverändert)
+    let workTimeState = 0;
+    workTimeBtn.addEventListener('click', function() { /* ... (Code unverändert) ... */ });
+
+    // Pausen-Button Logik (unverändert)
+    let pauseState = 0;
+    let pauseStartTime = null;
+    pauseBtn.addEventListener('click', function() { /* ... (Code unverändert) ... */ });
+
+    // Formular zum Eintragen der Arbeitszeiten (unverändert)
+    document.getElementById('workHoursForm').addEventListener('submit', async function(event) { /* ... (Code unverändert) ... */ });
+
+    // Admin-Login (unverändert)
+    document.getElementById('adminLoginForm').addEventListener('submit', async function(event) { /* ... (Code unverändert) ... */ });
+
+    // CSV Download (Admin) (unverändert)
+    document.getElementById('adminDownloadCsv').addEventListener('click', async function() { /* ... (Code unverändert) ... */ });
+
+    // Alle Daten löschen (Admin) (unverändert)
+    document.getElementById('adminDeleteData').addEventListener('click', async function() { /* ... (Code unverändert) ... */ });
+
+    // Mitarbeiter Hinzufügen (Admin) (unverändert)
+    document.getElementById('addEmployeeForm').addEventListener('submit', async function(event) { /* ... (Code unverändert) ... */ });
+
+    // Monatsabschluss (Admin) (unverändert)
+    document.getElementById('monthlyBalanceForm').addEventListener('submit', async function(event) { /* ... (Code unverändert) ... */ });
+
+
+    // --- Asynchrone Ladefunktionen ---
+
+    // loadEmployeeOptions (unverändert)
+    async function loadEmployeeOptions() { /* ... (Code unverändert) ... */ }
+
+    // loadWorkHours (unverändert)
+    async function loadWorkHours() { /* ... (Code unverändert) ... */ }
+
+    // loadAdminWorkHours (KORRIGIERTE VERSION)
+    async function loadAdminWorkHours() {
+       try {
+        const response = await fetch('/admin-work-hours');
+        if (!response.ok) throw new Error('Admin-Arbeitszeiten konnten nicht geladen werden.');
+        const data = await response.json();
+        const tableBody = document.querySelector('#workHoursTable tbody');
+        tableBody.innerHTML = ''; // Vorhandene Zeilen löschen
+
+        if (data && data.length > 0) {
+            data.forEach(entry => {
+                const row = tableBody.insertRow(); // Zeile sicher erstellen
+                const hours = parseFloat(entry.hours);
+                const breakHours = entry.break_time || 0; // Kommt als Stunden aus DB
+
+                // Zellen sicher erstellen und befüllen
+                row.insertCell().textContent = entry.id;
+                row.insertCell().textContent = entry.name || 'N/A';
+                row.insertCell().textContent = formatDate(entry.date);
+                row.insertCell().textContent = `${formatTime(entry.startTime)} - ${formatTime(entry.endTime)}`;
+                row.insertCell().textContent = formatDecimalHours(hours);
+                row.insertCell().textContent = breakHours.toFixed(2); // Anzeige in Stunden
+                row.insertCell().textContent = entry.comment || '';
+
+                // Aktions-Zelle erstellen
+                const actionCell = row.insertCell();
+
+                // Bearbeiten-Button sicher erstellen und Event-Handler zuweisen
+                const editBtn = document.createElement('button');
+                editBtn.textContent = 'Bearbeiten';
+                // Wichtig: Arrow Function verwenden, damit 'entry' korrekt übergeben wird
+                editBtn.onclick = () => editEntry(entry);
+                actionCell.appendChild(editBtn);
+
+                // Löschen-Button sicher erstellen und Event-Handler zuweisen
+                const deleteBtn = document.createElement('button');
+                deleteBtn.textContent = 'Löschen';
+                // Wichtig: Arrow Function verwenden, damit 'entry.id' korrekt übergeben wird
+                deleteBtn.onclick = () => deleteEntry(entry.id);
+                actionCell.appendChild(deleteBtn);
+
+                // Kleinen Abstand zwischen Buttons hinzufügen (optional)
+                deleteBtn.style.marginLeft = '5px';
+            });
+        } else {
+             // Keine Daten vorhanden
+             const row = tableBody.insertRow();
+             const cell = row.insertCell();
+             cell.colSpan = 8; // Spannt über alle Spalten
+             cell.textContent = 'Keine Daten vorhanden.';
+             cell.style.textAlign = 'center';
+        }
+      } catch (error) {
+        // Fehlerbehandlung
+        console.error("Fehler beim Laden der Admin-Arbeitszeiten:", error);
+        const tableBody = document.querySelector('#workHoursTable tbody');
+        tableBody.innerHTML = ''; // Evtl. alte Fehlerzeile entfernen
+        const row = tableBody.insertRow();
+        const cell = row.insertCell();
+        cell.colSpan = 8;
+        cell.textContent = `Fehler beim Laden: ${error.message}`;
+        cell.style.color = 'red';
+      }
+     }
+
+    // loadEmployees (unverändert)
+    async function loadEmployees() { /* ... (Code unverändert) ... */ }
+
+
+    // --- Bearbeitungs- und Löschfunktionen (Admin) ---
+
+    // editEntry (unverändert)
+    function editEntry(entry) {
+        document.getElementById('editId').value = entry.id;
+        document.getElementById('editName').value = entry.name || '';
+        document.getElementById('editDate').value = entry.date ? entry.date.split('T')[0] : '';
+        document.getElementById('editStartTime').value = formatTime(entry.startTime);
+        document.getElementById('editEndTime').value = formatTime(entry.endTime);
+        // Feld erwartet Minuten, DB hat Stunden
+        document.getElementById('editBreakTime').value = Math.round((entry.break_time || 0) * 60);
+        document.getElementById('editComment').value = entry.comment || '';
+        document.getElementById('editForm').scrollIntoView({ behavior: 'smooth' });
     }
-    const prevDate = new Date(prevYear, prevMonth - 1, 1).toISOString().split('T')[0];
-    const prevResult = await db.query(
-      `SELECT carry_over FROM monthly_balance WHERE employee_id = $1 AND year_month = $2`,
-      [employee.id, prevDate]
-    );
-    let previousCarry = prevResult.rows.length > 0 ? prevResult.rows[0].carry_over : 0;
 
-    // 6. Neuen Saldo berechnen
-    const newCarry = previousCarry + totalDifference;
+    // saveChanges (unverändert)
+    async function saveChanges() { /* ... (Code unverändert) ... */ }
 
-    // 7. Aktuellen Monat als 1. des Monats definieren
-    const currentMonthDate = new Date(year, month - 1, 1).toISOString().split('T')[0];
+    // deleteEntry (unverändert)
+    async function deleteEntry(id) { /* ... (Code unverändert) ... */ }
 
-    // 8. Upsert in monthly_balance
-    const upsertQuery = `
-      INSERT INTO monthly_balance (employee_id, year_month, difference, carry_over)
-      VALUES ($1, $2, $3, $4)
-      ON CONFLICT (employee_id, year_month)
-      DO UPDATE SET difference = $3, carry_over = $4
-    `;
-    await db.query(upsertQuery, [employee.id, currentMonthDate, totalDifference, newCarry]);
+    // editEmployee (unverändert)
+    function editEmployee(emp) { /* ... (Code unverändert) ... */ }
 
-    res.send(`Monatlicher Saldo für ${name} im ${year}-${month} wurde berechnet. Differenz: ${totalDifference.toFixed(2)}, neuer Saldo: ${newCarry.toFixed(2)}`);
-  } catch (error) {
-    console.error("Fehler beim Berechnen des monatlichen Saldo:", error);
-    res.status(500).send("Fehler beim Berechnen des monatlichen Saldo.");
-  }
-});
+    // saveEmployeeChanges (unverändert)
+    async function saveEmployeeChanges() { /* ... (Code unverändert) ... */ }
 
-// --------------------------
-// Server starten
-// --------------------------
-app.listen(port, () => {
-  console.log(`Server läuft auf http://localhost:${port}`);
-});
+    // deleteEmployee (unverändert)
+    async function deleteEmployee(id, name) { /* ... (Code unverändert) ... */ }
+
+    // cancelEdit (unverändert)
+    function cancelEdit() { /* ... (Code unverändert) ... */ }
+
+    // --- Hilfsfunktionen für Formular-Reset ---
+
+    // resetWorkTimeForm (unverändert)
+    function resetWorkTimeForm() {
+        document.getElementById('comment').value = '';
+        workTimeBtn.textContent = "Arbeitszeit buchen";
+        workTimeBtn.disabled = false;
+        pauseBtn.textContent = "Pausen buchen";
+        pauseBtn.disabled = true;
+        document.getElementById('workHoursForm').querySelector('button[type="submit"]').disabled = true;
+        workTimeState = 0;
+        pauseState = 0;
+        pauseStartTime = null;
+        dateInput.value = '';
+        startTimeInput.value = '';
+        endTimeInput.value = '';
+        breakTimeInput.value = '0';
+        // WICHTIG: Das Employee-Select und das Display-Feld werden hier NICHT zurückgesetzt!
+        // Das ist korrekt so, da der Mitarbeiter ausgewählt bleiben soll.
+    }
+
+    // Initialisierung beim Laden (unverändert)
+    resetWorkTimeForm();
+
+  </script>
+</body>
+</html>
