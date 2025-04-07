@@ -1,3 +1,6 @@
+// Laden der Umgebungsvariablen aus der .env-Datei
+require('dotenv').config();
+
 const express = require('express');
 const { Pool } = require('pg');
 const bodyParser = require('body-parser');
@@ -308,7 +311,6 @@ app.get('/get-all-hours', (req, res) => {
   if (!name) {
     return res.status(400).send('Name ist erforderlich.');
   }
-  // Hier ebenfalls TO_CHAR für die Zeitfelder mit konsistenten Aliasnamen
   const query = `
     SELECT
       id,
