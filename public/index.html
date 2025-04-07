@@ -62,10 +62,11 @@
         border-top: 1px solid #eee;
     }
     /* Stil für das neue Formular-Container, falls benötigt */
+    /* Beachte: Dieser Stil gilt jetzt für den Container an seiner *neuen* Position */
     #monthlyBalanceFormContainer {
         margin-top: 1.5rem;
         padding-top: 1.5rem;
-        border-top: 1px solid #eee; /* Visuelle Trennung */
+        border-top: 1px solid #eee; /* Visuelle Trennung (wird durch HR ersetzt, aber Stil bleibt) */
     }
      /* Neu: Readonly/Disabled-Felder optisch abgrenzen */
     input[readonly] {
@@ -206,27 +207,7 @@
         <button type="button" onclick="saveChanges()">Änderungen Speichern</button>
       </form>
 
-      <div id="monthlyBalanceFormContainer">
-
-         <h2>Monatsabschluss berechnen</h2>
-         <form id="monthlyBalanceForm">
-           <div>
-             <label for="balanceName">Mitarbeitername:</label>
-             <input type="text" id="balanceName" name="balanceName" placeholder="z.B. Birte" required />
-           </div>
-           <div>
-             <label for="balanceYear">Jahr:</label>
-             <input type="number" id="balanceYear" name="balanceYear" placeholder="z.B. 2025" required />
-           </div>
-           <div>
-             <label for="balanceMonth">Monat:</label>
-             <input type="number" id="balanceMonth" name="balanceMonth" placeholder="z.B. 4" required min="1" max="12" />
-           </div>
-           <button type="submit">Monatsabschluss berechnen</button>
-         </form>
-         <p id="monthlyBalanceResult"></p>
-      </div>
-    </div> <div id="employeePanel" class="hidden">
+      </div> <div id="employeePanel" class="hidden">
       <hr>
       <h2>Mitarbeiterverwaltung</h2>
       <form id="addEmployeeForm">
@@ -300,7 +281,27 @@
          <button type="button" onclick="saveEmployeeChanges()">Mitarbeiter Speichern</button>
         <button type="button" onclick="cancelEdit()">Abbrechen</button>
       </form>
-    </div> </div> <script>
+    </div> <hr> <div id="monthlyBalanceFormContainer">
+       <h2>Monatsabschluss berechnen</h2>
+       <form id="monthlyBalanceForm">
+         <div>
+           <label for="balanceName">Mitarbeitername:</label>
+           <input type="text" id="balanceName" name="balanceName" placeholder="z.B. Birte" required />
+         </div>
+         <div>
+           <label for="balanceYear">Jahr:</label>
+           <input type="number" id="balanceYear" name="balanceYear" placeholder="z.B. 2025" required />
+         </div>
+         <div>
+           <label for="balanceMonth">Monat:</label>
+           <input type="number" id="balanceMonth" name="balanceMonth" placeholder="z.B. 4" required min="1" max="12" />
+         </div>
+         <button type="submit">Monatsabschluss berechnen</button>
+       </form>
+       <p id="monthlyBalanceResult"></p>
+    </div>
+
+  </div> <script>
     // Hilfsfunktionen
     function formatDecimalHours(decimalHours) {
       if (typeof decimalHours !== 'number' || isNaN(decimalHours)) return "00:00";
@@ -512,6 +513,7 @@
             alert('Admin erfolgreich angemeldet.'); // Eigene Meldung statt Server-Antwort
             adminPanel.classList.remove('hidden');
             employeePanel.classList.remove('hidden');
+            // HINWEIS: monthlyBalanceFormContainer wird hier NICHT mehr automatisch eingeblendet!
             document.getElementById('adminLoginForm').classList.add('hidden'); // Login-Form ausblenden
 
             await loadAdminWorkHours();
@@ -619,7 +621,7 @@
       }
     });
 
-    // Monatsabschluss (Admin)
+    // Monatsabschluss (jetzt am Ende der Seite)
     document.getElementById('monthlyBalanceForm').addEventListener('submit', async function(event) {
       event.preventDefault();
       const name = document.getElementById('balanceName').value.trim();
@@ -704,10 +706,6 @@
 
                  sumHours += hours;
               }
-              // Korrektur: break_time aus DB ist in Stunden (lt. Analyse vorheriger Schritte), Anzeige soll aber Minuten sein?
-              // Im Code wird es jedoch direkt angezeigt, als wären es Minuten. Das ist inkonsistent mit der Analyse von saveChanges().
-              // Annahme: Der Server liefert 'break_time' bereits in Minuten zurück ODER der Code hier ist fehlerhaft.
-              // Ich behalte den Code bei, wie er ist, aber markiere die potenzielle Inkonsistenz.
               listItem.textContent = `ID: ${entry.id}, Datum: ${formatDate(entry.date)}, Beginn: ${formatTime(entry.startTime)}, Ende: ${formatTime(entry.endTime)}, Pause: ${entry.break_time || 0}min, Stunden: ${formatDecimalHours(hours)}, Bemerk.: ${entry.comment || ''}`;
               workHoursList.appendChild(listItem);
             });
@@ -733,8 +731,7 @@
             data.forEach(entry => {
                 const row = document.createElement('tr');
                 const hours = parseFloat(entry.hours); // Sicherstellen, dass es eine Zahl ist
-                 // Annahme: break_time kommt vom Server und soll als Minuten angezeigt werden.
-                const breakMinutes = entry.break_time || 0;
+                const breakMinutes = entry.break_time || 0; // Standardwert 0
 
 
                  row.innerHTML = `
@@ -810,12 +807,11 @@
         // entry ist das komplette Objekt aus loadAdminWorkHours
         document.getElementById('editId').value = entry.id;
         document.getElementById('editName').value = entry.name || '';
-        // Konvertiere Datum zu YYYY-MM-DD für das Input-Feld
+        // Konvertiere Datum zucameraContinuous-MM-DD für das Input-Feld
         document.getElementById('editDate').value = entry.date ? entry.date.split('T')[0] : ''; // Nur Datumsteil nehmen
         document.getElementById('editStartTime').value = formatTime(entry.startTime);
         document.getElementById('editEndTime').value = formatTime(entry.endTime);
-        // Annahme: Feld #editBreakTime erwartet Minuten. entry.break_time kommt vom Server (vermutlich auch Minuten, s. loadAdminWorkHours)
-        document.getElementById('editBreakTime').value = entry.break_time || 0;
+        document.getElementById('editBreakTime').value = entry.break_time || 0; // Annahme: Minuten
         document.getElementById('editComment').value = entry.comment || '';
 
          // Optional: Zum Bearbeitungsformular scrollen
@@ -846,7 +842,6 @@
         }
 
         try {
-            // API /api/admin/update-hours erwartet 'breakTime' in Minuten (lt. Server-Code Analyse aus vorherigen Schritten)
             const response = await fetch('/api/admin/update-hours', { // Annahme: Endpunkt für Update
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
