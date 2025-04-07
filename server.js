@@ -27,12 +27,7 @@ const db = new Pool({
   ssl: { rejectUnauthorized: false }
 });
 
-/**
- * Tabelle work_hours:
- * - starttime und endtime als TIME (klein geschrieben in der DB).
- * Tabelle employees:
- * - enthält Sollstunden pro Wochentag
- */
+// Tabelle work_hours anlegen
 db.query(`
   CREATE TABLE IF NOT EXISTS work_hours (
     id SERIAL PRIMARY KEY,
@@ -46,6 +41,7 @@ db.query(`
   );
 `).catch(err => console.error("Fehler beim Erstellen der Tabelle work_hours:", err));
 
+// Tabelle employees anlegen
 db.query(`
   CREATE TABLE IF NOT EXISTS employees (
     id SERIAL PRIMARY KEY,
@@ -60,7 +56,7 @@ db.query(`
   console.log("Tabelle employees erfolgreich erstellt oder bereits vorhanden.");
 }).catch(err => console.error("Fehler beim Erstellen der Tabelle employees:", err));
 
-// Neue Tabelle für den Monatsabschluss anlegen (aus server_js_addon1.txt)
+// Neue Tabelle für den Monatsabschluss anlegen
 db.query(`
   CREATE TABLE IF NOT EXISTS monthly_balance (
     id SERIAL PRIMARY KEY,
@@ -74,7 +70,6 @@ db.query(`
   console.log("Tabelle monthly_balance erfolgreich erstellt oder bereits vorhanden.");
 }).catch(err => console.error("Fehler beim Erstellen der Tabelle monthly_balance:", err));
 
-
 // Middleware, um Admin-Berechtigungen zu prüfen
 function isAdmin(req, res, next) {
   if (req.session.isAdmin) {
@@ -87,25 +82,16 @@ function isAdmin(req, res, next) {
 // --------------------------
 // Hilfsfunktionen für Zeitformatierung
 // --------------------------
-/**
- * parseTime("HH:MM") -> Anzahl Minuten seit 00:00
- */
 function parseTime(timeStr) {
   const [hh, mm] = timeStr.split(':');
   return parseInt(hh, 10) * 60 + parseInt(mm, 10);
 }
 
-/**
- * calculateWorkHours("HH:MM", "HH:MM") -> Anzahl Stunden als Zahl (z. B. 7.5)
- */
 function calculateWorkHours(startTime, endTime) {
   const diffInMin = parseTime(endTime) - parseTime(startTime);
-  return diffInMin / 60; // Stunden
+  return diffInMin / 60;
 }
 
-/**
- * Ermittelt anhand des Wochentags die Soll-Stunden (aus employees.*_hours)
- */
 function getExpectedHours(row, dateStr) {
   const d = new Date(dateStr);
   const day = d.getDay(); // 0=So, 1=Mo, ...
@@ -117,14 +103,9 @@ function getExpectedHours(row, dateStr) {
   return 0;
 }
 
-/**
- * CSV-Funktion mit den Spalten:
- * 1. Name, 2. Datum, 3. Arbeitsbeginn, 4. Arbeitsende,
- * 5. Pause (Minuten), 6. Soll-Arbeitszeit, 7. Ist-Arbeitszeit,
- * 8. Differenz, 9. Bemerkung
- */
 function convertToCSV(data) {
   if (!data || data.length === 0) return '';
+  
   const csvRows = [];
   csvRows.push([
     "Name",
@@ -142,11 +123,9 @@ function convertToCSV(data) {
     const dateFormatted = row.date
       ? new Date(row.date).toLocaleDateString("de-DE")
       : "";
-
-    // Hier greifen wir auf die konsistenten Felder zu:
+    
     const startTimeFormatted = row.startTime || "";
-    const endTimeFormatted   = row.endTime   || "";
-    // break_time ist in Stunden gespeichert, daher * 60 für Minuten
+    const endTimeFormatted   = row.endTime || "";
     const breakMinutes = (row.break_time * 60).toFixed(0);
     const istHours = row.hours || 0;
     const expected = getExpectedHours(row, row.date);
@@ -154,6 +133,7 @@ function convertToCSV(data) {
     const istFormatted = istHours.toFixed(2);
     const expectedFormatted = expected.toFixed(2);
     const diffFormatted = diff.toFixed(2);
+
     const values = [
       row.name,
       dateFormatted,
@@ -173,11 +153,6 @@ function convertToCSV(data) {
 // --------------------------
 // API-Endpunkte für Arbeitszeiten (Admin)
 // --------------------------
-/**
- * Liefert alle Einträge an den Admin.
- * Hier wird TO_CHAR verwendet, um starttime und endtime als "HH24:MI" zurückzugeben,
- * mit Alias "startTime" und "endTime".
- */
 app.get('/admin-work-hours', isAdmin, (req, res) => {
   const query = `
     SELECT
@@ -197,13 +172,9 @@ app.get('/admin-work-hours', isAdmin, (req, res) => {
     .catch(err => res.status(500).send('Error fetching work hours.'));
 });
 
-/**
- * CSV-Download
- * Hier erfolgt ebenfalls die Umwandlung via TO_CHAR und die Aliasnamen werden angepasst.
- */
 app.get('/admin-download-csv', isAdmin, (req, res) => {
   const query = `
-    SELECT
+    SELECT 
       w.id,
       w.name,
       w.date,
@@ -231,13 +202,9 @@ app.get('/admin-download-csv', isAdmin, (req, res) => {
     .catch(err => res.status(500).send('Error fetching work hours.'));
 });
 
-/**
- * Update von Arbeitszeiten
- */
 app.put('/api/admin/update-hours', isAdmin, (req, res) => {
   const { id, name, date, startTime, endTime, comment, breakTime } = req.body;
 
-  // Validierung: Arbeitsbeginn muss vor Arbeitsende liegen
   if (parseTime(startTime) >= parseTime(endTime)) {
     return res.status(400).json({ error: 'Arbeitsbeginn darf nicht später als Arbeitsende sein.' });
   }
@@ -264,9 +231,6 @@ app.put('/api/admin/update-hours', isAdmin, (req, res) => {
     .catch(err => res.status(500).send('Error updating working hours.'));
 });
 
-/**
- * Löschen eines einzelnen Eintrags
- */
 app.delete('/api/admin/delete-hours/:id', isAdmin, (req, res) => {
   const { id } = req.params;
   const query = 'DELETE FROM work_hours WHERE id = $1';
@@ -278,13 +242,9 @@ app.delete('/api/admin/delete-hours/:id', isAdmin, (req, res) => {
 // --------------------------
 // API-Endpunkte (öffentlicher Teil) zum Eintragen und Abfragen
 // --------------------------
-/**
- * Neue Arbeitszeit eintragen
- */
 app.post('/log-hours', (req, res) => {
   const { name, date, startTime, endTime, comment, breakTime } = req.body;
 
-  // Validierung: Arbeitsbeginn muss vor Arbeitsende liegen
   if (parseTime(startTime) >= parseTime(endTime)) {
     return res.status(400).json({ error: 'Arbeitsbeginn darf nicht später als Arbeitsende sein.' });
   }
@@ -314,9 +274,6 @@ app.post('/log-hours', (req, res) => {
     .catch(err => res.status(500).send('Fehler beim Überprüfen der Daten.'));
 });
 
-/**
- * Alle Arbeitszeiten einer Person abrufen
- */
 app.get('/get-all-hours', (req, res) => {
   const { name } = req.query;
   if (!name) {
@@ -331,7 +288,7 @@ app.get('/get-all-hours', (req, res) => {
       break_time,
       comment,
       TO_CHAR(starttime, 'HH24:MI') AS "startTime",
-      TO_CHAR(endtime,   'HH24:MI') AS "endTime"
+      TO_CHAR(endtime, 'HH24:MI') AS "endTime"
     FROM work_hours
     WHERE LOWER(name) = LOWER($1)
     ORDER BY date ASC
@@ -341,9 +298,6 @@ app.get('/get-all-hours', (req, res) => {
     .catch(err => res.status(500).send('Fehler beim Abrufen der Daten.'));
 });
 
-/**
- * Spezifische Arbeitszeit (Tag) einer Person abrufen
- */
 app.get('/get-hours', (req, res) => {
   const { name, date } = req.query;
   const query = `
@@ -355,7 +309,7 @@ app.get('/get-hours', (req, res) => {
       break_time,
       comment,
       TO_CHAR(starttime, 'HH24:MI') AS "startTime",
-      TO_CHAR(endtime,   'HH24:MI') AS "endTime"
+      TO_CHAR(endtime, 'HH24:MI') AS "endTime"
     FROM work_hours
     WHERE LOWER(name) = LOWER($1)
       AND date = $2
@@ -370,9 +324,6 @@ app.get('/get-hours', (req, res) => {
     .catch(err => res.status(500).send('Fehler beim Abrufen der Daten.'));
 });
 
-/**
- * Gesamte Tabelle work_hours löschen (mit Admin-Passwort)
- */
 app.delete('/delete-hours', (req, res) => {
   const { password, confirmDelete } = req.body;
   if (password === 'admin' && (confirmDelete === true || confirmDelete === 'true')) {
@@ -420,7 +371,7 @@ app.post('/admin/employees', isAdmin, (req, res) => {
   `;
   db.query(query, [name, mo_hours || 0, di_hours || 0, mi_hours || 0, do_hours || 0, fr_hours || 0])
     .then(result => res.send({
-        id: result.rows[0].id, // Rückgabe der neu generierten ID
+        id: result.rows[0].id,
         name,
         mo_hours: mo_hours || 0,
         di_hours: di_hours || 0,
@@ -433,7 +384,6 @@ app.post('/admin/employees', isAdmin, (req, res) => {
         res.status(500).send('Fehler beim Hinzufügen des Mitarbeiters.');
     });
 });
-
 
 app.put('/admin/employees/:id', isAdmin, (req, res) => {
   const { id } = req.params;
@@ -464,7 +414,6 @@ app.delete('/admin/employees/:id', isAdmin, (req, res) => {
     .catch(err => res.status(500).send('Fehler beim Löschen des Mitarbeiters.'));
 });
 
-// Öffentlich: Nur die Namen und IDs
 app.get('/employees', (req, res) => {
   const query = 'SELECT id, name FROM employees';
   db.query(query, [])
@@ -473,9 +422,8 @@ app.get('/employees', (req, res) => {
 });
 
 // --------------------------
-// API-Endpunkt für monatlichen Saldo (aus server_js_addon2.txt)
+// API-Endpunkt für monatlichen Saldo (Option C - konservativer Ansatz)
 // --------------------------
-// API-Endpunkt zur Berechnung des monatlichen Saldo für einen Mitarbeiter
 // Beispiel-Aufruf: /calculate-monthly-balance?name=Birte&year=2025&month=4
 app.get('/calculate-monthly-balance', async (req, res) => {
   const { name, year, month } = req.query;
@@ -494,7 +442,7 @@ app.get('/calculate-monthly-balance', async (req, res) => {
     }
     const employee = empResult.rows[0];
 
-    // 2. Zeitraum festlegen: vom 1. des Monats bis (aber nicht inklusive) 1. des Folgemonats
+    // 2. Zeitraum festlegen: Vom 1. des Monats bis (aber nicht inklusive) 1. des Folgemonats
     const startDate = new Date(year, month - 1, 1);
     const endDate = new Date(year, month, 1);
 
@@ -511,7 +459,6 @@ app.get('/calculate-monthly-balance', async (req, res) => {
     workEntries.forEach(entry => {
       const d = new Date(entry.date);
       let expected = 0;
-      // Wochentag: 0=So, 1=Mo, ... 5=Fr, 6=Sa
       switch (d.getDay()) {
         case 1: expected = employee.mo_hours || 0; break;
         case 2: expected = employee.di_hours || 0; break;
@@ -523,7 +470,7 @@ app.get('/calculate-monthly-balance', async (req, res) => {
       totalDifference += (entry.hours || 0) - expected;
     });
 
-    // 5. Vormonat bestimmen
+    // 5. Vormonatssaldo abfragen
     let prevMonth, prevYear;
     if (parseInt(month) === 1) {
       prevMonth = 12;
@@ -533,21 +480,19 @@ app.get('/calculate-monthly-balance', async (req, res) => {
       prevYear = parseInt(year);
     }
     const prevDate = new Date(prevYear, prevMonth - 1, 1).toISOString().split('T')[0];
-
-    // 6. Vormonatssaldo abfragen (falls vorhanden)
     const prevResult = await db.query(
       `SELECT carry_over FROM monthly_balance WHERE employee_id = $1 AND year_month = $2`,
       [employee.id, prevDate]
     );
     let previousCarry = prevResult.rows.length > 0 ? prevResult.rows[0].carry_over : 0;
 
-    // 7. Neuen Saldo berechnen
+    // 6. Neuen Saldo berechnen
     const newCarry = previousCarry + totalDifference;
 
-    // 8. Aktuellen Monat als 1. des Monats definieren
+    // 7. Aktuellen Monat als 1. des Monats definieren
     const currentMonthDate = new Date(year, month - 1, 1).toISOString().split('T')[0];
 
-    // 9. Upsert in monthly_balance (bei Konflikt aktualisieren)
+    // 8. Upsert in monthly_balance
     const upsertQuery = `
       INSERT INTO monthly_balance (employee_id, year_month, difference, carry_over)
       VALUES ($1, $2, $3, $4)
@@ -562,7 +507,6 @@ app.get('/calculate-monthly-balance', async (req, res) => {
     res.status(500).send("Fehler beim Berechnen des monatlichen Saldo.");
   }
 });
-
 
 // --------------------------
 // Server starten
