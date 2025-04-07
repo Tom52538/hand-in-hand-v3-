@@ -44,7 +44,15 @@
     <h1>Arbeitszeiterfassung</h1>
 
     <form id="workHoursForm">
-      <!-- Button 1: Erfasst Arbeitsbeginn (mit Datum) und Arbeitsende -->
+      <!-- Abschnitt 2: Mitarbeiter-Auswahl -->
+      <div>
+        <label for="employeeSelect">Mitarbeiter:</label>
+        <select id="employeeSelect" name="employeeSelect" required>
+          <option value="">Bitte auswählen</option>
+        </select>
+      </div>
+
+      <!-- Button 1: Erfasst Arbeitszeit (Datum und Arbeitsbeginn bzw. Arbeitsende) -->
       <div>
         <button type="button" id="workTimeBtn">Arbeitszeit buchen</button>
       </div>
@@ -245,7 +253,7 @@
     }
     window.addEventListener('load', loadEmployeeOptions);
 
-    // Variablen für Arbeitszeit-Button
+    // Arbeitszeit-Button Logik: Beim ersten Klick werden Datum und Arbeitsbeginn gesetzt, beim zweiten Klick Arbeitsende
     let workTimeState = 0; // 0: Arbeitsbeginn noch nicht erfasst, 1: Arbeitsbeginn erfasst
     document.getElementById('workTimeBtn').addEventListener('click', function() {
       const now = new Date();
@@ -271,7 +279,7 @@
       }
     });
 
-    // Variablen für Pausen-Button
+    // Pausen-Button Logik: Beim ersten Klick Pausenstart, beim zweiten Klick Pausenende und Dauer berechnen
     let pauseState = 0;
     let pauseStartTime = null;
     document.getElementById('pauseBtn').addEventListener('click', function() {
@@ -497,7 +505,7 @@
         const editBtn = document.createElement('button');
         editBtn.textContent = 'Bearbeiten';
         editBtn.style.marginLeft = '10px';
-        editBtn.onclick = () => { editEmployeeEntry(emp); };
+        editBtn.onclick = () => { editEmployee(emp); };
         const deleteBtn = document.createElement('button');
         deleteBtn.textContent = 'Löschen';
         deleteBtn.style.marginLeft = '10px';
@@ -538,7 +546,7 @@
       const mi_hours = parseFloat(document.getElementById('editMiHours').value) || 0;
       const do_hours = parseFloat(document.getElementById('editDoHours').value) || 0;
       const fr_hours = parseFloat(document.getElementById('editFrHours').value) || 0;
-      const response = await fetch(`/admin/employees/${id}`, {
+      const response = await fetch(`/admin/employees/${document.getElementById('editEmployeeId').value}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name, mo_hours, di_hours, mi_hours, do_hours, fr_hours })
