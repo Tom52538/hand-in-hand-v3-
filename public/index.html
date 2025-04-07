@@ -42,10 +42,13 @@
           <option value="">Bitte auswählen</option>
         </select>
       </div>
-      <!-- Datum -->
+      <!-- Datum: Neuer Button zur automatischen Erfassung -->
+      <div>
+        <button type="button" id="dateBtn">Datum erfassen</button>
+      </div>
       <div>
         <label for="date">Datum:</label>
-        <input type="date" id="date" name="date" required>
+        <input type="date" id="date" name="date" required readonly>
       </div>
       <!-- Neue Buttons für automatische Zeitbuchung -->
       <div>
@@ -244,7 +247,22 @@
     }
     window.addEventListener('load', loadEmployeeOptions);
 
-    // Variablen für Button-Logik
+    // Neue Logik: Datum automatisch erfassen per Button
+    document.getElementById('dateBtn').addEventListener('click', function() {
+      const today = new Date();
+      const year = today.getFullYear();
+      const month = String(today.getMonth() + 1).padStart(2, '0');
+      const day = String(today.getDate()).padStart(2, '0');
+      const dateString = `${year}-${month}-${day}`;
+      document.getElementById('date').value = dateString;
+      if (confirm("Datum-Buchung ok? (" + dateString + ")")) {
+        this.disabled = true;
+      } else {
+        document.getElementById('date').value = "";
+      }
+    });
+
+    // Variablen für Button-Logik bei Arbeitszeit und Pause
     let workTimeState = 0;  // 0: Arbeitsbeginn noch nicht erfasst, 1: Arbeitsbeginn erfasst
     let pauseState = 0;     // 0: Pausenstart noch nicht erfasst, 1: Pausenstart erfasst
     let pauseStartTime = null;
