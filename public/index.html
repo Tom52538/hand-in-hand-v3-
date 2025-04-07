@@ -12,31 +12,31 @@
   <meta name="theme-color" content="#ffffff" />
   <link rel="apple-touch-icon" sizes="180x180" href="/icons/Hand-in-Hand-Logo-192x192.png" />
   <style>
-    .hidden {
+    /* [Source 1] */ .hidden {
       display: none;
-    }
+    /* [Source 2] */ }
     form > div {
       margin-bottom: 1rem;
-    }
+    /* [Source 3] */ }
     label {
       display: block;
       margin-bottom: 0.3rem;
-    }
+    /* [Source 4] */ }
     /* Tabellen-Layout für Admin-Bereich */
     table {
       width: 100%;
-      border-collapse: collapse;
+      /* [Source 5] */ border-collapse: collapse;
     }
     th,
     td {
       border: 1px solid #ccc;
-      padding: 8px;
+      /* [Source 6] */ padding: 8px;
       vertical-align: middle;
       text-align: left;
     }
     td button {
       margin-right: 5px;
-    }
+    /* [Source 7] */ }
   </style>
 </head>
 <body>
@@ -44,7 +44,6 @@
     <h1>Arbeitszeiterfassung</h1>
 
     <form id="workHoursForm">
-      <!-- Abschnitt 2: Mitarbeiter-Auswahl -->
       <div>
         <label for="employeeSelect">Mitarbeiter:</label>
         <select id="employeeSelect" name="employeeSelect" required>
@@ -52,21 +51,18 @@
         </select>
       </div>
 
-      <!-- Button 1: Erfasst Arbeitszeit (Datum und Arbeitsbeginn bzw. Arbeitsende) -->
       <div>
-        <button type="button" id="workTimeBtn">Arbeitszeit buchen</button>
+        {/* [Source 8] */}       <button type="button" id="workTimeBtn">Arbeitszeit buchen</button>
       </div>
-      <!-- Button 2: Erfasst Pausenzeiten -->
       <div>
         <button type="button" id="pauseBtn">Pausen buchen</button>
       </div>
 
-      <!-- Felder in gewünschter Reihenfolge -->
       <div>
         <label for="date">Datum:</label>
         <input type="date" id="date" name="date" required readonly />
       </div>
-      <div>
+      {/* [Source 9] */}  <div>
         <label for="startTime">Arbeitsbeginn:</label>
         <input type="time" id="startTime" name="startTime" required readonly />
       </div>
@@ -77,7 +73,7 @@
       <div>
         <label for="breakTime">Pause (Minuten):</label>
         <input type="number" id="breakTime" name="breakTime" min="0" step="1" value="0" required readonly />
-      </div>
+        {/* [Source 10] */}     </div>
       <div>
         <label for="comment">Bemerkungen:</label>
         <input type="text" id="comment" name="comment" />
@@ -95,10 +91,9 @@
     <form id="adminLoginForm">
       <label for="adminPassword">Passwort:</label>
       <input type="password" id="adminPassword" name="adminPassword" required />
-      <button type="submit">Anmelden</button>
+      {/* [Source 11] */}  <button type="submit">Anmelden</button>
     </form>
 
-    <!-- Admin-Funktionen -->
     <div id="adminPanel" class="hidden">
       <h2>Datensatz bearbeiten</h2>
       <form id="editForm">
@@ -108,7 +103,7 @@
           <input type="text" id="editName" name="name" />
         </div>
         <div>
-          <label for="editDate">Datum:</label>
+          {/* [Source 12] */}    <label for="editDate">Datum:</label>
           <input type="date" id="editDate" name="date" />
         </div>
         <div>
@@ -117,7 +112,7 @@
         </div>
         <div>
           <label for="editEndTime">Arbeitsende:</label>
-          <input type="time" id="editEndTime" name="endTime" required />
+          <input type="time" id="editEndTime"           {/* [Source 13] */} name="endTime" required />
         </div>
         <div>
           <label for="editBreakTime">Pause (Minuten):</label>
@@ -127,7 +122,7 @@
           <label for="editComment">Bemerkungen:</label>
           <input type="text" id="editComment" name="comment" />
         </div>
-        <button type="button" onclick="saveChanges()">Speichern</button>
+        {/* [Source 14] */}     <button type="button" onclick="saveChanges()">Speichern</button>
       </form>
 
       <h2>Admin Panel</h2>
@@ -138,7 +133,7 @@
               <th>ID</th>
               <th>Name</th>
               <th>Datum</th>
-              <th>Arbeitszeit</th>
+              {/* [Source 15] */}              <th>Arbeitszeit</th>
               <th>Stunden</th>
               <th>Bemerkungen</th>
               <th>Aktionen</th>
@@ -146,12 +141,11 @@
           </thead>
           <tbody></tbody>
         </table>
-      </div>
+        {/* [Source 16] */}  </div>
       <button id="adminDownloadCsv">Alle Arbeitszeiten als CSV herunterladen</button>
       <button id="adminDeleteData">Alle Arbeitszeiten löschen</button>
     </div>
 
-    <!-- Mitarbeiterverwaltung (Admin) -->
     <div id="employeePanel" class="hidden">
       <h2>Mitarbeiterverwaltung</h2>
       <form id="addEmployeeForm">
@@ -159,7 +153,7 @@
           <label for="employeeName">Name:</label>
           <input type="text" id="employeeName" name="employeeName" required />
         </div>
-        <div>
+        {/* [Source 17] */}  <div>
           <label for="mo_hours">Montag (Stunden):</label>
           <input type="number" id="mo_hours" name="mo_hours" step="0.1" value="0" />
         </div>
@@ -168,7 +162,7 @@
           <input type="number" id="di_hours" name="di_hours" step="0.1" value="0" />
         </div>
         <div>
-          <label for="mi_hours">Mittwoch (Stunden):</label>
+          <label           {/* [Source 18] */} for="mi_hours">Mittwoch (Stunden):</label>
           <input type="number" id="mi_hours" name="mi_hours" step="0.1" value="0" />
         </div>
         <div>
@@ -177,7 +171,7 @@
         </div>
         <div>
           <label for="fr_hours">Freitag (Stunden):</label>
-          <input type="number" id="fr_hours" name="fr_hours" step="0.1" value="0" />
+          <input           {/* [Source 19] */} type="number" id="fr_hours" name="fr_hours" step="0.1" value="0" />
         </div>
         <button type="submit">Mitarbeiter hinzufügen</button>
       </form>
@@ -190,7 +184,7 @@
         <input type="hidden" id="editEmployeeId" name="id" />
         <div>
           <label for="editEmployeeName">Name:</label>
-          <input type="text" id="editEmployeeName" name="name" required />
+          <input           {/* [Source 20] */} type="text" id="editEmployeeName" name="name" required />
         </div>
         <div>
           <label for="editMoHours">Montag (Stunden):</label>
@@ -199,7 +193,7 @@
         <div>
           <label for="editDiHours">Dienstag (Stunden):</label>
           <input type="number" id="editDiHours" name="di_hours" step="0.1" value="0" />
-        </div>
+          {/* [Source 21] */} </div>
         <div>
           <label for="editMiHours">Mittwoch (Stunden):</label>
           <input type="number" id="editMiHours" name="mi_hours" step="0.1" value="0" />
@@ -209,52 +203,71 @@
           <input type="number" id="editDoHours" name="do_hours" step="0.1" value="0" />
         </div>
         <div>
-          <label for="editFrHours">Freitag (Stunden):</label>
+          {/* [Source 22] */}       <label for="editFrHours">Freitag (Stunden):</label>
           <input type="number" id="editFrHours" name="fr_hours" step="0.1" value="0" />
         </div>
         <button type="button" onclick="saveEmployeeChanges()">Speichern</button>
         <button type="button" onclick="cancelEdit()">Abbrechen</button>
       </form>
     </div>
-  </div>
 
-  <script>
+    {/* [Source 89] */} <div id="monthlyBalanceFormContainer">
+  <h2>Monatsabschluss berechnen</h2>
+  <form id="monthlyBalanceForm">
+    <div>
+      <label for="balanceName">Mitarbeitername:</label>
+      <input type="text" id="balanceName" name="balanceName" placeholder="z.B. Birte" required />
+    </div>
+    <div>
+      <label for="balanceYear">Jahr:</label>
+      <input type="number" id="balanceYear" name="balanceYear" placeholder="z.B. 2025" required />
+    </div>
+    <div>
+      <label for="balanceMonth">Monat:</label>
+      <input type="number" id="balanceMonth" name="balanceMonth" placeholder="z.B. 4" required min="1" max="12" />
+    </div>
+    {/* [Source 90] */}   <button type="submit">Monatsabschluss berechnen</button>
+  </form>
+  <p id="monthlyBalanceResult"></p>
+</div>
+    </div> <script>
     // Hilfsfunktionen
     function formatDecimalHours(decimalHours) {
       const hours = Math.floor(decimalHours);
-      const minutes = Math.round((decimalHours - hours) * 60);
+      {/* [Source 23] */} const minutes = Math.round((decimalHours - hours) * 60);
       return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
-    }
+    /* [Source 24] */ }
     function formatDate(dateStr) {
       if (!dateStr) return "";
       return new Date(dateStr).toLocaleDateString("de-DE");
-    }
+    /* [Source 25] */ }
     function formatTime(timeStr) {
       if (!timeStr) return "";
       return timeStr.slice(0,5);
-    }
+    /* [Source 26] */ }
 
     // Mitarbeiter-Dropdown laden
     async function loadEmployeeOptions() {
       const response = await fetch('/employees');
-      if (!response.ok) {
+      {/* [Source 27] */} if (!response.ok) {
         console.error("Fehler beim Laden der Mitarbeiteroptionen.");
         return;
-      }
+      /* [Source 28] */ }
       const employees = await response.json();
       const select = document.getElementById('employeeSelect');
       select.innerHTML = '<option value="">Bitte auswählen</option>';
-      employees.forEach(emp => {
+      {/* [Source 29] */} employees.forEach(emp => {
         const option = document.createElement('option');
         option.value = emp.name;
         option.textContent = emp.name;
         select.appendChild(option);
       });
-    }
+    /* [Source 30] */ }
     window.addEventListener('load', loadEmployeeOptions);
 
     // Arbeitszeit-Button Logik: Beim ersten Klick werden Datum und Arbeitsbeginn gesetzt, beim zweiten Klick Arbeitsende
-    let workTimeState = 0; // 0: Arbeitsbeginn noch nicht erfasst, 1: Arbeitsbeginn erfasst
+    let workTimeState = 0;
+    {/* [Source 31] */} // 0: Arbeitsbeginn noch nicht erfasst, 1: Arbeitsbeginn erfasst
     document.getElementById('workTimeBtn').addEventListener('click', function() {
       const now = new Date();
       const currentTime = now.toTimeString().slice(0,5);
@@ -263,7 +276,7 @@
         const year = now.getFullYear();
         const month = String(now.getMonth() + 1).padStart(2, '0');
         const day = String(now.getDate()).padStart(2, '0');
-        const dateString = `${year}-${month}-${day}`;
+        {/* [Source 32] */}   const dateString = `${year}-${month}-${day}`;
         document.getElementById('date').value = dateString;
         document.getElementById('startTime').value = currentTime;
         this.textContent = "Arbeitsende buchen";
@@ -272,16 +285,15 @@
         // Zweiter Klick: Arbeitsende erfassen und bestätigen
         document.getElementById('endTime').value = currentTime;
         if (confirm("Arbeitszeit-Buchung ok?")) {
-          this.disabled = true;
+          this.disabled           {/* [Source 33] */} = true;
         } else {
           document.getElementById('endTime').value = "";
-        }
+        /* [Source 34] */ }
       }
     });
-
-    // Pausen-Button Logik: Beim ersten Klick Pausenstart, beim zweiten Klick Pausenende und Dauer berechnen
+    {/* [Source 35] */} // Pausen-Button Logik: Beim ersten Klick Pausenstart, beim zweiten Klick Pausenende und Dauer berechnen
     let pauseState = 0;
-    let pauseStartTime = null;
+    {/* [Source 36] */} let pauseStartTime = null;
     document.getElementById('pauseBtn').addEventListener('click', function() {
       const now = new Date();
       const currentTime = now.toTimeString().slice(0,5);
@@ -291,7 +303,7 @@
         this.textContent = "Pausenende buchen";
         pauseState = 1;
         alert("Pausenstart um " + currentTime + " erfasst.");
-      } else {
+      }       {/* [Source 37] */} else {
         // Zweiter Klick: Pausenende erfassen und Dauer berechnen
         const pauseEndTime = now;
         const diffMinutes = Math.round((pauseEndTime - pauseStartTime) / 60000);
@@ -299,14 +311,13 @@
         if (confirm("Pause-Buchung ok? (" + currentTime + ", Dauer: " + diffMinutes + " Minuten)")) {
           this.disabled = true;
         } else {
-          document.getElementById('breakTime').value = 0;
+          {/* [Source 38] */}        document.getElementById('breakTime').value = 0;
           this.textContent = "Pausen buchen";
           pauseState = 0;
         }
       }
     });
-
-    // Formular zum Eintragen der Arbeitszeiten
+    {/* [Source 39] */} // Formular zum Eintragen der Arbeitszeiten
     document.getElementById('workHoursForm').addEventListener('submit', async function(event) {
       event.preventDefault();
       const name = document.getElementById('employeeSelect').value;
@@ -318,7 +329,7 @@
       const startTime = document.getElementById('startTime').value;
       const endTime = document.getElementById('endTime').value;
       const breakTime = document.getElementById('breakTime').value;
-      const comment = document.getElementById('comment').value;
+      {/* [Source 40] */}     const comment = document.getElementById('comment').value;
       const response = await fetch('/log-hours', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -328,32 +339,31 @@
       alert(result);
       await loadWorkHours();
     });
-
-    async function loadWorkHours() {
+    {/* [Source 41] */} async function loadWorkHours() {
       const name = document.getElementById('employeeSelect').value;
       const workHoursList = document.getElementById('workHoursList');
-      const totalHoursElement = document.getElementById('totalHours');
+      {/* [Source 42] */} const totalHoursElement = document.getElementById('totalHours');
       if (!name) {
         workHoursList.innerHTML = '';
-        totalHoursElement.textContent = 'Gesamtstunden: 0';
+        {/* [Source 43] */} totalHoursElement.textContent = 'Gesamtstunden: 0';
         return;
       }
       const response = await fetch(`/get-all-hours?name=${encodeURIComponent(name)}`);
-      if (!response.ok) {
+      {/* [Source 44] */} if (!response.ok) {
         workHoursList.innerHTML = '';
         totalHoursElement.textContent = 'Gesamtstunden: 0';
         return;
-      }
+      /* [Source 45] */ }
       const data = await response.json();
       workHoursList.innerHTML = '';
       let sumHours = 0;
-      data.forEach(entry => {
+      {/* [Source 46] */} data.forEach(entry => {
         const listItem = document.createElement('li');
         listItem.textContent = `ID: ${entry.id}, Datum: ${formatDate(entry.date)}, Stunden: ${formatDecimalHours(entry.hours)}, Bemerkungen: ${entry.comment}`;
         workHoursList.appendChild(listItem);
         sumHours += entry.hours;
       });
-      totalHoursElement.textContent = `Gesamtstunden: ${formatDecimalHours(sumHours)}`;
+      {/* [Source 47] */} totalHoursElement.textContent = `Gesamtstunden: ${formatDecimalHours(sumHours)}`;
     }
 
     // Admin-Login und Bearbeitung (unverändert)
@@ -366,7 +376,7 @@
         body: JSON.stringify({ password })
       });
       const result = await response.text();
-      if (result === 'Admin angemeldet.') {
+      if       {/* [Source 48] */} (result === 'Admin angemeldet.') {
         document.getElementById('adminPanel').classList.remove('hidden');
         document.getElementById('employeePanel').classList.remove('hidden');
         loadAdminWorkHours();
@@ -376,11 +386,10 @@
         alert(result);
       }
     });
-
-    async function loadAdminWorkHours() {
+    {/* [Source 49] */} async function loadAdminWorkHours() {
       const response = await fetch('/admin-work-hours');
       const data = await response.json();
-      const tableBody = document.querySelector('#workHoursTable tbody');
+      {/* [Source 50] */} const tableBody = document.querySelector('#workHoursTable tbody');
       tableBody.innerHTML = '';
       data.forEach(entry => {
         const row = document.createElement('tr');
@@ -391,7 +400,7 @@
           <td>${entry.name}</td>
           <td>${dateFormatted}</td>
           <td>${timeFormatted}</td>
-          <td>${formatDecimalHours(entry.hours)}</td>
+          {/* [Source 51] */}      <td>${formatDecimalHours(entry.hours)}</td>
           <td>${entry.comment || ''}</td>
           <td>
             <button onclick='editEntry(
@@ -399,57 +408,57 @@
               ${JSON.stringify(entry.name)},
               ${JSON.stringify(formatDate(entry.date))},
               ${JSON.stringify(formatTime(entry.startTime))},
-              ${JSON.stringify(formatTime(entry.endTime))},
+              {/* [Source 52] */}           ${JSON.stringify(formatTime(entry.endTime))},
               ${JSON.stringify(entry.comment || "")},
               ${entry.break_time || 0}
             )'>Bearbeiten</button>
             <button onclick="deleteEntry(${entry.id})">Löschen</button>
           </td>
         `;
-        tableBody.appendChild(row);
+        {/* [Source 53] */} tableBody.appendChild(row);
       });
     }
 
     function editEntry(id, name, date, startTime, endTime, comment, breakTime) {
       document.getElementById('editId').value = id;
-      document.getElementById('editName').value = name;
+      {/* [Source 54] */} document.getElementById('editName').value = name;
       let formattedDate = '';
       if (date && date.includes('.')) {
         const [day, month, year] = date.split('.');
-        formattedDate = `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+        {/* [Source 55] */} formattedDate = `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
       }
       document.getElementById('editDate').value = formattedDate;
-      const safeStart = (startTime && startTime.includes(':')) ? startTime : '';
+      {/* [Source 56] */} const safeStart = (startTime && startTime.includes(':')) ? startTime : '';
       const safeEnd = (endTime && endTime.includes(':')) ? endTime : '';
-      document.getElementById('editStartTime').value = safeStart;
+      {/* [Source 57] */} document.getElementById('editStartTime').value = safeStart;
       document.getElementById('editEndTime').value = safeEnd;
       document.getElementById('editComment').value = comment || '';
       document.getElementById('editBreakTime').value = breakTime ? Math.round(breakTime * 60) : 0;
-    }
+    /* [Source 58] */ }
 
     async function saveChanges() {
       const id = document.getElementById('editId').value;
-      const name = document.getElementById('editName').value;
+      {/* [Source 59] */} const name = document.getElementById('editName').value;
       const date = document.getElementById('editDate').value;
       const startTime = document.getElementById('editStartTime').value;
       const endTime = document.getElementById('editEndTime').value;
       const comment = document.getElementById('editComment').value;
-      const breakTime = document.getElementById('editBreakTime').value;
+      {/* [Source 60] */} const breakTime = document.getElementById('editBreakTime').value;
       const response = await fetch('/api/admin/update-hours', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id, name, date, startTime, endTime, comment, breakTime })
       });
-      const result = await response.text();
+      {/* [Source 61] */} const result = await response.text();
       alert(result);
       loadAdminWorkHours();
     }
 
     async function deleteEntry(id) {
       const confirmDelete = confirm('Möchten Sie diesen Eintrag wirklich löschen?');
-      if (confirmDelete) {
+      {/* [Source 62] */} if (confirmDelete) {
         const response = await fetch(`/api/admin/delete-hours/${id}`, { method: 'DELETE' });
-        const result = await response.text();
+        {/* [Source 63] */} const result = await response.text();
         alert(result);
         loadAdminWorkHours();
       }
@@ -466,7 +475,7 @@
       document.body.appendChild(a);
       a.click();
       window.URL.revokeObjectURL(url);
-    });
+      {/* [Source 64] */}   });
 
     document.getElementById('adminDeleteData').addEventListener('click', async function() {
       const confirmDelete = confirm('Möchten Sie wirklich alle Arbeitszeiten löschen?');
@@ -476,7 +485,7 @@
           const response = await fetch('/delete-hours', {
             method: 'DELETE',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ confirmDelete: 'true', password })
+            {/* [Source 65] */}          body: JSON.stringify({ confirmDelete: 'true', password })
           });
           const result = await response.text();
           alert(result);
@@ -485,28 +494,27 @@
           alert('Löschen abgebrochen. Passwort erforderlich.');
         }
       } else {
-        alert('Löschen abgebrochen.');
+        {/* [Source 66] */}      alert('Löschen abgebrochen.');
       }
     });
-
-    // Mitarbeiterverwaltung (Admin)
+    {/* [Source 67] */} // Mitarbeiterverwaltung (Admin)
     async function loadEmployees() {
       const response = await fetch('/admin/employees');
-      if (!response.ok) {
+      {/* [Source 68] */} if (!response.ok) {
         alert('Fehler beim Laden der Mitarbeiter.');
         return;
-      }
+      /* [Source 69] */ }
       const employees = await response.json();
       const list = document.getElementById('employeeList');
       list.innerHTML = '';
-      employees.forEach(emp => {
+      {/* [Source 70] */} employees.forEach(emp => {
         const li = document.createElement('li');
         li.innerHTML = `ID: ${emp.id} – ${emp.name} (Mo: ${emp.mo_hours || 0}, Di: ${emp.di_hours || 0}, Mi: ${emp.mi_hours || 0}, Do: ${emp.do_hours || 0}, Fr: ${emp.fr_hours || 0})`;
         const editBtn = document.createElement('button');
         editBtn.textContent = 'Bearbeiten';
         editBtn.style.marginLeft = '10px';
         editBtn.onclick = () => { editEmployee(emp); };
-        const deleteBtn = document.createElement('button');
+        const         {/* [Source 71] */} deleteBtn = document.createElement('button');
         deleteBtn.textContent = 'Löschen';
         deleteBtn.style.marginLeft = '10px';
         deleteBtn.onclick = async () => {
@@ -514,15 +522,15 @@
             const delResponse = await fetch(`/admin/employees/${emp.id}`, { method: 'DELETE' });
             if (delResponse.ok) {
               alert('Mitarbeiter gelöscht.');
-              loadEmployees();
+              {/* [Source 72] */}              loadEmployees();
               loadEmployeeOptions();
             } else {
               alert('Fehler beim Löschen des Mitarbeiters.');
-            }
+            /* [Source 73] */ }
           }
         };
         li.appendChild(editBtn);
-        li.appendChild(deleteBtn);
+        {/* [Source 74] */} li.appendChild(deleteBtn);
         list.appendChild(li);
       });
     }
@@ -530,28 +538,28 @@
     function editEmployee(emp) {
       document.getElementById('editEmployeeForm').classList.remove('hidden');
       document.getElementById('editEmployeeId').value = emp.id;
-      document.getElementById('editEmployeeName').value = emp.name;
+      {/* [Source 75] */} document.getElementById('editEmployeeName').value = emp.name;
       document.getElementById('editMoHours').value = emp.mo_hours || 0;
       document.getElementById('editDiHours').value = emp.di_hours || 0;
       document.getElementById('editMiHours').value = emp.mi_hours || 0;
-      document.getElementById('editDoHours').value = emp.do_hours || 0;
+      {/* [Source 76] */} document.getElementById('editDoHours').value = emp.do_hours || 0;
       document.getElementById('editFrHours').value = emp.fr_hours || 0;
-    }
+    /* [Source 77] */ }
 
     async function saveEmployeeChanges() {
       const id = document.getElementById('editEmployeeId').value;
-      const name = document.getElementById('editEmployeeName').value;
+      {/* [Source 78] */} const name = document.getElementById('editEmployeeName').value;
       const mo_hours = parseFloat(document.getElementById('editMoHours').value) || 0;
       const di_hours = parseFloat(document.getElementById('editDiHours').value) || 0;
-      const mi_hours = parseFloat(document.getElementById('editMiHours').value) || 0;
+      {/* [Source 79] */} const mi_hours = parseFloat(document.getElementById('editMiHours').value) || 0;
       const do_hours = parseFloat(document.getElementById('editDoHours').value) || 0;
       const fr_hours = parseFloat(document.getElementById('editFrHours').value) || 0;
-      const response = await fetch(`/admin/employees/${document.getElementById('editEmployeeId').value}`, {
+      {/* [Source 80] */} const response = await fetch(`/admin/employees/${document.getElementById('editEmployeeId').value}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name, mo_hours, di_hours, mi_hours, do_hours, fr_hours })
       });
-      const result = await response.text();
+      {/* [Source 81] */} const result = await response.text();
       alert(result);
       cancelEdit();
       loadEmployees();
@@ -560,7 +568,7 @@
 
     function cancelEdit() {
       document.getElementById('editEmployeeForm').classList.add('hidden');
-    }
+    /* [Source 82] */ }
 
     document.getElementById('addEmployeeForm').addEventListener('submit', async function(event) {
       event.preventDefault();
@@ -572,31 +580,58 @@
       const fr_hours = parseFloat(document.getElementById('fr_hours').value) || 0;
       const response = await fetch('/admin/employees', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        {/* [Source 83] */}      headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name, mo_hours, di_hours, mi_hours, do_hours, fr_hours })
       });
       if (response.ok) {
         alert('Mitarbeiter hinzugefügt!');
         document.getElementById('employeeName').value = '';
         document.getElementById('mo_hours').value = '0';
-        document.getElementById('di_hours').value = '0';
+        {/* [Source 84] */} document.getElementById('di_hours').value = '0';
         document.getElementById('mi_hours').value = '0';
         document.getElementById('do_hours').value = '0';
         document.getElementById('fr_hours').value = '0';
         loadEmployees();
         loadEmployeeOptions();
-      } else {
+        {/* [Source 85] */} } else {
         alert('Fehler beim Hinzufügen des Mitarbeiters.');
       }
     });
-  
-    // Berechnung der Arbeitsstunden (falls benötigt)
+    {/* [Source 86] */} // Berechnung der Arbeitsstunden (falls benötigt)
     function calculateWorkHours(startTime, endTime) {
       const start = new Date(`1970-01-01T${startTime}:00`);
-      const end = new Date(`1970-01-01T${endTime}:00`);
+      {/* [Source 87] */} const end = new Date(`1970-01-01T${endTime}:00`);
       const diff = (end - start) / (1000 * 60 * 60);
       return diff;
+    /* [Source 88] */ }
+
+    // === START: Hinzugefügter JS-Code aus index_add_on2_html.txt ===
+    {/* [Source 91] */} // Event-Listener für das Monatsabschluss-Formular
+document.getElementById('monthlyBalanceForm').addEventListener('submit', async function(event) {
+  event.preventDefault(); // Formular nicht neu laden
+
+  // Werte aus dem Formular abrufen
+  const name = document.getElementById('balanceName').value.trim();
+  const year = document.getElementById('balanceYear').value.trim();
+  const month = document.getElementById('balanceMonth').value.trim();
+
+  // Baue die URL mit den Query-Parametern
+  const url = `/calculate-monthly-balance?name=${encodeURIComponent(name)}&year=${encodeURIComponent(year)}&month=${encodeURIComponent(month)}`;
+
+  try {
+    const response = await fetch(url);
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(errorText);
     }
+    const resultText = await response.text();
+    {/* [Source 92] */} document.getElementById('monthlyBalanceResult').textContent = resultText;
+  } catch (error) {
+    document.getElementById('monthlyBalanceResult').textContent = `Fehler: ${error.message}`;
+  }
+});
+    // === END: Hinzugefügter JS-Code aus index_add_on2_html.txt ===
+
   </script>
 </body>
 </html>
