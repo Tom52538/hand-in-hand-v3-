@@ -60,6 +60,21 @@ db.query(`
   console.log("Tabelle employees erfolgreich erstellt oder bereits vorhanden.");
 }).catch(err => console.error("Fehler beim Erstellen der Tabelle employees:", err));
 
+// Neue Tabelle für den Monatsabschluss anlegen (aus server_js_addon1.txt)
+db.query(`
+  CREATE TABLE IF NOT EXISTS monthly_balance (
+    id SERIAL PRIMARY KEY,
+    employee_id INTEGER NOT NULL,
+    year_month DATE NOT NULL,  -- Wir speichern immer den 1. des Monats als Kennzeichnung, z. B. 2025-04-01
+    difference DOUBLE PRECISION,  -- Summe der Differenzen (Ist - Soll) des Monats
+    carry_over DOUBLE PRECISION,   -- Akkumulierte Differenz (Saldo) inkl. Vormonat
+    UNIQUE (employee_id, year_month)
+  );
+`).then(() => {
+  console.log("Tabelle monthly_balance erfolgreich erstellt oder bereits vorhanden.");
+}).catch(err => console.error("Fehler beim Erstellen der Tabelle monthly_balance:", err));
+
+
 // Middleware, um Admin-Berechtigungen zu prüfen
 function isAdmin(req, res, next) {
   if (req.session.isAdmin) {
@@ -110,7 +125,6 @@ function getExpectedHours(row, dateStr) {
  */
 function convertToCSV(data) {
   if (!data || data.length === 0) return '';
-  
   const csvRows = [];
   csvRows.push([
     "Name",
@@ -128,21 +142,18 @@ function convertToCSV(data) {
     const dateFormatted = row.date
       ? new Date(row.date).toLocaleDateString("de-DE")
       : "";
-    
+
     // Hier greifen wir auf die konsistenten Felder zu:
     const startTimeFormatted = row.startTime || "";
     const endTimeFormatted   = row.endTime   || "";
-
     // break_time ist in Stunden gespeichert, daher * 60 für Minuten
     const breakMinutes = (row.break_time * 60).toFixed(0);
     const istHours = row.hours || 0;
     const expected = getExpectedHours(row, row.date);
     const diff = istHours - expected;
-
     const istFormatted = istHours.toFixed(2);
     const expectedFormatted = expected.toFixed(2);
     const diffFormatted = diff.toFixed(2);
-
     const values = [
       row.name,
       dateFormatted,
@@ -192,7 +203,7 @@ app.get('/admin-work-hours', isAdmin, (req, res) => {
  */
 app.get('/admin-download-csv', isAdmin, (req, res) => {
   const query = `
-    SELECT 
+    SELECT
       w.id,
       w.name,
       w.date,
@@ -405,19 +416,24 @@ app.post('/admin/employees', isAdmin, (req, res) => {
   const query = `
     INSERT INTO employees (name, mo_hours, di_hours, mi_hours, do_hours, fr_hours)
     VALUES ($1, $2, $3, $4, $5, $6)
+    RETURNING id
   `;
   db.query(query, [name, mo_hours || 0, di_hours || 0, mi_hours || 0, do_hours || 0, fr_hours || 0])
-    .then(result => res.send({ 
-      id: result.rowCount, 
-      name, 
-      mo_hours, 
-      di_hours, 
-      mi_hours, 
-      do_hours, 
-      fr_hours 
+    .then(result => res.send({
+        id: result.rows[0].id, // Rückgabe der neu generierten ID
+        name,
+        mo_hours: mo_hours || 0,
+        di_hours: di_hours || 0,
+        mi_hours: mi_hours || 0,
+        do_hours: do_hours || 0,
+        fr_hours: fr_hours || 0
     }))
-    .catch(err => res.status(500).send('Fehler beim Hinzufügen des Mitarbeiters.'));
+    .catch(err => {
+        console.error("Fehler beim Hinzufügen des Mitarbeiters:", err);
+        res.status(500).send('Fehler beim Hinzufügen des Mitarbeiters.');
+    });
 });
+
 
 app.put('/admin/employees/:id', isAdmin, (req, res) => {
   const { id } = req.params;
@@ -455,6 +471,98 @@ app.get('/employees', (req, res) => {
     .then(result => res.json(result.rows))
     .catch(err => res.status(500).send('Fehler beim Abrufen der Mitarbeiter.'));
 });
+
+// --------------------------
+// API-Endpunkt für monatlichen Saldo (aus server_js_addon2.txt)
+// --------------------------
+// API-Endpunkt zur Berechnung des monatlichen Saldo für einen Mitarbeiter
+// Beispiel-Aufruf: /calculate-monthly-balance?name=Birte&year=2025&month=4
+app.get('/calculate-monthly-balance', async (req, res) => {
+  const { name, year, month } = req.query;
+  if (!name || !year || !month) {
+    return res.status(400).send("Bitte Name, Jahr und Monat angeben.");
+  }
+
+  try {
+    // 1. Mitarbeiter ermitteln
+    const empResult = await db.query(
+      `SELECT id, mo_hours, di_hours, mi_hours, do_hours, fr_hours FROM employees WHERE LOWER(name) = LOWER($1)`,
+      [name]
+    );
+    if (empResult.rows.length === 0) {
+      return res.status(404).send("Mitarbeiter nicht gefunden.");
+    }
+    const employee = empResult.rows[0];
+
+    // 2. Zeitraum festlegen: vom 1. des Monats bis (aber nicht inklusive) 1. des Folgemonats
+    const startDate = new Date(year, month - 1, 1);
+    const endDate = new Date(year, month, 1);
+
+    // 3. Arbeitszeiteinträge für den Zeitraum abfragen
+    const workResult = await db.query(
+      `SELECT date, hours FROM work_hours
+       WHERE LOWER(name) = LOWER($1) AND date >= $2 AND date < $3`,
+      [name, startDate.toISOString().split('T')[0], endDate.toISOString().split('T')[0]]
+    );
+    const workEntries = workResult.rows;
+
+    // 4. Differenz (Ist - Soll) für jeden Tag berechnen und aufsummieren
+    let totalDifference = 0;
+    workEntries.forEach(entry => {
+      const d = new Date(entry.date);
+      let expected = 0;
+      // Wochentag: 0=So, 1=Mo, ... 5=Fr, 6=Sa
+      switch (d.getDay()) {
+        case 1: expected = employee.mo_hours || 0; break;
+        case 2: expected = employee.di_hours || 0; break;
+        case 3: expected = employee.mi_hours || 0; break;
+        case 4: expected = employee.do_hours || 0; break;
+        case 5: expected = employee.fr_hours || 0; break;
+        default: expected = 0; break;
+      }
+      totalDifference += (entry.hours || 0) - expected;
+    });
+
+    // 5. Vormonat bestimmen
+    let prevMonth, prevYear;
+    if (parseInt(month) === 1) {
+      prevMonth = 12;
+      prevYear = parseInt(year) - 1;
+    } else {
+      prevMonth = parseInt(month) - 1;
+      prevYear = parseInt(year);
+    }
+    const prevDate = new Date(prevYear, prevMonth - 1, 1).toISOString().split('T')[0];
+
+    // 6. Vormonatssaldo abfragen (falls vorhanden)
+    const prevResult = await db.query(
+      `SELECT carry_over FROM monthly_balance WHERE employee_id = $1 AND year_month = $2`,
+      [employee.id, prevDate]
+    );
+    let previousCarry = prevResult.rows.length > 0 ? prevResult.rows[0].carry_over : 0;
+
+    // 7. Neuen Saldo berechnen
+    const newCarry = previousCarry + totalDifference;
+
+    // 8. Aktuellen Monat als 1. des Monats definieren
+    const currentMonthDate = new Date(year, month - 1, 1).toISOString().split('T')[0];
+
+    // 9. Upsert in monthly_balance (bei Konflikt aktualisieren)
+    const upsertQuery = `
+      INSERT INTO monthly_balance (employee_id, year_month, difference, carry_over)
+      VALUES ($1, $2, $3, $4)
+      ON CONFLICT (employee_id, year_month)
+      DO UPDATE SET difference = $3, carry_over = $4
+    `;
+    await db.query(upsertQuery, [employee.id, currentMonthDate, totalDifference, newCarry]);
+
+    res.send(`Monatlicher Saldo für ${name} im ${year}-${month} wurde berechnet. Differenz: ${totalDifference.toFixed(2)}, neuer Saldo: ${newCarry.toFixed(2)}`);
+  } catch (error) {
+    console.error("Fehler beim Berechnen des monatlichen Saldo:", error);
+    res.status(500).send("Fehler beim Berechnen des monatlichen Saldo.");
+  }
+});
+
 
 // --------------------------
 // Server starten
