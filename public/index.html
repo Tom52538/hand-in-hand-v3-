@@ -67,6 +67,17 @@
         padding-top: 1.5rem;
         border-top: 1px solid #eee; /* Visuelle Trennung */
     }
+     /* Neu: Readonly/Disabled-Felder optisch abgrenzen */
+    input[readonly] {
+      background-color: #e9e9e9;
+      cursor: default;
+    }
+     /* Spezifischer Stil für das neue Anzeige-Feld */
+    #selectedEmployeeDisplay {
+        background-color: #e9e9e9;
+        cursor: default;
+        font-weight: bold;
+    }
   </style>
 </head>
 <body>
@@ -78,7 +89,13 @@
         <label for="employeeSelect">Mitarbeiter:</label>
         <select id="employeeSelect" name="employeeSelect" required>
           <option value="">Bitte auswählen</option>
-        </select>
+          </select>
+      </div>
+
+      <div>
+        <label for="selectedEmployeeDisplay">Ausgewählter Mitarbeiter:</label>
+        <input type="text" id="selectedEmployeeDisplay" name="selectedEmployeeDisplay" readonly disabled
+               value="Kein Mitarbeiter ausgewählt" />
       </div>
       <div>
         <button type="button" id="workTimeBtn">Arbeitszeit buchen</button>
@@ -128,6 +145,7 @@
       <button type="submit">Anmelden</button>
     </form>
 
+
     <div id="adminPanel" class="hidden">
       <hr>
       <h2>Admin Panel: Datensatz bearbeiten</h2>
@@ -171,14 +189,16 @@
               <th>Datum</th>
               <th>Arbeitszeit</th>
               <th>Stunden</th>
-              <th>Pause(Min)</th> <th>Bemerkungen</th>
+              <th>Pause(Min)</th>
+              <th>Bemerkungen</th>
               <th>Aktionen</th>
             </tr>
           </thead>
           <tbody></tbody>
         </table>
       </div>
-      <br> <button id="adminDownloadCsv">Alle Arbeitszeiten als CSV herunterladen</button>
+      <br>
+      <button id="adminDownloadCsv">Alle Arbeitszeiten als CSV herunterladen</button>
       <button id="adminDeleteData">Alle Arbeitszeiten löschen</button>
 
       <div id="monthlyBalanceFormContainer">
@@ -201,7 +221,9 @@
          </form>
          <p id="monthlyBalanceResult"></p>
       </div>
-      </div> <div id="employeePanel" class="hidden">
+    </div>
+
+    <div id="employeePanel" class="hidden">
       <hr>
       <h2>Mitarbeiterverwaltung</h2>
       <form id="addEmployeeForm">
@@ -268,7 +290,10 @@
         <button type="button" onclick="saveEmployeeChanges()">Mitarbeiter Speichern</button>
         <button type="button" onclick="cancelEdit()">Abbrechen</button>
       </form>
-    </div> </div> <script>
+    </div>
+  </div>
+
+  <script>
     // Hilfsfunktionen
     function formatDecimalHours(decimalHours) {
       if (typeof decimalHours !== 'number' || isNaN(decimalHours)) return "00:00";
@@ -317,6 +342,7 @@
     const endTimeInput = document.getElementById('endTime');
     const breakTimeInput = document.getElementById('breakTime');
     const employeeSelect = document.getElementById('employeeSelect');
+    const selectedEmployeeDisplay = document.getElementById('selectedEmployeeDisplay'); // <-- NEUE VARIABLE
     const workHoursList = document.getElementById('workHoursList');
     const totalHoursElement = document.getElementById('totalHours');
     const adminPanel = document.getElementById('adminPanel');
@@ -327,8 +353,21 @@
     // --- Event Listener ---
     window.addEventListener('load', loadEmployeeOptions);
 
-    // Mitarbeiter-Auswahl ändert -> Lade dessen Zeiten
-    employeeSelect.addEventListener('change', loadWorkHours);
+    // Mitarbeiter-Auswahl ändert -> Lade dessen Zeiten UND aktualisiere Anzeigefeld
+    employeeSelect.addEventListener('change', function() { // <-- MODIFIZIERTER LISTENER
+        const selectedName = employeeSelect.value;
+
+        // Aktualisiere das neue Anzeigefeld
+        if (selectedName) {
+            selectedEmployeeDisplay.value = selectedName;
+        } else {
+            selectedEmployeeDisplay.value = "Kein Mitarbeiter ausgewählt";
+        }
+
+        // Rufe die bestehende Funktion auf, um Arbeitszeiten zu laden
+        // und das restliche Formular (Zeitfelder etc.) zurückzusetzen
+        loadWorkHours();
+    });
 
     // Arbeitszeit-Button Logik
     let workTimeState = 0; // 0: Bereit für Start, 1: Start erfasst, warte auf Ende
@@ -352,7 +391,7 @@
       } else {
         // Ende erfassen
         endTimeInput.value = currentTime;
-         if (confirm(`Arbeitsende um ${currentTime} Uhr buchen?`)) {
+        if (confirm(`Arbeitsende um ${currentTime} Uhr buchen?`)) {
             this.textContent = "Arbeitszeit gebucht";
             this.disabled = true; // Arbeitszeit-Button deaktivieren
             pauseBtn.disabled = true; // Pausen-Button deaktivieren
@@ -392,8 +431,8 @@
 
             if (confirm(`Pausenende um ${currentTime} Uhr buchen? (${diffMinutes} Minuten)`)) {
                 breakTimeInput.value = newTotalBreakTime;
-                this.textContent = "Pause beendet"; // Oder wieder "Pausen buchen"?
-                this.disabled = true; // Deaktivieren bis nächste Arbeitszeit gestartet wird? Besser: Zurücksetzen
+                this.textContent = "Pause beendet"; // Oder wieder "Pausen buchen"? Besser: Zurücksetzen
+                this.disabled = false; // Button wieder nutzbar machen für nächste Pause
                 pauseState = 0; // Bereit für nächste Pause
                 pauseStartTime = null;
                 alert(`Pause beendet. Gesamtpausenzeit: ${newTotalBreakTime} Minuten.`);
@@ -408,11 +447,10 @@
         }
     });
 
-
     // Formular zum Eintragen der Arbeitszeiten
     document.getElementById('workHoursForm').addEventListener('submit', async function(event) {
       event.preventDefault();
-      const name = employeeSelect.value;
+      const name = employeeSelect.value; // Holt den Wert aus dem Dropdown
       if (!name) {
         alert("Bitte wählen Sie einen Mitarbeiter aus.");
         return;
@@ -424,7 +462,7 @@
       }
 
       const dataToSend = {
-          name: name,
+          name: name, // Name aus dem Dropdown verwenden
           date: dateInput.value,
           startTime: startTimeInput.value,
           endTime: endTimeInput.value,
@@ -438,7 +476,6 @@
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(dataToSend)
           });
-
           const resultText = await response.text(); // Text statt JSON, da Server evtl. Text sendet
           alert(resultText); // Zeige die Server-Antwort an
 
@@ -628,11 +665,11 @@
       totalHoursElement.textContent = 'Gesamtstunden: 00:00'; // Reset Summe
 
       if (!name) {
-        resetWorkTimeForm(); // Wenn kein Mitarbeiter gewählt, Formular zurücksetzen
+        resetWorkTimeForm(); // Wenn kein Mitarbeiter gewählt, Zeit-Formular zurücksetzen
         return;
       }
 
-       // Formular zurücksetzen, wenn Mitarbeiter gewechselt wird
+       // Zeit-Formular zurücksetzen, wenn Mitarbeiter gewechselt wird
        resetWorkTimeForm();
 
       try {
@@ -688,7 +725,8 @@
                   <td>${formatDate(entry.date)}</td>
                   <td>${formatTime(entry.startTime)} - ${formatTime(entry.endTime)}</td>
                   <td>${formatDecimalHours(hours)}</td>
-                  <td>${breakMinutes}</td> <td>${entry.comment || ''}</td>
+                  <td>${breakMinutes}</td>
+                  <td>${entry.comment || ''}</td>
                   <td>
                     <button onclick='editEntry(${JSON.stringify(entry)})'>Bearbeiten</button>
                     <button onclick="deleteEntry(${entry.id})">Löschen</button>
@@ -750,12 +788,16 @@
         // entry ist das komplette Objekt aus loadAdminWorkHours
         document.getElementById('editId').value = entry.id;
         document.getElementById('editName').value = entry.name || '';
-        // Konvertiere Datum zu YYYY-MM-DD für das Input-Feld
+        // Konvertiere Datum zu yyyy-MM-dd für das Input-Feld
         document.getElementById('editDate').value = entry.date ? entry.date.split('T')[0] : ''; // Nur Datumsteil nehmen
         document.getElementById('editStartTime').value = formatTime(entry.startTime);
         document.getElementById('editEndTime').value = formatTime(entry.endTime);
-        // breakTime ist in Minuten
-        document.getElementById('editBreakTime').value = entry.break_time || 0;
+        // breakTime ist in Stunden, wir brauchen Minuten für das Feld (oder ändern das Feld, hier angenommmen Feld bleibt Minuten)
+        // Annahme: Feld #editBreakTime erwartet Minuten. entry.break_time ist in Stunden (lt. DB)
+        // document.getElementById('editBreakTime').value = (entry.break_time || 0) * 60;
+        // Korrektur Annahme: Das Feld #editBreakTime erwartet Minuten, break_time aus DB ist in Stunden? Nein, im Frontend wurde breakTimeInput.value (Minuten) an /log-hours gesendet. Im Server wird es aber als breakTimeHours = breakTimeMinutes / 60 in die DB gespeichert.
+        // Also: DB break_time ist in Stunden. Feld erwartet Minuten.
+        document.getElementById('editBreakTime').value = Math.round((entry.break_time || 0) * 60);
         document.getElementById('editComment').value = entry.comment || '';
 
          // Optional: Zum Bearbeitungsformular scrollen
@@ -768,16 +810,16 @@
             alert("Kein Eintrag zum Bearbeiten ausgewählt.");
             return;
         }
+        const breakTimeMinutes = document.getElementById('editBreakTime').value || 0;
         const data = {
             id: id,
             name: document.getElementById('editName').value,
             date: document.getElementById('editDate').value,
             startTime: document.getElementById('editStartTime').value,
             endTime: document.getElementById('editEndTime').value,
-            breakTime: document.getElementById('editBreakTime').value || 0,
+            breakTime: breakTimeMinutes, // Sende Minuten an die API
             comment: document.getElementById('editComment').value
         };
-
         // Validierung (Basis)
         if (!data.name || !data.date || !data.startTime || !data.endTime) {
             alert("Bitte füllen Sie alle erforderlichen Felder aus (Name, Datum, Start, Ende).");
@@ -785,6 +827,13 @@
         }
 
         try {
+            // /api/admin/update-hours erwartet breakTime in Minuten (lt. Server-Code Annahme)
+            // Korrektur Server-Code Analyse:
+            // app.put('/api/admin/update-hours', ...) holt { breakTime } aus req.body
+            // Berechnet breakTimeMinutes = parseInt(breakTime, 10) || 0;
+            // Berechnet breakTimeHours = breakTimeMinutes / 60;
+            // Speichert break_time = $4 (breakTimeHours)
+            // Also: API erwartet Minuten im Feld breakTime. Das passt.
             const response = await fetch('/api/admin/update-hours', { // Annahme: Endpunkt für Update
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
@@ -835,7 +884,7 @@
          editEmployeeForm.scrollIntoView({ behavior: 'smooth' });
          // Verstecke das Hinzufügen-Formular, während bearbeitet wird
          document.getElementById('addEmployeeForm').classList.add('hidden');
-     }
+    }
 
     async function saveEmployeeChanges() {
         const id = document.getElementById('editEmployeeId').value;
@@ -901,8 +950,10 @@
 
     // --- Hilfsfunktionen für Formular-Reset ---
     function resetWorkTimeForm() {
-        // Setzt das Haupt-Zeiterfassungsformular zurück
-        document.getElementById('workHoursForm').reset(); // Setzt alle Felder auf Standardwerte
+        // Setzt das Haupt-Zeiterfassungsformular zurück (ohne Mitarbeiter-Auswahl)
+        // document.getElementById('workHoursForm').reset(); // reset() würde auch das Select leeren, was wir nicht wollen
+        // Stattdessen Felder manuell zurücksetzen:
+        document.getElementById('comment').value = '';
         // Buttons zurücksetzen
         workTimeBtn.textContent = "Arbeitszeit buchen";
         workTimeBtn.disabled = false;
@@ -913,7 +964,7 @@
         workTimeState = 0;
         pauseState = 0;
         pauseStartTime = null;
-        // Felder explizit leeren/setzen, die reset() nicht beeinflusst (readonly)
+        // Felder explizit leeren/setzen, die readonly sind
         dateInput.value = '';
         startTimeInput.value = '';
         endTimeInput.value = '';
@@ -921,8 +972,9 @@
     }
 
     // Initialisierung beim Laden
-    resetWorkTimeForm(); // Stellt sicher, dass der Anfangszustand korrekt ist
-
+    // Stellt sicher, dass der Anfangszustand korrekt ist
+    // Das neue Display-Feld wird durch seinen HTML 'value' initialisiert.
+    resetWorkTimeForm();
 
   </script>
 </body>
