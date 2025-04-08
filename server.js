@@ -9,7 +9,7 @@ const pgSession = require('connect-pg-simple')(session);
 const path = require('path');
 const app = express();
 
-app.set('trust proxy', 1); // Vertrauen des Proxys (wichtig z. B. für Heroku/Railway)
+app.set('trust proxy', 1); // Vertrauen des Proxys (wichtig z. B. für Heroku/Railway)
 
 const port = process.env.PORT || 3000;
 
@@ -114,7 +114,7 @@ function calculateWorkHours(startTime, endTime) {
   const diffInMin = endMinutes - startMinutes;
   return diffInMin / 60;
 }
-// Hier wird nun getDay() verwendet, um den lokalen Wochentag zu ermitteln
+// Hier wird getDay() verwendet, um den lokalen Wochentag zu ermitteln
 function getExpectedHours(employeeData, dateStr) {
   if (!employeeData || !dateStr) return 0;
   const d = new Date(dateStr);
@@ -173,6 +173,34 @@ app.get('/healthz', (req, res) => {
 // ==========================================
 // API Endpunkte für Zeiterfassung
 // ==========================================
+
+// Neuer Endpunkt: GET /next-booking
+// Ermittelt, welche Buchung (Arbeitsbeginn oder Arbeitsende) für den Mitarbeiter als nächstes erfolgen soll.
+app.get('/next-booking', async (req, res) => {
+  const { name } = req.query;
+  if (!name) return res.status(400).send('Name ist erforderlich.');
+  try {
+    const query = `
+      SELECT id, name, date, starttime, endtime 
+      FROM work_hours 
+      WHERE LOWER(name) = LOWER($1)
+      ORDER BY date DESC, starttime DESC
+      LIMIT 1;
+    `;
+    const result = await db.query(query, [name]);
+    let nextBooking;
+    if (result.rows.length === 0) {
+      nextBooking = 'arbeitsbeginn';
+    } else {
+      const lastRecord = result.rows[0];
+      nextBooking = lastRecord.endtime ? 'arbeitsbeginn' : 'arbeitsende';
+    }
+    res.json({ nextBooking });
+  } catch (err) {
+    console.error("Fehler beim Abrufen der nächsten Buchung:", err);
+    res.status(500).json({ message: 'Fehler beim Abrufen der nächsten Buchung.' });
+  }
+});
 
 // POST /log-start : Arbeitsbeginn speichern
 app.post('/log-start', async (req, res) => {
