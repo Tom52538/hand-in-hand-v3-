@@ -299,7 +299,6 @@
         } else if (result.nextBooking === 'arbeitsende') {
           workTimeBtn.textContent = "Arbeitsende buchen";
           workTimeState = 1;
-          // Optional: falls der Endpunkt auch eine ID liefert, diese zuweisen
           if (result.id) {
             currentEntryId = result.id;
           }
@@ -404,8 +403,7 @@
           alert(`Arbeitsende um ${currentTime} gespeichert.\nServer: ${resultText}`);
           resetWorkTimeForm();
           await loadWorkHours();
-          // Nach erfolgreicher Endbuchung erneut den nächsten Buchungsstatus prüfen
-          checkNextBooking();
+          checkNextBooking(); // Status nach Arbeitsende prüfen
         } catch (error) {
           console.error("Fehler beim Speichern des Arbeitsendes:", error);
           alert(`Fehler beim Speichern des Arbeitsendes: ${error.message}\nBitte Backend prüfen!`);
@@ -583,7 +581,7 @@
         } else {
           workHoursList.innerHTML = '<li>Keine Zeiten für diesen Mitarbeiter gebucht.</li>';
         }
-        totalHoursElement.textContent = `Gesamtstunden: ${formatDecimalHours(sumHours)}`;
+        totalHoursElement.textContent = `Gesamtarbeitszeit: ${formatDecimalHours(sumHours)}`;
       } catch (error) {
         console.error("Fehler beim Laden der Arbeitszeiten:", error);
         workHoursList.innerHTML = `<li>Fehler beim Laden der Zeiten: ${error.message}</li>`;
