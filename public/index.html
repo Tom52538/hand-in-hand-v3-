@@ -99,9 +99,9 @@
                value="Kein Mitarbeiter ausgewählt" />
       </div>
       <div>
-        <button type="button" id="workTimeBtn">Arbeitszeit buchen</button>
+        <button type="button" id="workTimeBtn">Arbeitsbeginn buchen</button>
       </div>
-      <div>
+      <div class="hidden">
         <button type="button" id="pauseBtn">Pausen buchen</button>
       </div>
       <div>
@@ -342,24 +342,24 @@
 
     // --- Globale Variablen ---
     const workTimeBtn = document.getElementById('workTimeBtn');
-    const pauseBtn = document.getElementById('pauseBtn');
+    const pauseBtn = document.getElementById('pauseBtn'); // Bleibt referenziert, auch wenn versteckt
     const dateInput = document.getElementById('date');
     const startTimeInput = document.getElementById('startTime');
     const endTimeInput = document.getElementById('endTime');
     const breakTimeInput = document.getElementById('breakTime');
     const employeeSelect = document.getElementById('employeeSelect');
-    const selectedEmployeeDisplay = document.getElementById('selectedEmployeeDisplay'); // <-- NEUE VARIABLE
+    const selectedEmployeeDisplay = document.getElementById('selectedEmployeeDisplay');
     const workHoursList = document.getElementById('workHoursList');
     const totalHoursElement = document.getElementById('totalHours');
     const adminPanel = document.getElementById('adminPanel');
     const employeePanel = document.getElementById('employeePanel');
     const editEmployeeForm = document.getElementById('editEmployeeForm');
-    const monthlyBalanceContainer = document.getElementById('monthlyBalanceFormContainer'); // Variable für einfacheren Zugriff
+    const monthlyBalanceContainer = document.getElementById('monthlyBalanceFormContainer');
 
     // --- Event Listener ---
     window.addEventListener('load', loadEmployeeOptions);
     // Mitarbeiter-Auswahl ändert -> Lade dessen Zeiten UND aktualisiere Anzeigefeld
-    employeeSelect.addEventListener('change', function() { // <-- MODIFIZIERTER LISTENER
+    employeeSelect.addEventListener('change', function() {
         const selectedName = employeeSelect.value;
 
         // Aktualisiere das neue Anzeigefeld
@@ -388,18 +388,20 @@
         startTimeInput.value = currentTime;
         endTimeInput.value = ''; // Ende zurücksetzen
         breakTimeInput.value = '0'; // Pause zurücksetzen
+        // Text geändert für zweiten Klick
         this.textContent = "Arbeitsende buchen";
         workTimeState = 1;
         // Buttons aktivieren/deaktivieren
-        pauseBtn.disabled = false;
+        // pauseBtn.disabled = false; // Entfernt, da Button versteckt
         document.getElementById('workHoursForm').querySelector('button[type="submit"]').disabled = true; // Eintragen erst nach Ende
       } else {
         // Ende erfassen
         endTimeInput.value = currentTime;
         if (confirm(`Arbeitsende um ${currentTime} Uhr buchen?`)) {
+            // Text für Zustand nach Abschluss
             this.textContent = "Arbeitszeit gebucht";
             this.disabled = true; // Arbeitszeit-Button deaktivieren
-            pauseBtn.disabled = true; // Pausen-Button deaktivieren
+            // pauseBtn.disabled = true; // Entfernt, da Button versteckt
             workTimeState = 0; // Zurücksetzen für nächsten Zyklus
             // Eintragen Button aktivieren
             document.getElementById('workHoursForm').querySelector('button[type="submit"]').disabled = false;
@@ -408,7 +410,9 @@
          }
       }
     });
-    // Pausen-Button Logik
+
+    // Pausen-Button Logik - kann auskommentiert werden, da Button versteckt ist
+    /*
     let pauseState = 0; // 0: Bereit für Pausenstart, 1: Pause läuft
     let pauseStartTime = null;
     pauseBtn.addEventListener('click', function() {
@@ -452,6 +456,8 @@
             }
         }
     });
+    */
+
     // Formular zum Eintragen der Arbeitszeiten
     document.getElementById('workHoursForm').addEventListener('submit', async function(event) {
       event.preventDefault();
@@ -513,7 +519,6 @@
             alert('Admin erfolgreich angemeldet.'); // Eigene Meldung statt Server-Antwort
             adminPanel.classList.remove('hidden');
             employeePanel.classList.remove('hidden');
-            // KORREKTUR: Monatsabschluss-Container ebenfalls einblenden
             monthlyBalanceContainer.classList.remove('hidden');
             document.getElementById('adminLoginForm').classList.add('hidden'); // Login-Form ausblenden
 
@@ -960,20 +965,20 @@
     // --- Hilfsfunktionen für Formular-Reset ---
     function resetWorkTimeForm() {
         // Setzt das Haupt-Zeiterfassungsformular zurück (ohne Mitarbeiter-Auswahl)
-        // document.getElementById('workHoursForm').reset(); // reset() würde auch das Select leeren, was wir nicht wollen
-        // Stattdessen Felder manuell zurücksetzen:
         document.getElementById('comment').value = '';
         // Buttons zurücksetzen
-        workTimeBtn.textContent = "Arbeitszeit buchen";
+        // Text initial geändert
+        workTimeBtn.textContent = "Arbeitsbeginn buchen";
         workTimeBtn.disabled = false;
-        pauseBtn.textContent = "Pausen buchen";
-        pauseBtn.disabled = true; // Pausen erst nach Arbeitsbeginn
+        // pauseBtn.textContent = "Pausen buchen"; // Entfernt, da Button versteckt
+        // pauseBtn.disabled = true; // Entfernt, da Button versteckt
         // Den Eintragen Button gezielt ansprechen und initial deaktivieren
         document.getElementById('workHoursForm').querySelector('button[type="submit"]').disabled = true;
         // Zustandsvariablen zurücksetzen
         workTimeState = 0;
-        pauseState = 0;
-        pauseStartTime = null;
+        // Pause-Zustand ist irrelevant, da Button versteckt
+        // pauseState = 0;
+        // pauseStartTime = null;
         // Felder explizit leeren/setzen, die readonly sind
         dateInput.value = '';
         startTimeInput.value = '';
@@ -983,7 +988,6 @@
 
     // Initialisierung beim Laden
     // Stellt sicher, dass der Anfangszustand korrekt ist
-    // Das neue Display-Feld wird durch seinen HTML 'value' initialisiert.
     resetWorkTimeForm();
 
   </script>
