@@ -180,19 +180,25 @@ app.post('/log-start', async (req, res) => {
   if (!name || !date || !startTime) {
     return res.status(400).json({ message: 'Name, Datum und Startzeit sind erforderlich.' });
   }
-  const insertQuery = `INSERT INTO work_hours (name, date, starttime) VALUES ($1, $2, $3) RETURNING id;`;
   try {
+    // Prüfen, ob bereits ein Eintrag für diesen Mitarbeiter an diesem Datum vorhanden ist
+    const checkQuery = `SELECT id FROM work_hours WHERE LOWER(name) = LOWER($1) AND date = $2`;
+    const checkResult = await db.query(checkQuery, [name, date]);
+    if (checkResult.rows.length > 0) {
+      return res.status(409).json({ message: 'Arbeitsbeginn wurde für diesen Tag bereits erfasst.' });
+    }
+    const insertQuery = `INSERT INTO work_hours (name, date, starttime) VALUES ($1, $2, $3) RETURNING id;`;
     const result = await db.query(insertQuery, [name, date, startTime]);
     if (result.rows.length > 0) {
       const newEntryId = result.rows[0].id;
       console.log(`Arbeitsbeginn für ${name} am ${date} um ${startTime} gespeichert (ID: ${newEntryId}).`);
-      res.status(201).json({ id: newEntryId });
+      return res.status(201).json({ id: newEntryId });
     } else {
       throw new Error("Eintrag konnte nicht erstellt werden, keine ID zurückgegeben.");
     }
   } catch (err) {
     console.error("Fehler beim Speichern des Arbeitsbeginns:", err);
-    res.status(500).json({ message: 'Fehler beim Speichern des Arbeitsbeginns auf dem Server.' });
+    return res.status(500).json({ message: 'Fehler beim Speichern des Arbeitsbeginns auf dem Server.' });
   }
 });
 
@@ -210,9 +216,14 @@ app.put('/log-end/:id', async (req, res) => {
   const breakTimeMinutes = parseInt(breakTime, 10) || 0;
   const breakTimeHours = breakTimeMinutes / 60.0;
   try {
-    const timeResult = await db.query('SELECT starttime FROM work_hours WHERE id = $1', [entryId]);
+    // Arbeitsbeginn und (möglicherweise bereits vorhandenes) Arbeitsende abfragen
+    const timeResult = await db.query('SELECT starttime, endtime FROM work_hours WHERE id = $1', [entryId]);
     if (timeResult.rows.length === 0) {
       return res.status(404).json({ message: `Eintrag mit ID ${entryId} nicht gefunden.` });
+    }
+    // Prüfen, ob bereits ein Arbeitsende erfasst wurde
+    if (timeResult.rows[0].endtime) {
+      return res.status(409).json({ message: 'Arbeitsende wurde für diesen Tag bereits erfasst.' });
     }
     const startTime = timeResult.rows[0].starttime;
     const totalHours = calculateWorkHours(startTime, endTime);
@@ -269,7 +280,6 @@ app.get('/employees', (req, res) => {
 // Admin-Login und geschützte Endpunkte
 // --------------------------
 
-// POST /admin-login : Admin-Authentifizierung
 app.post('/admin-login', (req, res) => {
   const { password } = req.body;
   const adminPassword = process.env.ADMIN_PASSWORD;
@@ -294,7 +304,6 @@ app.post('/admin-login', (req, res) => {
   }
 });
 
-// GET /admin-work-hours : Alle Arbeitszeiten (Admin)
 app.get('/admin-work-hours', isAdmin, (req, res) => {
   const query = `
     SELECT id, name, date, hours, break_time, comment,
