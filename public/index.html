@@ -282,13 +282,43 @@
     let workTimeState = 0; // 0: Bereit für Start, 1: Start erfasst, warte auf Ende
     let currentEntryId = null; // ID des aktuellen Eintrags
 
+    // Neue Funktion: Prüft, welche Buchung als nächstes erfolgen soll
+    async function checkNextBooking() {
+      const selectedName = employeeSelect.value;
+      if (!selectedName) return;
+      try {
+        const response = await fetch(`/next-booking?name=${encodeURIComponent(selectedName)}`);
+        if (!response.ok) {
+          throw new Error(`Fehler: ${response.status}`);
+        }
+        const result = await response.json();
+        if (result.nextBooking === 'arbeitsbeginn') {
+          workTimeBtn.textContent = "Arbeitsbeginn buchen";
+          workTimeState = 0;
+          currentEntryId = null;
+        } else if (result.nextBooking === 'arbeitsende') {
+          workTimeBtn.textContent = "Arbeitsende buchen";
+          workTimeState = 1;
+          // Optional: falls der Endpunkt auch eine ID liefert, diese zuweisen
+          if (result.id) {
+            currentEntryId = result.id;
+          }
+        }
+      } catch (error) {
+        console.error("Fehler beim Prüfen des nächsten Buchungsstatus:", error);
+      }
+    }
+
     // Event Listener
     window.addEventListener('load', loadEmployeeOptions);
     employeeSelect.addEventListener('change', function() {
       const selectedName = employeeSelect.value;
       selectedEmployeeDisplay.value = selectedName ? selectedName : "Kein Mitarbeiter ausgewählt";
       resetWorkTimeForm(); // Form zurücksetzen bei Wechsel
-      if (selectedName) { loadWorkHours(); }
+      if (selectedName) { 
+        loadWorkHours();
+        checkNextBooking();  // Neuen Buchungsstatus prüfen
+      }
       else {
         workHoursList.innerHTML = '';
         totalHoursElement.textContent = 'Gesamtstunden: 00:00';
@@ -374,6 +404,8 @@
           alert(`Arbeitsende um ${currentTime} gespeichert.\nServer: ${resultText}`);
           resetWorkTimeForm();
           await loadWorkHours();
+          // Nach erfolgreicher Endbuchung erneut den nächsten Buchungsstatus prüfen
+          checkNextBooking();
         } catch (error) {
           console.error("Fehler beim Speichern des Arbeitsendes:", error);
           alert(`Fehler beim Speichern des Arbeitsendes: ${error.message}\nBitte Backend prüfen!`);
