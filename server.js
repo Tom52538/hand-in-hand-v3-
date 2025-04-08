@@ -12,7 +12,7 @@ const app = express();
 // Vertraue dem Proxy (wichtig für Railway/Heroku etc.)
 app.set('trust proxy', 1);
 
-const port = process.env.PORT || 3000;
+const port = process.env.PORT || 3000; // Port wird korrekt von Railway via env bezogen
 
 // Middleware
 app.use(bodyParser.json());
@@ -75,6 +75,8 @@ const setupTables = async () => {
     process.exit(1); // Beende den Prozess bei DB-Setup-Fehler
   }
 };
+// Wichtig: Setup ausführen, BEVOR der Server startet zu lauschen, aber NACHDEM die DB Verbindung potentiell da ist.
+// Es ist besser, die Bereitschaft des DB-Pools abzuwarten, aber für einfache Setups ist dies oft ausreichend.
 setupTables();
 
 
@@ -114,6 +116,15 @@ function convertToCSV(data) {
     }
     return csvRows.join('\n');
   }
+
+// ==========================================
+// Health Check Endpunkt (NEU)
+// ==========================================
+app.get('/healthz', (req, res) => {
+  // Einfacher Endpunkt, der nur 200 OK zurückgibt.
+  // Plattformen wie Railway können diesen pingen, um zu sehen, ob der Server läuft.
+  res.status(200).send('OK');
+});
 
 // ==========================================
 // API Endpunkte für sofortiges Speichern
@@ -193,16 +204,6 @@ app.get('/get-hours', (req, res) => {
     .then(result => { if (result.rows.length === 0) { return res.status(404).send('Keine Daten gefunden.'); } const rowWithMinutes = { ...result.rows[0], break_time: Math.round((result.rows[0].break_time || 0) * 60) }; res.json(rowWithMinutes); })
     .catch(err => { console.error("DB Fehler in /get-hours:", err); res.status(500).send('Fehler beim Abrufen der Daten.'); });
 });
-
-// DELETE /delete-hours : Alter Endpunkt zum Löschen aller Daten (jetzt Admin-geschützt)
-// Hinweis: Dieser Endpunkt war in der alten Datei öffentlich und unsicher.
-// Er wird durch den Admin-Endpunkt /api/admin/delete-all-hours (oder ähnlich) ersetzt,
-// der die isAdmin Middleware verwendet. Der alte Endpunkt wird hier entfernt.
-/*
-app.delete('/delete-hours', (req, res) => {
-  // ... (alter, unsicherer Code) ...
-});
-*/
 
 // GET /employees (Öffentlich für Dropdown)
 app.get('/employees', (req, res) => {
@@ -359,11 +360,10 @@ app.get('/calculate-monthly-balance', isAdmin, async (req, res) => {
     } catch (error) { console.error("Fehler beim Berechnen des monatlichen Saldo:", error); res.status(500).send("Fehler beim Berechnen des monatlichen Saldo."); }
 });
 
-// --------------------------
-// Server starten
-// --------------------------
-app.listen(port, () => {
-  console.log(`Server läuft auf http://localhost:${port}`);
+
+// --- Server Start ---
+app.listen(port, () => { // Host '0.0.0.0' ist oft implizit, wenn nicht angegeben
+  console.log(`Server läuft auf Port: ${port}`); // Geändert, um nur Port auszugeben
    if(!process.env.DATABASE_URL) { console.warn("WARNUNG: Kein DATABASE_URL in Umgebungsvariablen gefunden. Datenbankverbindung wird fehlschlagen!"); }
    if(!process.env.SESSION_SECRET) { console.warn("WARNUNG: Kein SESSION_SECRET in Umgebungsvariablen gefunden. Sessions sind unsicher!"); }
    if(!process.env.ADMIN_PASSWORD) { console.warn("WARNUNG: Kein ADMIN_PASSWORD in Umgebungsvariablen gefunden. Admin-Login wird fehlschlagen!"); }
