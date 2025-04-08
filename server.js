@@ -176,6 +176,7 @@ app.get('/healthz', (req, res) => {
 
 // Neuer Endpunkt: GET /next-booking
 // Ermittelt, welche Buchung (Arbeitsbeginn oder Arbeitsende) für den Mitarbeiter als nächstes erfolgen soll.
+// Falls beim letzten Eintrag die Endzeit fehlt, wird zusätzlich die ID des offenen Eintrags zurückgegeben.
 app.get('/next-booking', async (req, res) => {
   const { name } = req.query;
   if (!name) return res.status(400).send('Name ist erforderlich.');
@@ -189,13 +190,19 @@ app.get('/next-booking', async (req, res) => {
     `;
     const result = await db.query(query, [name]);
     let nextBooking;
+    let entryId = null;
     if (result.rows.length === 0) {
       nextBooking = 'arbeitsbeginn';
     } else {
       const lastRecord = result.rows[0];
-      nextBooking = lastRecord.endtime ? 'arbeitsbeginn' : 'arbeitsende';
+      if(lastRecord.endtime) {
+        nextBooking = 'arbeitsbeginn';
+      } else {
+        nextBooking = 'arbeitsende';
+        entryId = lastRecord.id;
+      }
     }
-    res.json({ nextBooking });
+    res.json({ nextBooking, id: entryId });
   } catch (err) {
     console.error("Fehler beim Abrufen der nächsten Buchung:", err);
     res.status(500).json({ message: 'Fehler beim Abrufen der nächsten Buchung.' });
@@ -307,7 +314,6 @@ app.get('/employees', (req, res) => {
 // --------------------------
 // Admin-Login und geschützte Endpunkte
 // --------------------------
-
 app.post('/admin-login', (req, res) => {
   const { password } = req.body;
   const adminPassword = process.env.ADMIN_PASSWORD;
