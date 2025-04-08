@@ -11,7 +11,7 @@
   <link rel="stylesheet" href="style.css" />
   <meta name="theme-color" content="#ffffff" />
   <style>
-    /* Grundlegende Stile aus index_base_html.txt */
+    /* Grundlegende Stile */
     .hidden {
       display: none;
     }
@@ -25,7 +25,7 @@
     table {
       width: 100%;
       border-collapse: collapse;
-      margin-top: 1rem; /* Etwas Abstand hinzugefügt */
+      margin-top: 1rem;
     }
     th, td {
       border: 1px solid #ccc;
@@ -35,17 +35,17 @@
     }
     td button {
       margin-right: 5px;
-      padding: 5px 10px; /* Etwas Padding für Buttons */
+      padding: 5px 10px;
     }
     .table-wrapper {
-        overflow-x: auto; /* Besser für schmale Bildschirme */
+        overflow-x: auto;
     }
-    /* Container für bessere Zentrierung und Abstand */
+    /* Container */
     .container {
         max-width: 900px;
         margin: 20px auto;
         padding: 20px;
-        background-color: #f9f9f9; /* Leichter Hintergrund für den Container */
+        background-color: #f9f9f9;
         border-radius: 8px;
         box-shadow: 0 2px 4px rgba(0,0,0,0.1);
     }
@@ -61,18 +61,18 @@
         border: 0;
         border-top: 1px solid #eee;
     }
-    /* Stil für das neue Formular-Container, falls benötigt */
+    /* Monatsabschluss Container */
     #monthlyBalanceFormContainer {
         margin-top: 1.5rem;
         padding-top: 1.5rem;
-        border-top: 1px solid #eee; /* Visuelle Trennung */
+        border-top: 1px solid #eee;
     }
-     /* Neu: Readonly/Disabled-Felder optisch abgrenzen */
+     /* Readonly Felder */
     input[readonly] {
       background-color: #e9e9e9;
       cursor: default;
     }
-     /* Spezifischer Stil für das neue Anzeige-Feld */
+     /* Anzeige ausgewählter Mitarbeiter */
     #selectedEmployeeDisplay {
         background-color: #e9e9e9;
         cursor: default;
@@ -279,7 +279,7 @@
          <button type="button" onclick="saveEmployeeChanges()">Mitarbeiter Speichern</button>
         <button type="button" onclick="cancelEdit()">Abbrechen</button>
       </form>
-    </div> <hr> <div id="monthlyBalanceFormContainer">
+    </div> <hr> <div id="monthlyBalanceFormContainer" class="hidden">
        <h2>Monatsabschluss berechnen</h2>
        <form id="monthlyBalanceForm">
          <div>
@@ -354,6 +354,8 @@
     const adminPanel = document.getElementById('adminPanel');
     const employeePanel = document.getElementById('employeePanel');
     const editEmployeeForm = document.getElementById('editEmployeeForm');
+    const monthlyBalanceContainer = document.getElementById('monthlyBalanceFormContainer'); // Variable für einfacheren Zugriff
+
     // --- Event Listener ---
     window.addEventListener('load', loadEmployeeOptions);
     // Mitarbeiter-Auswahl ändert -> Lade dessen Zeiten UND aktualisiere Anzeigefeld
@@ -511,7 +513,8 @@
             alert('Admin erfolgreich angemeldet.'); // Eigene Meldung statt Server-Antwort
             adminPanel.classList.remove('hidden');
             employeePanel.classList.remove('hidden');
-            // HINWEIS: monthlyBalanceFormContainer wird hier NICHT mehr automatisch eingeblendet!
+            // KORREKTUR: Monatsabschluss-Container ebenfalls einblenden
+            monthlyBalanceContainer.classList.remove('hidden');
             document.getElementById('adminLoginForm').classList.add('hidden'); // Login-Form ausblenden
 
             await loadAdminWorkHours();
@@ -986,4 +989,3 @@
   </script>
 </body>
 </html>
-
