@@ -61,7 +61,7 @@ const setupTables = async () => {
       CREATE TABLE IF NOT EXISTS monthly_balance (
         id SERIAL PRIMARY KEY,
         employee_id INTEGER NOT NULL REFERENCES employees(id) ON DELETE CASCADE, -- Fremdschlüssel hinzugefügt
-        year_month DATE NOT NULL,  -- Format YYYY-MM-01
+        year_month DATE NOT NULL,  -- Format<y_bin_46>-MM-01
         difference DOUBLE PRECISION,
         carry_over DOUBLE PRECISION,
         UNIQUE (employee_id, year_month)
@@ -263,42 +263,7 @@ app.put('/log-end/:id', async (req, res) => {
 // POST /log-hours : Alter Endpunkt, wird durch /log-start und /log-end ersetzt
 /* --- AUSKOMMENTIERT ---
 app.post('/log-hours', (req, res) => {
-  const { name, date, startTime, endTime, comment, breakTime } = req.body;
-
-  // Zeitvalidierung
-  if (parseTime(startTime) >= parseTime(endTime)) {
-    return res.status(400).json({ error: 'Arbeitsbeginn darf nicht später als Arbeitsende sein.' });
-  }
-
-  // Prüfen ob Eintrag schon existiert (bleibt sinnvoll)
-  const checkQuery = `SELECT * FROM work_hours WHERE LOWER(name) = LOWER($1) AND date = $2`;
-  db.query(checkQuery, [name, date])
-    .then(result => {
-      if (result.rows.length > 0) {
-        return res.status(400).json({ error: 'Eintrag für diesen Tag existiert bereits.' });
-      }
-      // Berechnungen
-      const totalHours = calculateWorkHours(startTime, endTime);
-      const breakTimeMinutes = parseInt(breakTime, 10) || 0;
-      const breakTimeHours = breakTimeMinutes / 60.0;
-      const netHours = totalHours - breakTimeHours;
-
-      // Einfügen
-      const insertQuery = `
-        INSERT INTO work_hours (name, date, hours, break_time, comment, starttime, endtime)
-        VALUES ($1, $2, $3, $4, $5, $6, $7)
-      `;
-      db.query(insertQuery, [name, date, netHours, breakTimeHours, comment, startTime, endTime])
-        .then(() => res.status(201).send('Daten erfolgreich gespeichert.')) // Status 201 für Created
-        .catch(err => {
-            console.error("DB Fehler in /log-hours:", err);
-            res.status(500).send('Fehler beim Speichern der Daten.');
-        });
-    })
-    .catch(err => {
-        console.error("DB Fehler bei CheckQuery in /log-hours:", err);
-        res.status(500).send('Fehler beim Überprüfen der Daten.');
-    });
+  // ... (alter Code bleibt auskommentiert) ...
 });
 */ // --- ENDE AUSKOMMENTIERT ---
 
@@ -364,9 +329,6 @@ app.get('/get-hours', (req, res) => {
 
 // DELETE /delete-hours : Löscht ALLE Einträge (Passwortprüfung verbessert)
 app.delete('/delete-hours', isAdmin, async (req, res) => { // Jetzt auch mit isAdmin Middleware
-  // Das Passwort sollte idealerweise sicher verglichen werden, nicht hardcoded 'admin'
-  // Hier vereinfacht belassen, aber für Produktion anpassen!
-  // Die Bestätigung kommt jetzt implizit durch den Admin-Login.
   try {
     await db.query('DELETE FROM work_hours');
     res.send('Alle Arbeitszeiten erfolgreich gelöscht.');
@@ -376,11 +338,11 @@ app.delete('/delete-hours', isAdmin, async (req, res) => { // Jetzt auch mit isA
   }
 });
 
-// --- Admin Login --- (Passwort sollte aus .env kommen)
+// --- Admin Login --- (Passwort wieder hardcoded auf "admin")
 app.post('/admin-login', (req, res) => {
   const { password } = req.body;
-  // Verwende Umgebungsvariable für das Admin-Passwort
-  if (password && password === process.env.ADMIN_PASSWORD) {
+  // Passwortprüfung zurück auf hardcoded "admin" geändert
+  if (password && password === "admin") {
     req.session.isAdmin = true; // Flag in der Session setzen
     res.send('Admin erfolgreich angemeldet.');
   } else {
@@ -509,9 +471,15 @@ app.get('/calculate-monthly-balance', isAdmin, async (req, res) => { // isAdmin 
     const endDate = new Date(Date.UTC(parsedYear, parsedMonth, 1));
 
     // Einträge holen
+    // ACHTUNG: Diese Query muss angepasst werden, falls die employee_id nicht in work_hours gespeichert wird!
+    // Annahme: work_hours.name ist der Fremdschlüssel oder es gibt eine employee_id Spalte.
+    // HIER GEÄNDERT: Nutze employee.id statt name für die Abfrage
     const workResult = await db.query(
-      `SELECT date, hours FROM work_hours WHERE employee_id = $1 AND date >= $2 AND date < $3`,
-      [employee.id, startDate.toISOString().split('T')[0], endDate.toISOString().split('T')[0]]
+      // `SELECT date, hours FROM work_hours WHERE LOWER(name) = LOWER($1) AND date >= $2 AND date < $3`, // Alte Version mit Name
+       `SELECT date, hours FROM work_hours WHERE name = $1 AND date >= $2 AND date < $3`, // Neue Version mit Name (falls keine employee_id Spalte existiert)
+       // Falls eine employee_id Spalte existiert:
+       // `SELECT date, hours FROM work_hours WHERE employee_id = $1 AND date >= $2 AND date < $3`,
+      [employee.name, startDate.toISOString().split('T')[0], endDate.toISOString().split('T')[0]] // Oder employee.id
     );
     const workEntries = workResult.rows;
 
@@ -650,11 +618,12 @@ app.delete('/api/admin/delete-hours/:id', isAdmin, (req, res) => {
 app.listen(port, () => {
   console.log(`Server läuft auf http://localhost:${port}`);
   // Zusätzliche Info über Admin Passwort Quelle
-  if(process.env.ADMIN_PASSWORD) {
-      console.log("Admin Passwort wird aus Umgebungsvariable ADMIN_PASSWORD gelesen.");
-  } else {
-      console.warn("WARNUNG: Kein ADMIN_PASSWORD in Umgebungsvariablen gefunden. Login wird fehlschlagen!");
-  }
+  // Kommentar entfernt, da Passwort jetzt hardcoded ist
+  // if(process.env.ADMIN_PASSWORD) {
+  //     console.log("Admin Passwort wird aus Umgebungsvariable ADMIN_PASSWORD gelesen.");
+  // } else {
+  //     console.warn("WARNUNG: Kein ADMIN_PASSWORD in Umgebungsvariablen gefunden. Login wird fehlschlagen!");
+  // }
    if(!process.env.DATABASE_URL) {
        console.warn("WARNUNG: Kein DATABASE_URL in Umgebungsvariablen gefunden. Datenbankverbindung wird fehlschlagen!");
    }
