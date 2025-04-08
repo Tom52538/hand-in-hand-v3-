@@ -76,7 +76,6 @@ const setupTables = async () => {
   }
 };
 // Wichtig: Setup ausführen, BEVOR der Server startet zu lauschen, aber NACHDEM die DB Verbindung potentiell da ist.
-// Es ist besser, die Bereitschaft des DB-Pools abzuwarten, aber für einfache Setups ist dies oft ausreichend.
 setupTables();
 
 
@@ -118,7 +117,7 @@ function convertToCSV(data) {
   }
 
 // ==========================================
-// Health Check Endpunkt (NEU)
+// Health Check Endpunkt
 // ==========================================
 app.get('/healthz', (req, res) => {
   // Einfacher Endpunkt, der nur 200 OK zurückgibt.
@@ -362,7 +361,8 @@ app.get('/calculate-monthly-balance', isAdmin, async (req, res) => {
 
 
 // --- Server Start ---
-app.listen(port, () => { // Host '0.0.0.0' ist oft implizit, wenn nicht angegeben
+// Höre auf allen Interfaces (0.0.0.0), was für Container wichtig ist
+app.listen(port, '0.0.0.0', () => { // --> Host '0.0.0.0' hinzugefügt
   console.log(`Server läuft auf Port: ${port}`); // Geändert, um nur Port auszugeben
    if(!process.env.DATABASE_URL) { console.warn("WARNUNG: Kein DATABASE_URL in Umgebungsvariablen gefunden. Datenbankverbindung wird fehlschlagen!"); }
    if(!process.env.SESSION_SECRET) { console.warn("WARNUNG: Kein SESSION_SECRET in Umgebungsvariablen gefunden. Sessions sind unsicher!"); }
