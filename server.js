@@ -523,7 +523,8 @@ async function startServer() {
 
     // --- Graceful Shutdown Logik ---
     const gracefulShutdown = async (signal) => {
-      console.log(`\n${signal} empfangen. Starte graceful shutdown...`);
+      // DIESE LOG-NACHRICHT SOLLTE JETZT ERSCHEINEN, WENN DER HANDLER LÄUFT
+      console.log(`---> Graceful shutdown Funktion gestartet für Signal: ${signal}`);
 
       // 1. Stoppe Annahme neuer Verbindungen
       server.close(async (err) => {
@@ -555,8 +556,16 @@ async function startServer() {
     };
 
     // Auf Signale lauschen
-    process.on('SIGTERM', () => gracefulShutdown('SIGTERM')); // Signal vom Container-Manager
-    process.on('SIGINT', () => gracefulShutdown('SIGINT')); // Signal von Ctrl+C
+    process.on('SIGTERM', () => {
+       // NEUE, SOFORTIGE LOG-NACHRICHT HIER:
+       console.log(`---> SIGTERM Signal empfangen! Rufe gracefulShutdown auf...`);
+       gracefulShutdown('SIGTERM'); // Signal vom Container-Manager
+    });
+    process.on('SIGINT', () => {
+       // NEUE, SOFORTIGE LOG-NACHRICHT HIER:
+       console.log(`---> SIGINT Signal empfangen! Rufe gracefulShutdown auf...`);
+       gracefulShutdown('SIGINT'); // Signal von Ctrl+C
+    });
 
   } catch (error) {
     // Fehler beim Start (z.B. Port belegt, schwerwiegender Fehler vor dem Listen)
