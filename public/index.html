@@ -32,7 +32,7 @@
     button:disabled { cursor: not-allowed; opacity: 0.6; }
     hr { margin: 2rem 0; border: 0; border-top: 1px solid #eee; }
     input[readonly] { background-color: #e9e9e9; cursor: default; }
-    /* Tab-Navigation-Stile (wird in Teil 2 weiter genutzt) */
+    /* Tab-Navigation-Stile */
     .tabs {
       list-style: none;
       padding: 0;
@@ -303,10 +303,12 @@
         const result = await response.text();
         if (response.ok) {
           alert("Admin erfolgreich angemeldet.");
-          // Tab-basierten Bereich anzeigen und Login-Formular ausblenden
+          // Tab-basierter Bereich anzeigen und Login-Formular ausblenden
           document.getElementById("adminTabs").classList.remove("hidden");
           document.getElementById("adminLoginForm").classList.add("hidden");
-          // Hier können weitere Admin-Daten geladen werden (z.B. loadAdminWorkHours, loadEmployees)
+          // Laden von Admin-Daten
+          loadAdminWorkHours();
+          loadEmployees();
         } else {
           alert("Login fehlgeschlagen: " + result);
         }
@@ -316,7 +318,7 @@
       }
     });
 
-    // Platzhalter und bestehende Funktionsdefinitionen (Zeiterfassung, CSV-Download, Mitarbeiterfunktionen, etc.)
+    // Funktion: Arbeitszeitformular zurücksetzen
     function resetWorkTimeForm() {
       document.getElementById("comment").value = "";
       document.getElementById("breakTime").value = "0";
@@ -329,12 +331,268 @@
       document.getElementById("startTime").value = "";
       document.getElementById("endTime").value = "";
     }
-    
-    // Weitere Funktionen wie loadEmployeeOptions, loadWorkHours, loadAdminWorkHours, loadEmployees, saveChanges, deleteEntry,
-    // editEmployee, saveEmployeeChanges, deleteEmployee, cancelEdit etc. werden analog der vorherigen Version eingefügt.
-    
-    // Initialisierung
+
+    // Funktion: Mitarbeiteroptionen laden (Dropdown)
+    async function loadEmployeeOptions() {
+      try {
+        const response = await fetch('/employees');
+        if (!response.ok) throw new Error('Mitarbeiterliste konnte nicht geladen werden.');
+        const employees = await response.json();
+        const select = document.getElementById('employeeSelect');
+        select.innerHTML = '<option value="">Bitte auswählen</option>';
+        employees.forEach(emp => {
+          const option = document.createElement('option');
+          option.value = emp.name;
+          option.textContent = emp.name;
+          select.appendChild(option);
+        });
+      } catch (error) {
+        console.error("Fehler beim Laden der Mitarbeiteroptionen:", error);
+        document.getElementById('employeeSelect').innerHTML = '<option value="">Fehler beim Laden</option>';
+      }
+    }
+
+    // Funktion: Arbeitszeiten für einen Mitarbeiter laden
+    async function loadWorkHours() {
+      const name = document.getElementById("employeeSelect").value;
+      const list = document.getElementById("workHoursList");
+      const totalElem = document.getElementById("totalHours");
+      list.innerHTML = "";
+      totalElem.textContent = "Gesamtstunden: 00:00";
+      if (!name) return;
+      try {
+        const response = await fetch(`/get-all-hours?name=${encodeURIComponent(name)}`);
+        if (!response.ok) {
+          if(response.status === 404) {
+            list.innerHTML = "<li>Noch keine Zeiten für diesen Mitarbeiter gebucht.</li>";
+            return;
+          }
+          throw new Error(`Fehler ${response.status} beim Laden der Arbeitszeiten.`);
+        }
+        const data = await response.json();
+        let sum = 0;
+        data.forEach(entry => {
+          const li = document.createElement("li");
+          const hours = parseFloat(entry.hours) || 0;
+          sum += hours;
+          li.textContent = `ID: ${entry.id}, Datum: ${new Date(entry.date).toLocaleDateString("de-DE")}, Beginn: ${entry.startTime}, Ende: ${entry.endTime}, Pause: ${entry.break_time} min, Stunden: ${hours.toFixed(2)}, Bemerkungen: ${entry.comment}`;
+          list.appendChild(li);
+        });
+        totalElem.textContent = `Gesamtarbeitszeit: ${sum.toFixed(2)} Std.`;
+      } catch (error) {
+        console.error("Fehler beim Laden der Arbeitszeiten:", error);
+        list.innerHTML = `<li>Fehler: ${error.message}</li>`;
+      }
+    }
+
+    // Funktion: Admin-Arbeitszeiten laden (für den Tab "Arbeitszeiten")
+    async function loadAdminWorkHours() {
+      try {
+        const response = await fetch('/admin-work-hours');
+        if (!response.ok) throw new Error('Admin-Arbeitszeiten konnten nicht geladen werden.');
+        const data = await response.json();
+        const tbody = document.querySelector("#workHoursTable tbody");
+        tbody.innerHTML = "";
+        if (data.length === 0) {
+          tbody.innerHTML = "<tr><td colspan='8'>Keine Daten vorhanden.</td></tr>";
+          return;
+        }
+        data.forEach(entry => {
+          const row = document.createElement("tr");
+          row.innerHTML = `<td>${entry.id}</td>
+                           <td>${entry.name}</td>
+                           <td>${new Date(entry.date).toLocaleDateString("de-DE")}</td>
+                           <td>${entry.startTime} - ${entry.endTime}</td>
+                           <td>${parseFloat(entry.hours).toFixed(2)}</td>
+                           <td>${entry.break_time}</td>
+                           <td>${entry.comment}</td>
+                           <td>
+                             <button onclick='editEntry(${JSON.stringify(entry)})'>Bearbeiten</button>
+                             <button onclick="deleteEntry(${entry.id})">Löschen</button>
+                           </td>`;
+          tbody.appendChild(row);
+        });
+      } catch (error) {
+        console.error("Fehler beim Laden der Admin-Arbeitszeiten:", error);
+        document.querySelector("#workHoursTable tbody").innerHTML = `<tr><td colspan="8">Fehler: ${error.message}</td></tr>`;
+      }
+    }
+
+    // Funktion: Mitarbeiter-Daten für den Admin-Tab laden
+    async function loadEmployees() {
+      try {
+        const response = await fetch('/admin/employees');
+        if (!response.ok) throw new Error('Mitarbeiterliste konnte nicht geladen werden (Admin).');
+        const employees = await response.json();
+        const list = document.getElementById("employeeList");
+        list.innerHTML = "";
+        if (employees.length === 0) {
+          list.innerHTML = "<li>Keine Mitarbeiter gefunden.</li>";
+          return;
+        }
+        employees.forEach(emp => {
+          const li = document.createElement("li");
+          li.innerHTML = `ID: ${emp.id} – ${emp.name} (Mo: ${emp.mo_hours}, Di: ${emp.di_hours}, Mi: ${emp.mi_hours}, Do: ${emp.do_hours}, Fr: ${emp.fr_hours})`;
+          const editBtn = document.createElement("button");
+          editBtn.textContent = "Bearbeiten";
+          editBtn.onclick = () => { editEmployee(emp); };
+          const deleteBtn = document.createElement("button");
+          deleteBtn.textContent = "Löschen";
+          deleteBtn.onclick = () => { deleteEmployee(emp.id, emp.name); };
+          li.appendChild(editBtn);
+          li.appendChild(deleteBtn);
+          list.appendChild(li);
+        });
+      } catch (error) {
+        console.error("Fehler beim Laden der Mitarbeiter (Admin):", error);
+        document.getElementById("employeeList").innerHTML = `<li>Fehler: ${error.message}</li>`;
+      }
+    }
+
+    // Funktionen für Bearbeitung und Löschung der Zeiteinträge
+    function editEntry(entry) {
+      document.getElementById("editId").value = entry.id;
+      document.getElementById("editName").value = entry.name || "";
+      document.getElementById("editDate").value = entry.date ? entry.date.split("T")[0] : "";
+      document.getElementById("editStartTime").value = entry.startTime;
+      document.getElementById("editEndTime").value = entry.endTime;
+      document.getElementById("editBreakTime").value = entry.break_time || 0;
+      document.getElementById("editComment").value = entry.comment || "";
+      document.getElementById("editForm").scrollIntoView({ behavior: "smooth" });
+    }
+
+    async function saveChanges() {
+      const id = document.getElementById("editId").value;
+      if (!id) {
+        alert("Kein Eintrag zum Bearbeiten ausgewählt.");
+        return;
+      }
+      const data = {
+        id: id,
+        name: document.getElementById("editName").value,
+        date: document.getElementById("editDate").value,
+        startTime: document.getElementById("editStartTime").value,
+        endTime: document.getElementById("editEndTime").value,
+        breakTime: document.getElementById("editBreakTime").value,
+        comment: document.getElementById("editComment").value
+      };
+      if (!data.name || !data.date || !data.startTime || !data.endTime) {
+        alert("Bitte füllen Sie alle erforderlichen Felder aus.");
+        return;
+      }
+      try {
+        const response = await fetch("/api/admin/update-hours", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(data)
+        });
+        const result = await response.text();
+        alert(result);
+        if (response.ok) {
+          document.getElementById("editForm").reset();
+          document.getElementById("editId").value = "";
+          loadAdminWorkHours();
+        }
+      } catch (error) {
+        console.error("Fehler beim Speichern der Änderungen:", error);
+        alert("Fehler: " + error.message);
+      }
+    }
+
+    async function deleteEntry(id) {
+      if (!confirm(`Möchten Sie den Eintrag mit ID ${id} wirklich löschen?`)) return;
+      try {
+        const response = await fetch(`/api/admin/delete-hours/${id}`, { method: "DELETE" });
+        const result = await response.text();
+        alert(result);
+        if (response.ok) {
+          loadAdminWorkHours();
+        }
+      } catch (error) {
+        console.error(`Fehler beim Löschen des Eintrags ${id}:`, error);
+        alert("Fehler: " + error.message);
+      }
+    }
+
+    // Funktionen für Mitarbeiterbearbeitung
+    function editEmployee(emp) {
+      document.getElementById("editEmployeeId").value = emp.id;
+      document.getElementById("editEmployeeName").value = emp.name;
+      document.getElementById("editMoHours").value = emp.mo_hours || 0;
+      document.getElementById("editDiHours").value = emp.di_hours || 0;
+      document.getElementById("editMiHours").value = emp.mi_hours || 0;
+      document.getElementById("editDoHours").value = emp.do_hours || 0;
+      document.getElementById("editFrHours").value = emp.fr_hours || 0;
+      document.getElementById("editEmployeeForm").classList.remove("hidden");
+      document.getElementById("addEmployeeForm").classList.add("hidden");
+      document.getElementById("editEmployeeForm").scrollIntoView({ behavior: "smooth" });
+    }
+
+    async function saveEmployeeChanges() {
+      const id = document.getElementById("editEmployeeId").value;
+      const data = {
+        id: id,
+        name: document.getElementById("editEmployeeName").value,
+        mo_hours: parseFloat(document.getElementById("editMoHours").value) || 0,
+        di_hours: parseFloat(document.getElementById("editDiHours").value) || 0,
+        mi_hours: parseFloat(document.getElementById("editMiHours").value) || 0,
+        do_hours: parseFloat(document.getElementById("editDoHours").value) || 0,
+        fr_hours: parseFloat(document.getElementById("editFrHours").value) || 0
+      };
+      if (!data.name) {
+        alert("Mitarbeitername darf nicht leer sein.");
+        return;
+      }
+      try {
+        const response = await fetch(`/admin/employees/${id}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(data)
+        });
+        const result = await response.text();
+        alert(result);
+        if (response.ok) {
+          cancelEdit();
+          loadEmployees();
+          loadEmployeeOptions();
+        }
+      } catch (error) {
+        console.error("Fehler beim Speichern des Mitarbeiters:", error);
+        alert("Fehler: " + error.message);
+      }
+    }
+
+    async function deleteEmployee(id, name) {
+      if (!confirm(`Möchten Sie den Mitarbeiter "${name}" (ID: ${id}) wirklich löschen?`)) return;
+      try {
+        const response = await fetch(`/admin/employees/${id}`, { method: "DELETE" });
+        const result = await response.text();
+        alert(result);
+        if (response.ok) {
+          loadEmployees();
+          loadEmployeeOptions();
+        }
+      } catch (error) {
+        console.error(`Fehler beim Löschen des Mitarbeiters ${id}:`, error);
+        alert("Fehler: " + error.message);
+      }
+    }
+
+    function cancelEdit() {
+      document.getElementById("editEmployeeForm").classList.add("hidden");
+      document.getElementById("editEmployeeForm").reset();
+      document.getElementById("editEmployeeId").value = "";
+      document.getElementById("addEmployeeForm").classList.remove("hidden");
+    }
+
+    // Globale Variablen für den Status der Zeiterfassung
+    let workTimeState = 0;
+    let currentEntryId = null;
+
+    // Initialisierung: Laden der Mitarbeiteroptionen und Zurücksetzen des Formulars
     resetWorkTimeForm();
+    loadEmployeeOptions();
   </script>
 </body>
 </html>
+
