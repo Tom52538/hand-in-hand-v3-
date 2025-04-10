@@ -279,35 +279,31 @@
       });
     });
 
-    // Event-Listener für Buchung des Arbeitsbeginns
-    document.getElementById("workTimeBtn").addEventListener("click", async () => {
-      const name = document.getElementById("employeeSelect").value;
-      if (!name) {
-        alert("Bitte wählen Sie einen Mitarbeiter aus.");
-        return;
-      }
-      // Setze aktuelles Datum und aktuelle Uhrzeit
-      const now = new Date();
-      const date = now.toISOString().split("T")[0];
-      const time = now.toTimeString().slice(0, 5);
-      document.getElementById("date").value = date;
-      document.getElementById("startTime").value = time;
+    // Admin-Login: Nach erfolgreichem Login wird der tab-basierte Bereich angezeigt
+    document.getElementById("adminLoginForm").addEventListener("submit", async function(event) {
+      event.preventDefault();
+      const password = document.getElementById("adminPassword").value;
       try {
-        const response = await fetch("/log-start", {
+        const response = await fetch("/admin-login", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ name, date, startTime: time })
+          body: JSON.stringify({ password })
         });
-        const result = await response.json();
+        const result = await response.text();
         if (response.ok) {
-          alert("Arbeitsbeginn erfolgreich gebucht.");
-          // Hier können Sie ggf. weitere UI-Updates vornehmen.
+          alert("Admin erfolgreich angemeldet.");
+          // Tab-basierter Bereich anzeigen und Login-Formular ausblenden
+          document.getElementById("adminTabs").classList.remove("hidden");
+          document.getElementById("adminLoginForm").classList.add("hidden");
+          // Laden von Admin-Daten
+          loadAdminWorkHours();
+          loadEmployees();
         } else {
-          alert("Fehler: " + result.message);
+          alert("Login fehlgeschlagen: " + result);
         }
-      } catch (err) {
-        console.error("Fehler beim Buchen des Arbeitsbeginns:", err);
-        alert("Netzwerkfehler!");
+      } catch (error) {
+        console.error("Fehler beim Admin-Login:", error);
+        alert("Netzwerkfehler oder Server nicht erreichbar.");
       }
     });
 
