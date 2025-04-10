@@ -132,7 +132,7 @@ function getExpectedHours(employeeData, dateStr) {
 function convertToCSV(data) {
   if (!data || data.length === 0) return '';
   const csvRows = [];
-  csvRows.push(["Name", "Datum", "Arbeitsbeginn", "Arbeitsende", "Pause (Minuten)", "SollArbeitszeit", "IstArbeitszeit", "Differenz", "Bemerkung"].join(','));
+  csvRows.push(["Name", "Datum", "Arbeitsbeginn", "Arbeitsende", "SollArbeitszeit", "IstArbeitszeit", "Differenz", "Bemerkung"].join(','));
   for (const row of data) {
     let dateFormatted = "";
     if (row.date) {
@@ -149,7 +149,6 @@ function convertToCSV(data) {
     }
     const startTimeFormatted = row.starttime || "";
     const endTimeFormatted = row.endtime || "";
-    const breakMinutes = row.break_time ? (row.break_time * 60).toFixed(0) : "0";
     const istHours = row.hours || 0;
     const expected = getExpectedHours(row, row.date);
     const diff = istHours - expected;
@@ -157,7 +156,7 @@ function convertToCSV(data) {
     const expectedFormatted = expected.toFixed(2);
     const diffFormatted = diff.toFixed(2);
     const commentFormatted = `"${(row.comment || '').replace(/"/g, '""')}"`;
-    const values = [row.name, dateFormatted, startTimeFormatted, endTimeFormatted, breakMinutes, expectedFormatted, istFormatted, diffFormatted, commentFormatted];
+    const values = [row.name, dateFormatted, startTimeFormatted, endTimeFormatted, expectedFormatted, istFormatted, diffFormatted, commentFormatted];
     csvRows.push(values.join(','));
   }
   return csvRows.join('\n');
@@ -176,7 +175,6 @@ app.get('/healthz', (req, res) => {
 
 // Neuer Endpunkt: GET /next-booking
 // Ermittelt, welche Buchung (Arbeitsbeginn oder Arbeitsende) für den Mitarbeiter als nächstes erfolgen soll.
-// Falls beim letzten Eintrag die Endzeit fehlt, wird zusätzlich die ID des offenen Eintrags zurückgegeben.
 app.get('/next-booking', async (req, res) => {
   const { name } = req.query;
   if (!name) return res.status(400).send('Name ist erforderlich.');
@@ -237,10 +235,10 @@ app.post('/log-start', async (req, res) => {
   }
 });
 
-// PUT /log-end/:id : Arbeitsende (sowie Pause und Kommentar) speichern
+// PUT /log-end/:id : Arbeitsende (ohne Pause) speichern
 app.put('/log-end/:id', async (req, res) => {
   const { id } = req.params;
-  const { endTime, breakTime, comment } = req.body;
+  const { endTime, comment } = req.body;
   if (!endTime) {
     return res.status(400).json({ message: 'Endzeit ist erforderlich.' });
   }
@@ -248,15 +246,11 @@ app.put('/log-end/:id', async (req, res) => {
     return res.status(400).json({ message: 'Gültige Eintrags-ID ist erforderlich.' });
   }
   const entryId = parseInt(id);
-  const breakTimeMinutes = parseInt(breakTime, 10) || 0;
-  const breakTimeHours = breakTimeMinutes / 60.0;
   try {
-    // Arbeitsbeginn und (möglicherweise bereits vorhandenes) Arbeitsende abfragen
     const timeResult = await db.query('SELECT starttime, endtime FROM work_hours WHERE id = $1', [entryId]);
     if (timeResult.rows.length === 0) {
       return res.status(404).json({ message: `Eintrag mit ID ${entryId} nicht gefunden.` });
     }
-    // Prüfen, ob bereits ein Arbeitsende erfasst wurde
     if (timeResult.rows[0].endtime) {
       return res.status(409).json({ message: 'Arbeitsende wurde für diesen Tag bereits erfasst.' });
     }
@@ -265,9 +259,10 @@ app.put('/log-end/:id', async (req, res) => {
     if (totalHours < 0) {
       return res.status(400).json({ message: 'Arbeitsende darf nicht vor Arbeitsbeginn liegen.' });
     }
-    const netHours = Math.max(0, totalHours - breakTimeHours);
-    const updateQuery = `UPDATE work_hours SET endtime = $1, break_time = $2, comment = $3, hours = $4 WHERE id = $5;`;
-    await db.query(updateQuery, [endTime, breakTimeHours, comment, netHours, entryId]);
+    // Keine Pause berücksichtigen – Nettoarbeitszeit entspricht totalHours
+    const netHours = totalHours;
+    const updateQuery = `UPDATE work_hours SET endtime = $1, comment = $2, hours = $3 WHERE id = $4;`;
+    await db.query(updateQuery, [endTime, comment, netHours, entryId]);
     console.log(`Arbeitsende für ID ${entryId} um ${endTime} gespeichert (Netto Std: ${netHours.toFixed(2)}).`);
     res.status(200).send('Arbeitsende erfolgreich gespeichert.');
   } catch (err) {
@@ -377,20 +372,18 @@ app.get('/admin-download-csv', isAdmin, async (req, res) => {
   }
 });
 
-// PUT /api/admin/update-hours : Zeiteintrag aktualisieren (Admin)
+// PUT /api/admin/update-hours : Zeiteintrag aktualisieren (Admin) – ohne Pause
 app.put('/api/admin/update-hours', isAdmin, (req, res) => {
-  const { id, name, date, startTime, endTime, comment, breakTime } = req.body;
+  const { id, name, date, startTime, endTime, comment } = req.body;
   if (isNaN(parseInt(id))) return res.status(400).send('Ungültige ID.');
   if (!name || !date || !startTime || !endTime) return res.status(400).send('Name, Datum, Start- und Endzeit sind erforderlich.');
   if (parseTime(startTime) >= parseTime(endTime)) {
     return res.status(400).json({ error: 'Arbeitsbeginn darf nicht später oder gleich dem Arbeitsende sein.' });
   }
   const totalHours = calculateWorkHours(startTime, endTime);
-  const breakTimeMinutes = parseInt(breakTime, 10) || 0;
-  const breakTimeHours = breakTimeMinutes / 60.0;
-  const netHours = Math.max(0, totalHours - breakTimeHours);
-  const query = `UPDATE work_hours SET name = $1, date = $2, hours = $3, break_time = $4, comment = $5, starttime = $6, endtime = $7 WHERE id = $8;`;
-  db.query(query, [name, date, netHours, breakTimeHours, comment, startTime, endTime, parseInt(id)])
+  const netHours = totalHours;
+  const query = `UPDATE work_hours SET name = $1, date = $2, hours = $3, comment = $4, starttime = $5, endtime = $6 WHERE id = $7;`;
+  db.query(query, [name, date, netHours, comment, startTime, endTime, parseInt(id)])
     .then(result => {
       if (result.rowCount > 0) res.send('Arbeitszeit erfolgreich aktualisiert.');
       else res.status(404).send(`Eintrag mit ID ${id} nicht gefunden.`);
@@ -461,7 +454,6 @@ app.post('/admin/employees', isAdmin, (req, res) => {
       res.status(500).send('Fehler beim Hinzufügen des Mitarbeiters.');
     });
 });
-
 app.put('/admin/employees/:id', isAdmin, (req, res) => {
   const { id } = req.params;
   const { name, mo_hours, di_hours, mi_hours, do_hours, fr_hours } = req.body;
@@ -481,7 +473,6 @@ app.put('/admin/employees/:id', isAdmin, (req, res) => {
       }
     });
 });
-
 app.delete('/admin/employees/:id', isAdmin, (req, res) => {
   const { id } = req.params;
   if (isNaN(parseInt(id))) return res.status(400).send('Ungültige ID.');
