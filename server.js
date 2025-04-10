@@ -9,6 +9,10 @@ const pgSession = require('connect-pg-simple')(session);
 const path = require('path');
 const app = express();
 
+// Neue Route für die PDF-Erstellung einbinden
+const monthlyPdfEndpoint = require('./routes/monthlyPdfEndpoint');
+app.use('/', monthlyPdfEndpoint); // Hängt den PDF-Endpunkt an den Root-Pfad
+
 app.set('trust proxy', 1); // Vertrauen des Proxys (wichtig z. B. für Heroku/Railway)
 
 const port = process.env.PORT || 3000;
@@ -108,7 +112,6 @@ function parseTime(timeStr) {
   const [hh, mm] = timeStr.split(':');
   return parseInt(hh, 10) * 60 + parseInt(mm, 10);
 }
-
 function calculateWorkHours(startTime, endTime) {
   if (!startTime || !endTime) return 0;
   const startMinutes = parseTime(startTime);
@@ -119,7 +122,6 @@ function calculateWorkHours(startTime, endTime) {
   const diffInMin = endMinutes - startMinutes;
   return diffInMin / 60;
 }
-
 function getExpectedHours(employeeData, dateStr) {
   if (!employeeData || !dateStr) return 0;
   const d = new Date(dateStr);
@@ -133,7 +135,6 @@ function getExpectedHours(employeeData, dateStr) {
     default: return 0;
   }
 }
-
 function convertToCSV(data) {
   if (!data || data.length === 0) return '';
   const csvRows = [];
