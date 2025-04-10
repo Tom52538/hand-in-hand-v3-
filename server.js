@@ -36,7 +36,8 @@ app.use(session({
   resave: false,
   saveUninitialized: false,
   cookie: {
-    secure: process.env.NODE_ENV === 'production' ? true : false, // Use secure cookies only in production
+    // For local testing, ensure NODE_ENV is not set to production.
+    secure: process.env.NODE_ENV === 'production' ? true : false,
     sameSite: 'lax',
     httpOnly: true,
   },
@@ -119,7 +120,6 @@ function calculateWorkHours(startTime, endTime) {
   return diffInMin / 60;
 }
 
-// Hier wird getDay() verwendet, um den lokalen Wochentag zu ermitteln
 function getExpectedHours(employeeData, dateStr) {
   if (!employeeData || !dateStr) return 0;
   const d = new Date(dateStr);
@@ -178,7 +178,6 @@ app.get('/healthz', (req, res) => {
 // API Endpunkte für Zeiterfassung
 // ==========================================
 
-// GET /next-booking : Ermittelt, welche Buchung (Arbeitsbeginn oder Arbeitsende) als nächstes erfolgen soll.
 app.get('/next-booking', async (req, res) => {
   const { name } = req.query;
   if (!name) return res.status(400).send('Name ist erforderlich.');
@@ -211,14 +210,12 @@ app.get('/next-booking', async (req, res) => {
   }
 });
 
-// POST /log-start : Arbeitsbeginn speichern
 app.post('/log-start', async (req, res) => {
   const { name, date, startTime } = req.body;
   if (!name || !date || !startTime) {
     return res.status(400).json({ message: 'Name, Datum und Startzeit sind erforderlich.' });
   }
   try {
-    // Prüfen, ob bereits ein Eintrag für diesen Mitarbeiter an diesem Datum vorhanden ist
     const checkQuery = `SELECT id FROM work_hours WHERE LOWER(name) = LOWER($1) AND date = $2`;
     const checkResult = await db.query(checkQuery, [name, date]);
     if (checkResult.rows.length > 0) {
@@ -239,7 +236,6 @@ app.post('/log-start', async (req, res) => {
   }
 });
 
-// PUT /log-end/:id : Arbeitsende (ohne Pause) speichern
 app.put('/log-end/:id', async (req, res) => {
   const { id } = req.params;
   const { endTime, comment } = req.body;
@@ -274,7 +270,6 @@ app.put('/log-end/:id', async (req, res) => {
   }
 });
 
-// GET /get-all-hours : Alle Arbeitszeiten eines Mitarbeiters abrufen
 app.get('/get-all-hours', (req, res) => {
   const { name } = req.query;
   if (!name) return res.status(400).send('Name ist erforderlich.');
@@ -299,7 +294,6 @@ app.get('/get-all-hours', (req, res) => {
     });
 });
 
-// GET /employees : Mitarbeiter für Dropdown abrufen
 app.get('/employees', (req, res) => {
   const query = 'SELECT id, name FROM employees ORDER BY name ASC';
   db.query(query)
@@ -315,7 +309,6 @@ app.get('/employees', (req, res) => {
 // --------------------------
 app.post('/admin-login', (req, res) => {
   const { password } = req.body;
-  // Fallback auf "admin", falls ADMIN_PASSWORD nicht in den Umgebungsvariablen gesetzt ist.
   const adminPassword = process.env.ADMIN_PASSWORD || "admin";
   if (password && password === adminPassword) {
     req.session.isAdmin = true;
@@ -356,7 +349,6 @@ app.get('/admin-work-hours', isAdmin, (req, res) => {
     });
 });
 
-// GET /admin-download-csv : CSV-Download (Admin)
 app.get('/admin-download-csv', isAdmin, async (req, res) => {
   const query = `
     SELECT w.*, e.mo_hours, e.di_hours, e.mi_hours, e.do_hours, e.fr_hours
@@ -375,7 +367,6 @@ app.get('/admin-download-csv', isAdmin, async (req, res) => {
   }
 });
 
-// PUT /api/admin/update-hours : Zeiteintrag aktualisieren (Admin) – ohne Pause
 app.put('/api/admin/update-hours', isAdmin, (req, res) => {
   const { id, name, date, startTime, endTime, comment } = req.body;
   if (isNaN(parseInt(id))) return res.status(400).send('Ungültige ID.');
@@ -397,7 +388,6 @@ app.put('/api/admin/update-hours', isAdmin, (req, res) => {
     });
 });
 
-// DELETE /api/admin/delete-hours/:id : Zeiteintrag löschen (Admin)
 app.delete('/api/admin/delete-hours/:id', isAdmin, (req, res) => {
   const { id } = req.params;
   if (isNaN(parseInt(id))) return res.status(400).send('Ungültige ID.');
@@ -413,7 +403,6 @@ app.delete('/api/admin/delete-hours/:id', isAdmin, (req, res) => {
     });
 });
 
-// DELETE /adminDeleteData : Alle Arbeitszeiten löschen (Admin)
 app.delete('/adminDeleteData', isAdmin, async (req, res) => {
   try {
     await db.query('DELETE FROM work_hours');
@@ -425,9 +414,6 @@ app.delete('/adminDeleteData', isAdmin, async (req, res) => {
   }
 });
 
-// --------------------------
-// Mitarbeiterverwaltung (Admin)
-// --------------------------
 app.get('/admin/employees', isAdmin, (req, res) => {
   const query = 'SELECT * FROM employees ORDER BY name ASC';
   db.query(query)
@@ -493,7 +479,6 @@ app.delete('/admin/employees/:id', isAdmin, (req, res) => {
     });
 });
 
-// --- Monatsabschluss Endpunkt (Admin) ---
 app.get('/calculate-monthly-balance', isAdmin, async (req, res) => {
   const { name, year, month } = req.query;
   if (!name || !year || !month || isNaN(parseInt(year)) || isNaN(parseInt(month)) || parseInt(month) < 1 || parseInt(month) > 12) {
