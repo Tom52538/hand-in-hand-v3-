@@ -174,7 +174,6 @@ app.get('/healthz', (req, res) => {
 // ==========================================
 
 // Neuer Endpunkt: GET /next-booking
-// Ermittelt, welche Buchung (Arbeitsbeginn oder Arbeitsende) für den Mitarbeiter als nächstes erfolgen soll.
 app.get('/next-booking', async (req, res) => {
   const { name } = req.query;
   if (!name) return res.status(400).send('Name ist erforderlich.');
@@ -214,7 +213,6 @@ app.post('/log-start', async (req, res) => {
     return res.status(400).json({ message: 'Name, Datum und Startzeit sind erforderlich.' });
   }
   try {
-    // Prüfen, ob bereits ein Eintrag für diesen Mitarbeiter an diesem Datum vorhanden ist
     const checkQuery = `SELECT id FROM work_hours WHERE LOWER(name) = LOWER($1) AND date = $2`;
     const checkResult = await db.query(checkQuery, [name, date]);
     if (checkResult.rows.length > 0) {
@@ -259,7 +257,6 @@ app.put('/log-end/:id', async (req, res) => {
     if (totalHours < 0) {
       return res.status(400).json({ message: 'Arbeitsende darf nicht vor Arbeitsbeginn liegen.' });
     }
-    // Keine Pause berücksichtigen – Nettoarbeitszeit entspricht totalHours
     const netHours = totalHours;
     const updateQuery = `UPDATE work_hours SET endtime = $1, comment = $2, hours = $3 WHERE id = $4;`;
     await db.query(updateQuery, [endTime, comment, netHours, entryId]);
@@ -311,7 +308,8 @@ app.get('/employees', (req, res) => {
 // --------------------------
 app.post('/admin-login', (req, res) => {
   const { password } = req.body;
-  const adminPassword = process.env.ADMIN_PASSWORD;
+  // Fallback auf "admin", falls ADMIN_PASSWORD nicht in den Umgebungsvariablen gesetzt ist.
+  const adminPassword = process.env.ADMIN_PASSWORD || "admin";
   if (!adminPassword) {
     console.error("FEHLER: ADMIN_PASSWORD nicht in den Umgebungsvariablen gesetzt!");
     return res.status(500).send("Server-Konfigurationsfehler.");
@@ -552,7 +550,7 @@ async function startServer() {
     console.log("Datenbank-Setup abgeschlossen.");
     if(!process.env.DATABASE_URL) console.warn("WARNUNG: Kein DATABASE_URL in Umgebungsvariablen gefunden.");
     if(!process.env.SESSION_SECRET) console.warn("WARNUNG: Kein SESSION_SECRET in Umgebungsvariablen gefunden.");
-    if(!process.env.ADMIN_PASSWORD) console.warn("WARNUNG: Kein ADMIN_PASSWORD in Umgebungsvariablen gefunden.");
+    if(!process.env.ADMIN_PASSWORD) console.warn("WARNUNG: Kein ADMIN_PASSWORD in Umgebungsvariablen gefunden. Fallback auf 'admin'.");
     if(process.env.NODE_ENV !== 'production') console.warn("WARNUNG: Server läuft nicht im Produktionsmodus.");
     
     const server = app.listen(port, '0.0.0.0', () => {
