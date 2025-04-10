@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <title>Netzwerkdiagnose</title>
+  <style>
+    body { font-family: sans-serif; padding: 2rem; }
+    .status { margin: 1rem 0; padding: 1rem; border-radius: 5px; color: white; font-weight: bold; }
+    .ok { background-color: #4caf50; }
+    .fail { background-color: #f44336; }
+  </style>
+</head>
+<body>
+  <h1>Netzwerkdiagnose</h1>
+  <div id="healthzStatus" class="status">Health Check wird geprüft...</div>
+  <div id="dbStatus" class="status">Datenbankverbindung wird geprüft...</div>
+
+  <script>
+    async function checkHealthz() {
+      try {
+        const res = await fetch('/healthz');
+        if (res.ok) {
+          document.getElementById('healthzStatus').textContent = '✅ Backend ist erreichbar (/healthz)';
+          document.getElementById('healthzStatus').classList.add('ok');
+        } else {
+          throw new Error('Nicht OK');
+        }
+      } catch (e) {
+        document.getElementById('healthzStatus').textContent = '❌ Backend nicht erreichbar (/healthz)';
+        document.getElementById('healthzStatus').classList.add('fail');
+      }
+    }
+
+    async function checkDatabase() {
+      try {
+        const res = await fetch('/employees');
+        if (res.ok) {
+          const data = await res.json();
+          document.getElementById('dbStatus').textContent = `✅ Datenbankverbindung OK (/employees), Mitarbeiter: ${data.length}`;
+          document.getElementById('dbStatus').classList.add('ok');
+        } else {
+          throw new Error('Fehler beim Abrufen');
+        }
+      } catch (e) {
+        document.getElementById('dbStatus').textContent = '❌ Keine Verbindung zur Datenbank (/employees)';
+        document.getElementById('dbStatus').classList.add('fail');
+      }
+    }
+
+    checkHealthz();
+    checkDatabase();
+  </script>
+</body>
+</html>
