@@ -36,7 +36,7 @@ app.use(session({
   resave: false,
   saveUninitialized: false,
   cookie: {
-    // For local testing, ensure NODE_ENV is not set to production.
+    // Für lokale Tests bitte sicherstellen, dass NODE_ENV nicht auf "production" gesetzt ist
     secure: process.env.NODE_ENV === 'production' ? true : false,
     sameSite: 'lax',
     httpOnly: true,
