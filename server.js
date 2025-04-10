@@ -20,14 +20,14 @@ app.use(express.static('public')); // Frontend-Dateien aus dem Ordner "public"
 // PostgreSQL-Datenbank einrichten
 const db = new Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false
+  ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
 });
 
 // Session Store konfigurieren
 const sessionStore = new pgSession({
   pool: db,
   tableName: 'user_sessions',
-  createTableIfMissing: true
+  createTableIfMissing: true,
 });
 
 app.use(session({
@@ -36,10 +36,10 @@ app.use(session({
   resave: false,
   saveUninitialized: false,
   cookie: {
-    secure: process.env.NODE_ENV === 'production',
+    secure: process.env.NODE_ENV === 'production' ? true : false, // Use secure cookies only in production
     sameSite: 'lax',
-    httpOnly: true
-  }
+    httpOnly: true,
+  },
 }));
 
 // --- Datenbank Tabellen Setup ---
@@ -55,7 +55,8 @@ const setupTables = async () => {
         comment TEXT,
         starttime TIME,
         endtime TIME
-      );`);
+      );
+    `);
     console.log("Tabelle work_hours erfolgreich geprüft/erstellt.");
 
     await db.query(`
@@ -67,7 +68,8 @@ const setupTables = async () => {
         mi_hours DOUBLE PRECISION,
         do_hours DOUBLE PRECISION,
         fr_hours DOUBLE PRECISION
-      );`);
+      );
+    `);
     console.log("Tabelle employees erfolgreich geprüft/erstellt.");
 
     await db.query(`
@@ -78,7 +80,8 @@ const setupTables = async () => {
         difference DOUBLE PRECISION,
         carry_over DOUBLE PRECISION,
         UNIQUE (employee_id, year_month)
-      );`);
+      );
+    `);
     console.log("Tabelle monthly_balance erfolgreich geprüft/erstellt.");
   } catch (err) {
     console.error("!!! Kritischer Fehler beim Erstellen der Datenbanktabellen:", err);
@@ -104,6 +107,7 @@ function parseTime(timeStr) {
   const [hh, mm] = timeStr.split(':');
   return parseInt(hh, 10) * 60 + parseInt(mm, 10);
 }
+
 function calculateWorkHours(startTime, endTime) {
   if (!startTime || !endTime) return 0;
   const startMinutes = parseTime(startTime);
@@ -114,6 +118,7 @@ function calculateWorkHours(startTime, endTime) {
   const diffInMin = endMinutes - startMinutes;
   return diffInMin / 60;
 }
+
 // Hier wird getDay() verwendet, um den lokalen Wochentag zu ermitteln
 function getExpectedHours(employeeData, dateStr) {
   if (!employeeData || !dateStr) return 0;
@@ -173,8 +178,7 @@ app.get('/healthz', (req, res) => {
 // API Endpunkte für Zeiterfassung
 // ==========================================
 
-// Neuer Endpunkt: GET /next-booking
-// Ermittelt, welche Buchung (Arbeitsbeginn oder Arbeitsende) für den Mitarbeiter als nächstes erfolgen soll.
+// GET /next-booking : Ermittelt, welche Buchung (Arbeitsbeginn oder Arbeitsende) als nächstes erfolgen soll.
 app.get('/next-booking', async (req, res) => {
   const { name } = req.query;
   if (!name) return res.status(400).send('Name ist erforderlich.');
@@ -193,7 +197,7 @@ app.get('/next-booking', async (req, res) => {
       nextBooking = 'arbeitsbeginn';
     } else {
       const lastRecord = result.rows[0];
-      if(lastRecord.endtime) {
+      if (lastRecord.endtime) {
         nextBooking = 'arbeitsbeginn';
       } else {
         nextBooking = 'arbeitsende';
@@ -259,7 +263,6 @@ app.put('/log-end/:id', async (req, res) => {
     if (totalHours < 0) {
       return res.status(400).json({ message: 'Arbeitsende darf nicht vor Arbeitsbeginn liegen.' });
     }
-    // Keine Pause berücksichtigen – Nettoarbeitszeit entspricht totalHours
     const netHours = totalHours;
     const updateQuery = `UPDATE work_hours SET endtime = $1, comment = $2, hours = $3 WHERE id = $4;`;
     await db.query(updateQuery, [endTime, comment, netHours, entryId]);
@@ -280,7 +283,8 @@ app.get('/get-all-hours', (req, res) => {
            TO_CHAR(starttime, 'HH24:MI') AS "startTime",
            TO_CHAR(endtime, 'HH24:MI') AS "endTime"
     FROM work_hours WHERE LOWER(name) = LOWER($1)
-    ORDER BY date ASC, starttime ASC;`;
+    ORDER BY date ASC, starttime ASC;
+  `;
   db.query(query, [name])
     .then(result => {
       const rowsWithMinutes = result.rows.map(row => ({
@@ -311,11 +315,8 @@ app.get('/employees', (req, res) => {
 // --------------------------
 app.post('/admin-login', (req, res) => {
   const { password } = req.body;
-  const adminPassword = process.env.ADMIN_PASSWORD;
-  if (!adminPassword) {
-    console.error("FEHLER: ADMIN_PASSWORD nicht in den Umgebungsvariablen gesetzt!");
-    return res.status(500).send("Server-Konfigurationsfehler.");
-  }
+  // Fallback auf "admin", falls ADMIN_PASSWORD nicht in den Umgebungsvariablen gesetzt ist.
+  const adminPassword = process.env.ADMIN_PASSWORD || "admin";
   if (password && password === adminPassword) {
     req.session.isAdmin = true;
     req.session.save(err => {
@@ -339,7 +340,8 @@ app.get('/admin-work-hours', isAdmin, (req, res) => {
            TO_CHAR(starttime, 'HH24:MI') AS "startTime",
            TO_CHAR(endtime, 'HH24:MI') AS "endTime"
     FROM work_hours
-    ORDER BY date DESC, name ASC, starttime ASC;`;
+    ORDER BY date DESC, name ASC, starttime ASC;
+  `;
   db.query(query)
     .then(result => {
       const rowsWithMinutes = result.rows.map(row => ({
@@ -359,7 +361,8 @@ app.get('/admin-download-csv', isAdmin, async (req, res) => {
   const query = `
     SELECT w.*, e.mo_hours, e.di_hours, e.mi_hours, e.do_hours, e.fr_hours
     FROM work_hours w LEFT JOIN employees e ON LOWER(w.name) = LOWER(e.name)
-    ORDER BY w.date ASC, w.name ASC, w.starttime ASC;`;
+    ORDER BY w.date ASC, w.name ASC, w.starttime ASC;
+  `;
   try {
     const result = await db.query(query);
     const csv = convertToCSV(result.rows);
@@ -454,6 +457,7 @@ app.post('/admin/employees', isAdmin, (req, res) => {
       res.status(500).send('Fehler beim Hinzufügen des Mitarbeiters.');
     });
 });
+
 app.put('/admin/employees/:id', isAdmin, (req, res) => {
   const { id } = req.params;
   const { name, mo_hours, di_hours, mi_hours, do_hours, fr_hours } = req.body;
@@ -473,6 +477,7 @@ app.put('/admin/employees/:id', isAdmin, (req, res) => {
       }
     });
 });
+
 app.delete('/admin/employees/:id', isAdmin, (req, res) => {
   const { id } = req.params;
   if (isNaN(parseInt(id))) return res.status(400).send('Ungültige ID.');
@@ -528,7 +533,8 @@ app.get('/calculate-monthly-balance', isAdmin, async (req, res) => {
       VALUES ($1, $2, $3, $4)
       ON CONFLICT (employee_id, year_month) DO UPDATE SET
         difference = EXCLUDED.difference,
-        carry_over = EXCLUDED.carry_over;`;
+        carry_over = EXCLUDED.carry_over;
+    `;
     await db.query(upsertQuery, [employee.id, currentMonthDateStr, totalDifference, newCarry]);
     res.json({
       message: `Monatlicher Saldo für ${name} (${parsedMonth}/${parsedYear}) berechnet.`,
@@ -550,10 +556,10 @@ async function startServer() {
   try {
     await setupTables();
     console.log("Datenbank-Setup abgeschlossen.");
-    if(!process.env.DATABASE_URL) console.warn("WARNUNG: Kein DATABASE_URL in Umgebungsvariablen gefunden.");
-    if(!process.env.SESSION_SECRET) console.warn("WARNUNG: Kein SESSION_SECRET in Umgebungsvariablen gefunden.");
-    if(!process.env.ADMIN_PASSWORD) console.warn("WARNUNG: Kein ADMIN_PASSWORD in Umgebungsvariablen gefunden.");
-    if(process.env.NODE_ENV !== 'production') console.warn("WARNUNG: Server läuft nicht im Produktionsmodus.");
+    if (!process.env.DATABASE_URL) console.warn("WARNUNG: Kein DATABASE_URL in Umgebungsvariablen gefunden.");
+    if (!process.env.SESSION_SECRET) console.warn("WARNUNG: Kein SESSION_SECRET in Umgebungsvariablen gefunden.");
+    if (!process.env.ADMIN_PASSWORD) console.warn("WARNUNG: Kein ADMIN_PASSWORD in Umgebungsvariablen gefunden. Fallback auf 'admin'.");
+    if (process.env.NODE_ENV !== 'production') console.warn("WARNUNG: Server läuft nicht im Produktionsmodus.");
     
     const server = app.listen(port, '0.0.0.0', () => {
       console.log(`Server läuft auf Port: ${port}`);
@@ -583,6 +589,7 @@ async function startServer() {
       console.log(`---> SIGTERM empfangen. Starte graceful shutdown...`);
       gracefulShutdown('SIGTERM');
     });
+    
     process.on('SIGINT', () => {
       console.log(`---> SIGINT empfangen. Starte graceful shutdown...`);
       gracefulShutdown('SIGINT');
@@ -593,4 +600,5 @@ async function startServer() {
     process.exit(1);
   }
 }
+
 startServer();
