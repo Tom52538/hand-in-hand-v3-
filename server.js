@@ -15,7 +15,7 @@ app.use('/', monthlyPdfEndpoint); // Hängt den PDF-Endpunkt an den Root-Pfad
 
 app.set('trust proxy', 1); // Vertrauen des Proxys (wichtig z. B. für Heroku/Railway)
 
-const port = process.env.PORT || 3000;
+const port = process.env.PORT;
 
 // Middleware
 app.use(bodyParser.json());
