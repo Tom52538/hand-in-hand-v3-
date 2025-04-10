@@ -22,6 +22,13 @@
 
   <button onclick="runChecks()">🔄 Erneut prüfen</button>
 
+  
+  <hr>
+  <h2>Admin-Session Test</h2>
+  <p>Prüft, ob du als Admin eingeloggt bist und Zugriff auf <code>/admin-work-hours</code> besteht.</p>
+  <button onclick="checkAdminSession()">🔐 Adminzugriff testen</button>
+  <div id="adminStatus" class="status">Noch nicht geprüft...</div>
+
   <hr>
   <h2>API-Test: Arbeitsbeginn buchen</h2>
   <p>Dieser Test sendet Dummy-Daten an <code>/log-start</code>. Der Name <strong>"Testuser"</strong> muss in der Datenbank vorhanden sein.</p>
@@ -104,6 +111,32 @@
         statusEl.classList.add('fail');
       }
     }
+
+    
+    async function checkAdminSession() {
+      const statusEl = document.getElementById('adminStatus');
+      statusEl.textContent = "Prüfe Adminzugriff...";
+      statusEl.className = "status";
+
+      try {
+        const res = await fetch("/admin-work-hours", {
+          method: "GET",
+          credentials: "include"
+        });
+        if (res.ok) {
+          const data = await res.json();
+          statusEl.textContent = `✅ Admin-Zugriff OK – ${data.length} Einträge geladen`;
+          statusEl.classList.add('ok');
+        } else {
+          statusEl.textContent = `❌ Zugriff verweigert – Status: ${res.status}`;
+          statusEl.classList.add('fail');
+        }
+      } catch (e) {
+        statusEl.textContent = `❌ Netzwerk- oder Serverfehler`;
+        statusEl.classList.add('fail');
+      }
+    }
+
 
     // Initiale Checks beim Laden
     runChecks();
