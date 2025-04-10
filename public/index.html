@@ -577,31 +577,38 @@
       }
 
       // Event-Listener für Admin Login
-      document.getElementById("adminLoginForm").addEventListener("submit", async function(event) {
-        event.preventDefault();
-        const password = document.getElementById("adminPassword").value;
-        try {
-          const response = await fetch("/admin-login", {
-      credentials: "include",
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ password })
-          });
-          const result = await response.text();
-          if (response.ok) {
-            alert("Admin erfolgreich angemeldet.");
-            document.getElementById("adminTabs").classList.remove("hidden");
-            document.getElementById("adminLoginForm").classList.add("hidden");
-            loadAdminWorkHours();
-            loadEmployees();
-          } else {
-            alert("Login fehlgeschlagen: " + result);
-          }
-        } catch (error) {
-          console.error("Fehler beim Admin-Login:", error);
-          alert("Netzwerkfehler oder Server nicht erreichbar.");
-        }
-      });
+      
+document.getElementById("adminLoginForm").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const password = document.getElementById("adminPassword").value;
+
+  try {
+    const response = await fetch("/admin-login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ password }),
+      credentials: "include"
+    });
+
+    if (response.ok) {
+      alert("✅ Admin erfolgreich angemeldet.");
+      document.getElementById("adminPassword").value = "";
+      document.getElementById("adminTabs").classList.remove("hidden");
+      document.getElementById("adminLoginForm").classList.add("hidden");
+      loadAdminWorkHours();
+      loadEmployees();
+    } else {
+      const result = await response.text();
+      alert("❌ Login fehlgeschlagen: " + response.status + " – " + result);
+      console.error("Login-Fehler:", result);
+    }
+  } catch (error) {
+    console.error("❌ Netzwerkfehler beim Admin-Login:", error);
+    alert("❌ Netzwerkfehler oder Server nicht erreichbar.");
+  }
+});
+
+          );
 
       // Globale Variablen für den Status der Zeiterfassung
       let workTimeState = 0;
