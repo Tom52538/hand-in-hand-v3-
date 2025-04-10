@@ -334,6 +334,10 @@ app.post("/admin-login", (req, res) => {
       console.log("✅ Admin erfolgreich angemeldet, Session gespeichert.");
       res.status(200).send("Admin angemeldet.");
     });
+  } else {
+    res.status(401).send("Ungültiges Admin-Passwort.");
+  }
+});
 
 app.get('/admin-work-hours', isAdmin, (req, res) => {
   const query = `
