@@ -78,9 +78,7 @@
       <div>
         <button type="button" id="workTimeBtn">Arbeitsbeginn buchen</button>
       </div>
-      <div class="hidden">
-        <button type="button" id="pauseBtn">Pausen buchen</button>
-      </div>
+      <!-- Pause-bezogene Elemente wurden entfernt -->
       <div>
         <label for="date">Datum:</label>
         <input type="date" id="date" name="date" required readonly />
@@ -94,12 +92,8 @@
         <input type="time" id="endTime" name="endTime" required readonly />
       </div>
       <div>
-        <label for="breakTime">Pause (Minuten):</label>
-        <input type="number" id="breakTime" name="breakTime" min="0" step="1" value="0" required disabled />
-      </div>
-      <div>
         <label for="comment">Bemerkungen:</label>
-        <input type="text" id="comment" name="comment" disabled/>
+        <input type="text" id="comment" name="comment" />
       </div>
     </form>
 
@@ -146,7 +140,6 @@
                 <th>Datum</th>
                 <th>Arbeitszeit</th>
                 <th>Stunden</th>
-                <th>Pause (Min)</th>
                 <th>Bemerkungen</th>
                 <th>Aktionen</th>
               </tr>
@@ -176,10 +169,6 @@
           <div>
             <label for="editEndTime">Arbeitsende:</label>
             <input type="time" id="editEndTime" name="endTime" required />
-          </div>
-          <div>
-            <label for="editBreakTime">Pause (Minuten):</label>
-            <input type="number" id="editBreakTime" name="breakTime" min="0" step="1" value="0" />
           </div>
           <div>
             <label for="editComment">Bemerkungen:</label>
@@ -321,9 +310,6 @@
     // Funktion: Arbeitszeitformular zurücksetzen
     function resetWorkTimeForm() {
       document.getElementById("comment").value = "";
-      document.getElementById("breakTime").value = "0";
-      document.getElementById("breakTime").disabled = true;
-      document.getElementById("comment").disabled = true;
       document.getElementById("workTimeBtn").textContent = "Arbeitsbeginn buchen";
       workTimeState = 0;
       currentEntryId = null;
@@ -375,7 +361,7 @@
           const li = document.createElement("li");
           const hours = parseFloat(entry.hours) || 0;
           sum += hours;
-          li.textContent = `ID: ${entry.id}, Datum: ${new Date(entry.date).toLocaleDateString("de-DE")}, Beginn: ${entry.startTime}, Ende: ${entry.endTime}, Pause: ${entry.break_time} min, Stunden: ${hours.toFixed(2)}, Bemerkungen: ${entry.comment}`;
+          li.textContent = `ID: ${entry.id}, Datum: ${new Date(entry.date).toLocaleDateString("de-DE")}, Beginn: ${entry.startTime}, Ende: ${entry.endTime}, Bemerkungen: ${entry.comment}`;
           list.appendChild(li);
         });
         totalElem.textContent = `Gesamtarbeitszeit: ${sum.toFixed(2)} Std.`;
@@ -394,7 +380,7 @@
         const tbody = document.querySelector("#workHoursTable tbody");
         tbody.innerHTML = "";
         if (data.length === 0) {
-          tbody.innerHTML = "<tr><td colspan='8'>Keine Daten vorhanden.</td></tr>";
+          tbody.innerHTML = "<tr><td colspan='7'>Keine Daten vorhanden.</td></tr>";
           return;
         }
         data.forEach(entry => {
@@ -404,7 +390,6 @@
                            <td>${new Date(entry.date).toLocaleDateString("de-DE")}</td>
                            <td>${entry.startTime} - ${entry.endTime}</td>
                            <td>${parseFloat(entry.hours).toFixed(2)}</td>
-                           <td>${entry.break_time}</td>
                            <td>${entry.comment}</td>
                            <td>
                              <button onclick='editEntry(${JSON.stringify(entry)})'>Bearbeiten</button>
@@ -414,7 +399,7 @@
         });
       } catch (error) {
         console.error("Fehler beim Laden der Admin-Arbeitszeiten:", error);
-        document.querySelector("#workHoursTable tbody").innerHTML = `<tr><td colspan="8">Fehler: ${error.message}</td></tr>`;
+        document.querySelector("#workHoursTable tbody").innerHTML = `<tr><td colspan="7">Fehler: ${error.message}</td></tr>`;
       }
     }
 
@@ -456,11 +441,9 @@
       document.getElementById("editDate").value = entry.date ? entry.date.split("T")[0] : "";
       document.getElementById("editStartTime").value = entry.startTime;
       document.getElementById("editEndTime").value = entry.endTime;
-      document.getElementById("editBreakTime").value = entry.break_time || 0;
       document.getElementById("editComment").value = entry.comment || "";
       document.getElementById("editForm").scrollIntoView({ behavior: "smooth" });
     }
-
     async function saveChanges() {
       const id = document.getElementById("editId").value;
       if (!id) {
@@ -473,7 +456,6 @@
         date: document.getElementById("editDate").value,
         startTime: document.getElementById("editStartTime").value,
         endTime: document.getElementById("editEndTime").value,
-        breakTime: document.getElementById("editBreakTime").value,
         comment: document.getElementById("editComment").value
       };
       if (!data.name || !data.date || !data.startTime || !data.endTime) {
@@ -498,7 +480,6 @@
         alert("Fehler: " + error.message);
       }
     }
-
     async function deleteEntry(id) {
       if (!confirm(`Möchten Sie den Eintrag mit ID ${id} wirklich löschen?`)) return;
       try {
@@ -513,7 +494,6 @@
         alert("Fehler: " + error.message);
       }
     }
-
     // Funktionen für Mitarbeiterbearbeitung
     function editEmployee(emp) {
       document.getElementById("editEmployeeId").value = emp.id;
@@ -527,7 +507,6 @@
       document.getElementById("addEmployeeForm").classList.add("hidden");
       document.getElementById("editEmployeeForm").scrollIntoView({ behavior: "smooth" });
     }
-
     async function saveEmployeeChanges() {
       const id = document.getElementById("editEmployeeId").value;
       const data = {
@@ -561,7 +540,6 @@
         alert("Fehler: " + error.message);
       }
     }
-
     async function deleteEmployee(id, name) {
       if (!confirm(`Möchten Sie den Mitarbeiter "${name}" (ID: ${id}) wirklich löschen?`)) return;
       try {
@@ -577,22 +555,18 @@
         alert("Fehler: " + error.message);
       }
     }
-
     function cancelEdit() {
       document.getElementById("editEmployeeForm").classList.add("hidden");
       document.getElementById("editEmployeeForm").reset();
       document.getElementById("editEmployeeId").value = "";
       document.getElementById("addEmployeeForm").classList.remove("hidden");
     }
-
     // Globale Variablen für den Status der Zeiterfassung
     let workTimeState = 0;
     let currentEntryId = null;
-
     // Initialisierung: Laden der Mitarbeiteroptionen und Zurücksetzen des Formulars
     resetWorkTimeForm();
     loadEmployeeOptions();
   </script>
 </body>
 </html>
-
