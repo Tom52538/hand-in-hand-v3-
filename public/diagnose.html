@@ -5,17 +5,40 @@
   <title>Netzwerkdiagnose</title>
   <style>
     body { font-family: sans-serif; padding: 2rem; }
-    .status { margin: 1rem 0; padding: 1rem; border-radius: 5px; color: white; font-weight: bold; }
+    .status {
+      margin: 1rem 0; padding: 1rem;
+      border-radius: 5px;
+      color: white; font-weight: bold;
+    }
     .ok { background-color: #4caf50; }
     .fail { background-color: #f44336; }
   </style>
 </head>
 <body>
   <h1>Netzwerkdiagnose</h1>
+
   <div id="healthzStatus" class="status">Health Check wird geprüft...</div>
   <div id="dbStatus" class="status">Datenbankverbindung wird geprüft...</div>
 
+  <button onclick="runChecks()">🔄 Erneut prüfen</button>
+
+  <hr>
+  <h2>API-Test: Arbeitsbeginn buchen</h2>
+  <p>Dieser Test sendet Dummy-Daten an <code>/log-start</code>. Der Name <strong>"Testuser"</strong> muss in der Datenbank vorhanden sein.</p>
+  <button onclick="testLogStart()">🕘 Arbeitsbeginn testen</button>
+  <div id="logStartStatus" class="status">Warte auf Test...</div>
+
   <script>
+    function runChecks() {
+      ['healthzStatus', 'dbStatus'].forEach(id => {
+        const el = document.getElementById(id);
+        el.textContent = 'Wird geprüft...';
+        el.className = 'status';
+      });
+      checkHealthz();
+      checkDatabase();
+    }
+
     async function checkHealthz() {
       try {
         const res = await fetch('/healthz');
@@ -36,7 +59,8 @@
         const res = await fetch('/employees');
         if (res.ok) {
           const data = await res.json();
-          document.getElementById('dbStatus').textContent = `✅ Datenbankverbindung OK (/employees), Mitarbeiter: ${data.length}`;
+          document.getElementById('dbStatus').textContent =
+            `✅ Datenbankverbindung OK (/employees), Mitarbeiter: ${data.length}`;
           document.getElementById('dbStatus').classList.add('ok');
         } else {
           throw new Error('Fehler beim Abrufen');
@@ -47,8 +71,42 @@
       }
     }
 
-    checkHealthz();
-    checkDatabase();
+    async function testLogStart() {
+      const statusEl = document.getElementById('logStartStatus');
+      statusEl.textContent = "Sende Testdaten...";
+      statusEl.className = "status";
+
+      const now = new Date();
+      const testData = {
+        name: "Testuser",  // Stelle sicher, dass dieser Name in der DB existiert
+        date: now.toISOString().split("T")[0],
+        startTime: now.toTimeString().substring(0,5)
+      };
+
+      try {
+        const res = await fetch("/log-start", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(testData)
+        });
+
+        if (res.ok) {
+          const data = await res.json();
+          statusEl.textContent = `✅ Arbeitsbeginn gespeichert (ID: ${data.id})`;
+          statusEl.classList.add('ok');
+        } else {
+          const err = await res.json();
+          statusEl.textContent = `❌ Fehler: ${err.message || 'Unbekannter Fehler'}`;
+          statusEl.classList.add('fail');
+        }
+      } catch (e) {
+        statusEl.textContent = `❌ Netzwerk- oder Serverfehler`;
+        statusEl.classList.add('fail');
+      }
+    }
+
+    // Initiale Checks beim Laden
+    runChecks();
   </script>
 </body>
 </html>
