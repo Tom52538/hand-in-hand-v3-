@@ -7,7 +7,6 @@ const bodyParser = require('body-parser');
 const session = require('express-session');
 const pgSession = require('connect-pg-simple')(session);
 const path = require('path');
-const cors = require('cors');
 const app = express();
 
 const cors = require("cors");
@@ -16,7 +15,6 @@ app.use(cors({
   origin: "https://hand-in-hand-v3.up.railway.app",
   credentials: true
 }));
-
 
 // Neue Route für die PDF-Erstellung einbinden
 const monthlyPdfEndpoint = require('./routes/monthlyPdfEndpoint');
@@ -317,25 +315,25 @@ app.get('/employees', (req, res) => {
 // --------------------------
 // Admin-Login und geschützte Endpunkte
 // --------------------------
-app.post('/admin-login', (req, res) => {
+app.post("/admin-login", (req, res) => {
   const { password } = req.body;
   const adminPassword = process.env.ADMIN_PASSWORD || "admin";
-  if (password && password === adminPassword) {
-    req.session.isAdmin = true;
-    req.session.save(err => {
-      if (err) {
-        console.error("Fehler beim Speichern der Session:", err);
-        req.session.isAdmin = false;
-        return res.status(500).send('Fehler bei der Serververarbeitung (Session).');
-      }
-      console.log("Admin-Login erfolgreich, Session gespeichert.");
-      res.send('Admin erfolgreich angemeldet.');
-    });
-  } else {
-    req.session.isAdmin = false;
-    res.status(401).send('Ungültiges Passwort.');
+
+  if (!password) {
+    console.warn("⚠️ Kein Passwort übermittelt.");
+    return res.status(400).send("Kein Passwort übermittelt.");
   }
-});
+
+  if (password === adminPassword) {
+    req.session.isAdmin = true;
+    req.session.save((err) => {
+      if (err) {
+        console.error("❌ Fehler beim Speichern der Session:", err);
+        return res.status(500).send("Session konnte nicht gespeichert werden.");
+      }
+      console.log("✅ Admin erfolgreich angemeldet, Session gespeichert.");
+      res.status(200).send("Admin angemeldet.");
+    });
 
 app.get('/admin-work-hours', isAdmin, (req, res) => {
   const query = `
