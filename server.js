@@ -7,7 +7,16 @@ const bodyParser = require('body-parser');
 const session = require('express-session');
 const pgSession = require('connect-pg-simple')(session);
 const path = require('path');
+const cors = require('cors');
 const app = express();
+
+const cors = require("cors");
+
+app.use(cors({
+  origin: "https://hand-in-hand-v3.up.railway.app",
+  credentials: true
+}));
+
 
 // Neue Route für die PDF-Erstellung einbinden
 const monthlyPdfEndpoint = require('./routes/monthlyPdfEndpoint');
