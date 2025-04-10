@@ -310,6 +310,29 @@
       }
     });
 
+    // Formular für die Monatsauswertung per Ajax abfangen
+    document.getElementById("monthlyBalanceForm").addEventListener("submit", async (event) => {
+      event.preventDefault(); // Standard-Submit unterbinden
+      const name = document.getElementById("balanceName").value;
+      const year = document.getElementById("balanceYear").value;
+      const month = document.getElementById("balanceMonth").value;
+      try {
+        const response = await fetch(
+          `/calculate-monthly-balance?name=${encodeURIComponent(name)}&year=${year}&month=${month}`
+        );
+        if (!response.ok) {
+          const errorText = await response.text();
+          alert("Fehler: " + errorText);
+          return;
+        }
+        const result = await response.json();
+        document.getElementById("monthlyBalanceResult").innerText = JSON.stringify(result, null, 2);
+      } catch (err) {
+        console.error("Fehler beim Berechnen des Monatsabschlusses:", err);
+        alert("Fehler beim Berechnen des Monatsabschlusses: " + err.message);
+      }
+    });
+
     // Funktion: Arbeitszeitformular zurücksetzen
     function resetWorkTimeForm() {
       document.getElementById("comment").value = "";
