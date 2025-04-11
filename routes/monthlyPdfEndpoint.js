@@ -59,24 +59,23 @@ module.exports = function(db) {
       doc.moveDown();
       doc.font('Helvetica');
 
-      // Tabelle: Definitionen für Spaltenpositionen und -breiten anpassen
+      // Tabelle: Definitionen für Spaltenpositionen und -breiten ANPASSEN
       const tableTop = doc.y;
       const dateX = 50;       // Start X
-      const startX = 120;     // Nach rechts verschoben
-      const endX = 170;       // Nach rechts verschoben
-      const sollX = 230;      // NEUE Spalte Soll-Std.
-      const istX = 290;       // Nach rechts verschoben
-      const commentX = 360;   // Nach rechts verschoben
-      // Gesamtbreite der Tabelle bis zum Ende des Kommentars
-      const tableWidth = 510; // Ggf. anpassen, wenn Kommentar mehr Platz braucht
+      const startX = 145;     // Nach rechts für breiteres Datum
+      const endX = 190;       // Nach rechts
+      const sollX = 275;      // Nach rechts für breitere Endzeit
+      const istX = 330;       // Nach rechts
+      const commentX = 385;   // Nach rechts
+      const tableWidth = 510; // Gesamtbreite von dateX bis Ende Kommentar (ca.)
 
-      // Tabelle: Kopfzeile zeichnen
+      // Tabelle: Kopfzeile zeichnen (mit angepassten Breiten)
       doc.fontSize(10).font('Helvetica-Bold');
-      doc.text('Datum', dateX, tableTop, { width: 60 }); // Weniger Breite für Datum
-      doc.text('Beginn', startX, tableTop, { width: 45 }); // Weniger Breite
-      doc.text('Ende', endX, tableTop, { width: 55 }); // Mehr Breite für "Buchung fehlt"
-      doc.text('Soll-Std.', sollX, tableTop, { width: 50, align: 'right'}); // NEU
-      doc.text('Ist-Std.', istX, tableTop, { width: 50, align: 'right'}); // Shifted X
+      doc.text('Datum', dateX, tableTop, { width: 90 }); // Breite erhöht für Wochentag
+      doc.text('Beginn', startX, tableTop, { width: 40 }); // Etwas schmaler
+      doc.text('Ende', endX, tableTop, { width: 80 }); // Breite erhöht für "Buchung fehlt"
+      doc.text('Soll-Std.', sollX, tableTop, { width: 50, align: 'right'});
+      doc.text('Ist-Std.', istX, tableTop, { width: 50, align: 'right'});
       doc.text('Bemerkung', commentX, tableTop, { width: tableWidth - commentX + dateX }); // Restbreite
       doc.font('Helvetica');
       doc.moveDown(0.5);
@@ -87,36 +86,37 @@ module.exports = function(db) {
       doc.moveDown(0.5);
 
       // Tabelle: Zeilen iterieren und zeichnen
-      let totalIstHoursMonth = 0; // Umbenannt zur Klarheit
+      let totalIstHoursMonth = 0;
       if (monthlyData.workEntries && monthlyData.workEntries.length > 0) {
         monthlyData.workEntries.forEach((buchung) => {
             const y = doc.y;
 
-            // Datum formatieren
+            // *** NEU: Datum mit Wochentag formatieren ***
             const dateFormatted = buchung.date
-                ? new Date(buchung.date.toISOString().split('T')[0] + 'T00:00:00Z').toLocaleDateString('de-DE', { timeZone: 'UTC' })
+                ? new Date(buchung.date.toISOString().split('T')[0] + 'T00:00:00Z').toLocaleDateString('de-DE', { weekday: 'short', year: 'numeric', month: '2-digit', day: '2-digit', timeZone: 'UTC' })
                 : 'n.a.';
+
             // Ist-Stunden holen und Summe bilden
             const hoursEntry = parseFloat(buchung.hours) || 0;
             totalIstHoursMonth += hoursEntry;
 
-            // *** NEU: Endzeit-Anzeige anpassen ***
+            // Endzeit-Anzeige
             const endTimeDisplay = buchung.endTime ? buchung.endTime : 'Buchung fehlt';
-            // *** NEU: Soll-Stunden formatieren ***
+            // Soll-Stunden formatieren
             const expectedHoursDisplay = (buchung.expectedHours !== undefined ? buchung.expectedHours.toFixed(2) : 'N/A');
 
             // Zeileninhalt zeichnen (mit angepassten Positionen/Breiten)
-            doc.fontSize(10).text(dateFormatted, dateX, y, { width: 60 });
-            doc.text(buchung.startTime || 'n.a.', startX, y, { width: 45 });
-            doc.text(endTimeDisplay, endX, y, { width: 55 }); // Angepasster Text + Breite
-            doc.text(expectedHoursDisplay, sollX, y, { width: 50, align: 'right'}); // NEUE Spalte
-            doc.text(hoursEntry.toFixed(2), istX, y, { width: 50, align: 'right'}); // Angepasste Position
+            doc.fontSize(10).text(dateFormatted, dateX, y, { width: 90 }); // Angepasste Breite
+            doc.text(buchung.startTime || 'n.a.', startX, y, { width: 40 });
+            doc.text(endTimeDisplay, endX, y, { width: 80 }); // Angepasste Breite
+            doc.text(expectedHoursDisplay, sollX, y, { width: 50, align: 'right'});
+            doc.text(hoursEntry.toFixed(2), istX, y, { width: 50, align: 'right'});
             doc.text(buchung.comment || '', commentX, y, { width: tableWidth - commentX + dateX });
 
-            // Seitenumbruch-Logik (optional, aber empfohlen)
+            // Seitenumbruch-Logik
             if (doc.y > 720) {
                 doc.addPage();
-                // Optional: Kopfzeile wiederholen
+                // Hier könnte man die Kopfzeile wiederholen, falls gewünscht
             } else {
                  doc.moveDown(0.7);
             }
@@ -132,13 +132,10 @@ module.exports = function(db) {
 
       // Gesamtsummen (rechtsbündig)
       const summaryAlignOptions = { width: tableWidth, align: 'right' };
-      // Gesamt-Ist-Stunden anzeigen (war vorher schon da)
       doc.fontSize(12).text(`Gesamt Ist-Stunden im Monat: ${totalIstHoursMonth.toFixed(2)} Std.`, dateX, doc.y, summaryAlignOptions);
       doc.moveDown(0.5);
-      // Monatliche Differenz (war vorher schon da)
       doc.text(`Monatliche Differenz (Ist - Soll): ${monthlyData.monthlyDifference.toFixed(2)} Std.`, dateX, doc.y, summaryAlignOptions);
       doc.moveDown(1);
-      // Neuer Übertrag (war vorher schon da)
       doc.fontSize(14).font('Helvetica-Bold');
       doc.text(`Neuer Übertrag für Folgemonat: ${monthlyData.newCarryOver.toFixed(2)} Std.`, dateX, doc.y, summaryAlignOptions);
       doc.font('Helvetica'); // Schriftart zurücksetzen
