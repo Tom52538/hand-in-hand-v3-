@@ -413,7 +413,7 @@
       // Funktion: Admin-Arbeitszeiten laden (für den Tab "Arbeitszeiten")
       async function loadAdminWorkHours() {
         try {
-          const response = await fetch('/admin-work-hours');
+          const response = await fetch('/admin-work-hours', { credentials: "include" }));
           if (!response.ok) throw new Error('Admin-Arbeitszeiten konnten nicht geladen werden.');
           const data = await response.json();
           const tbody = document.querySelector("#workHoursTable tbody");
