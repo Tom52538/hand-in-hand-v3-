@@ -79,7 +79,7 @@
     </style>
   </head>
   <body>
-    <div class="container">
+  <div class="container">
       <h1>Arbeitszeiterfassung</h1>
 
       <form id="workHoursForm">
@@ -113,19 +113,19 @@
 
       <div id="adminTabs" class="hidden">
         <ul class="tabs">
-           <li data-tab="dashboard" class="active">Dashboard/Home</li>
-           <li data-tab="workhours">Arbeitszeiten</li>
-           <li data-tab="employees">Mitarbeiter</li>
+           <li data-tab="dashboard" class="hidden">Dashboard/Home</li> <li data-tab="workhours" class="active">Arbeitszeiten</li> <li data-tab="employees">Mitarbeiter</li>
            <li data-tab="monthly">Monatsauswertung</li>
         </ul>
+        ```
 
-        <div id="tab-dashboard" class="tab-content">
-          <h2>Dashboard/Home</h2>
+**Teil 3 von 5: Admin Tab-Inhalte (mit geänderten Sichtbarkeiten)**
+
+```html
+        <div id="tab-dashboard" class="tab-content hidden"> <h2>Dashboard/Home</h2>
           <p>Willkommen im Admin-Bereich.</p>
         </div>
 
-        <div id="tab-workhours" class="tab-content hidden">
-          <h2>Arbeitszeiten verwalten</h2>
+        <div id="tab-workhours" class="tab-content"> <h2>Arbeitszeiten verwalten</h2>
           <div class="table-wrapper">
             <table id="workHoursTable">
               <thead>
@@ -175,7 +175,7 @@
             </form>
           </div>
         </div>
-<div id="tab-employees" class="tab-content hidden">
+        <div id="tab-employees" class="tab-content hidden">
           <h2>Mitarbeiterverwaltung</h2>
           <h3>Aktuelle Mitarbeiter</h3>
           <ul id="employeeList"></ul>
@@ -267,7 +267,14 @@
 
           <div id="monthlyBalanceResult" style="margin-top: 1rem;">
              </div>
-        </div> </div> </div> <script>
+        </div>
+
+      </div> </div> ```
+
+**Teil 4 von 5: JavaScript-Code - Teil 1 (bis Ende `loadEmployees`)**
+
+```html
+    <script>
       // ==== Globale Zustandsvariablen ====
       let currentWorkEntryId = null; // ID des aktuellen, offenen Eintrags
 
@@ -285,27 +292,20 @@
 
         // Arbeitszeit Start/Stop Button
         document.getElementById('workTimeBtn').addEventListener('click', handleWorkTimeToggle);
-
         // Admin Login
         document.getElementById('adminLoginForm').addEventListener('submit', handleAdminLogin);
-
         // Tab-Navigation
         document.querySelectorAll(".tabs li").forEach(tab => {
           tab.addEventListener("click", handleTabSwitch);
         });
-
         // Admin: CSV Download
         document.getElementById('adminDownloadCsv').addEventListener('click', downloadAdminCsv);
-
         // Admin: Alle Daten löschen
         document.getElementById('adminDeleteData').addEventListener('click', deleteAllWorkHours);
-
         // Admin: Mitarbeiter hinzufügen
         document.getElementById('addEmployeeForm').addEventListener('submit', handleAddEmployee);
-
         // Admin: Monatsabschluss berechnen
         document.getElementById('monthlyBalanceForm').addEventListener('submit', handleCalculateMonthlyBalance);
-
         // Admin: PDF Download
         document.getElementById('downloadPdfBtn').addEventListener('click', handleDownloadPdf);
       }
@@ -314,7 +314,6 @@
 
       function handleEmployeeSelection() {
         const selectedName = document.getElementById('employeeSelect').value;
-        // document.getElementById('selectedEmployeeDisplay').value = selectedName || "Kein Mitarbeiter ausgewählt";
         checkNextBookingAction(); // Prüfen, ob Start/Ende angezeigt werden soll
       }
 
@@ -338,7 +337,6 @@
                 throw new Error(`Fehler ${response.status} beim Prüfen des Buchungsstatus.`);
             }
             const { nextBooking, id } = await response.json();
-
             if (nextBooking === 'arbeitsende') {
               btn.textContent = 'Arbeitsende buchen';
               btn.style.backgroundColor = 'orange'; // Farbe ändern für Ende
@@ -402,7 +400,7 @@
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({ endTime: time, comment: comment })
             });
-             if (response.ok) {
+            if (response.ok) {
               alert("✅ Arbeitsende erfolgreich gebucht.");
               commentInput.value = ''; // Kommentarfeld leeren
               checkNextBookingAction(); // Status und Button aktualisieren
@@ -420,7 +418,6 @@
       function resetWorkTimeForm() {
         // Stellt den initialen Zustand des Zeiterfassungsformulars her
         document.getElementById('employeeSelect').value = '';
-        // document.getElementById('selectedEmployeeDisplay').value = 'Kein Mitarbeiter ausgewählt';
         document.getElementById('workTimeBtn').textContent = 'Arbeitsbeginn buchen';
         document.getElementById('workTimeBtn').style.backgroundColor = '';
         document.getElementById('workTimeBtn').disabled = true; // Deaktiviert, bis Mitarbeiter gewählt
@@ -443,13 +440,13 @@
             option.textContent = emp.name;
             select.appendChild(option);
           });
-        } catch (error) {
+         } catch (error) {
           console.error("Fehler beim Laden der Mitarbeiteroptionen:", error);
           document.getElementById('employeeSelect').innerHTML = '<option value="">Fehler</option>';
           alert("❌ Mitarbeiterliste Ladefehler: " + error.message);
-        }
+         }
       }
-// ==== Admin-Funktionen ====
+      // ==== Admin-Funktionen ====
 
       async function handleAdminLogin(e) {
           e.preventDefault();
@@ -469,8 +466,10 @@
               // Initiales Laden der Admin-Daten
               loadAdminWorkHours();
               loadEmployees();
-              // Standardmäßig ersten Tab anzeigen
-              handleTabSwitch({ target: document.querySelector(".tabs li[data-tab='dashboard']") });
+              // *** HIER IST DIE ÄNDERUNG IM JAVASCRIPT ***
+              // Geänderten Standard-Tab anzeigen (workhours statt dashboard)
+              handleTabSwitch({ target: document.querySelector(".tabs li[data-tab='workhours']") });
+              // *** ENDE DER ÄNDERUNG IM JAVASCRIPT ***
             } else {
               const result = await response.text();
               alert("❌ Login fehlgeschlagen: " + response.status + " – " + result);
@@ -484,7 +483,8 @@
       function handleTabSwitch(event) {
          // Event-Target oder direkt übergebenes Element
          const clickedTab = event.currentTarget || event.target;
-         if (!clickedTab || !clickedTab.getAttribute("data-tab")) return;
+         // Sicherstellen, dass es ein gültiger Tab ist und nicht der versteckte Dashboard-Tab
+         if (!clickedTab || !clickedTab.getAttribute("data-tab") || clickedTab.classList.contains("hidden")) return;
 
          document.querySelectorAll(".tabs li").forEach(t => t.classList.remove("active"));
          document.querySelectorAll(".tab-content").forEach(tc => tc.classList.add("hidden"));
@@ -493,7 +493,7 @@
          const targetContentId = "tab-" + clickedTab.getAttribute("data-tab");
          const targetContent = document.getElementById(targetContentId);
          if (targetContent) {
-            targetContent.classList.remove("hidden");
+             targetContent.classList.remove("hidden");
              // Daten neu laden, wenn der Tab aktiviert wird (optional aber oft sinnvoll)
              if (targetContentId === 'tab-workhours') loadAdminWorkHours();
              if (targetContentId === 'tab-employees') loadEmployees();
@@ -668,7 +668,6 @@
             alert("❌ " + error.message);
           }
       }
-
       async function handleAddEmployee(event) {
          event.preventDefault();
          const form = event.target;
@@ -742,7 +741,6 @@
             fr_hours: parseFloat(document.getElementById("editFrHours").value) || 0
           };
           if (!data.name) return alert("Mitarbeitername darf nicht leer sein.");
-
           try {
             const response = await fetch(`/admin/employees/${id}`, {
               method: "PUT",
@@ -807,7 +805,6 @@
             `/calculate-monthly-balance?name=${encodeURIComponent(name)}&year=${year}&month=${month}`,
              { credentials: "include" } // Wichtig für Admin-Rechte
           );
-
           // Fehler beim Fetch oder Server-Fehler (z.B. 500)
           if (!response.ok) {
             const errorText = await response.text() || response.statusText;
@@ -818,7 +815,6 @@
 
           // Erfolgreiche Antwort vom Server
           const result = await response.json();
-
           // --- NEUE ANZEIGE-LOGIK ---
           resultElement.innerHTML = ''; // Alten Inhalt löschen
 
