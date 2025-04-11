@@ -6,7 +6,7 @@ const { Pool } = require('pg');
 const bodyParser = require('body-parser');
 const session = require('express-session');
 const pgSession = require('connect-pg-simple')(session);
-const path = path = require('path'); // Korrigiert: require('path') nur einmal
+const path = require('path');
 const app = express();
 const cors = require("cors");
 
