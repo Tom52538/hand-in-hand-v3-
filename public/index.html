@@ -412,6 +412,32 @@
 
       // Funktion: Admin-Arbeitszeiten laden (für den Tab "Arbeitszeiten")
       async function loadAdminWorkHours() {
+
+async function loadEmployees() {
+  try {
+    const response = await fetch("/admin/employees", { credentials: "include" });
+    if (!response.ok) throw new Error("Mitarbeiter konnten nicht geladen werden.");
+    const data = await response.json();
+    const list = document.getElementById("employeeList");
+    list.innerHTML = "";
+    data.forEach(emp => {
+      const li = document.createElement("li");
+      li.textContent = emp.name;
+      const btnEdit = document.createElement("button");
+      btnEdit.textContent = "Bearbeiten";
+      btnEdit.onclick = () => editEmployee(emp);
+      const btnDel = document.createElement("button");
+      btnDel.textContent = "Löschen";
+      btnDel.onclick = () => deleteEmployee(emp.id, emp.name);
+      li.append(" ", btnEdit, btnDel);
+      list.appendChild(li);
+    });
+  } catch (error) {
+    console.error("Fehler beim Laden der Mitarbeiter:", error);
+    document.getElementById("employeeList").innerHTML = `<li>Fehler: ${error.message}</li>`;
+  }
+}
+
         try {
           const response = await fetch('/admin-work-hours', { credentials: "include" });
           if (!response.ok) throw new Error('Admin-Arbeitszeiten konnten nicht geladen werden.');
