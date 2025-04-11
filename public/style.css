@@ -81,3 +81,24 @@ input[readonly] {
     font-size: 1em;
   }
 }
+
+/* Spezifischer Stil für den 'Arbeitsbeginn buchen'-Button */
+#workTimeBtn {
+  background-color: #4CAF50; /* gleiche Farbe wie der Anmelden-Button */
+  color: #fff;
+  border: none;
+  padding: 12px 15px;
+  border-radius: 4px;
+  font-size: 16px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+  cursor: pointer;
+}
+
+#workTimeBtn:hover {
+  background-color: #45a049;
+}
+
+/* Falls du die Felder in einem Container ausblenden möchtest */
+.hidden {
+  display: none;
+}
