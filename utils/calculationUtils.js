@@ -8,8 +8,8 @@ function getExpectedHours(employeeData, dateStr) {
     // Stelle sicher, dass dateStr ein gültiges Datum ist (YYYY-MM-DD)
     const d = new Date(dateStr + 'T00:00:00Z'); // Als UTC interpretieren
     if (isNaN(d.getTime())) {
-        console.warn(`Ungültiges Datum für getExpectedHours: ${dateStr}`);
-        return 0;
+      console.warn(`Ungültiges Datum für getExpectedHours: ${dateStr}`);
+      return 0;
     }
     const day = d.getUTCDay(); // 0 = Sonntag, 1 = Montag, …, 6 = Samstag (UTC)
     switch (day) {
@@ -21,8 +21,8 @@ function getExpectedHours(employeeData, dateStr) {
       default: return 0; // Wochenende oder fehlende Angabe
     }
   } catch (e) {
-      console.error(`Fehler in getExpectedHours mit Datum: ${dateStr}`, e);
-      return 0; // Im Fehlerfall 0 zurückgeben
+    console.error(`Fehler in getExpectedHours mit Datum: ${dateStr}`, e);
+    return 0; // Im Fehlerfall 0 zurückgeben
   }
 }
 
@@ -62,12 +62,18 @@ async function calculateMonthlyData(db, name, year, month) {
   // Monatliche Differenz berechnen und Soll-Stunden zu Einträgen hinzufügen
   let totalDifference = 0;
   workEntries.forEach(entry => {
+    // Sicherstellen, dass das Datum als String vorliegt
+    const entryDateStr = (entry.date instanceof Date)
+      ? entry.date.toISOString().split('T')[0]
+      : entry.date;
     // Soll-Stunden für den Tag berechnen
-    const expected = getExpectedHours(employee, entry.date.toISOString().split('T')[0]);
-    // Soll-Stunden zum Eintrag hinzufügen
+    const expected = getExpectedHours(employee, entryDateStr);
+    // Füge Soll-Stunden zum Eintrag hinzu
     entry.expectedHours = expected;
-    // Differenz für den Tag berechnen und zur Gesamtdifferenz addieren
-    totalDifference += (entry.hours || 0) - expected;
+    // Sicherstellen, dass die gearbeiteten Stunden als Zahl behandelt werden
+    const workedHours = parseFloat(entry.hours) || 0;
+    // Differenz ermitteln und zur Gesamtdifferenz addieren
+    totalDifference += workedHours - expected;
   });
 
   // Übertrag aus dem Vormonat ermitteln
@@ -77,7 +83,7 @@ async function calculateMonthlyData(db, name, year, month) {
     `SELECT carry_over FROM monthly_balance WHERE employee_id = $1 AND year_month = $2`,
     [employee.id, prevMonthDateStr]
   );
-  let previousCarry = prevResult.rows.length > 0 ? (prevResult.rows[0].carry_over || 0) : 0;
+  let previousCarry = prevResult.rows.length > 0 ? (parseFloat(prevResult.rows[0].carry_over) || 0) : 0;
 
   // Neuen Übertrag berechnen
   const newCarry = previousCarry + totalDifference;
@@ -93,14 +99,15 @@ async function calculateMonthlyData(db, name, year, month) {
   `;
   await db.query(upsertQuery, [employee.id, currentMonthDateStr, totalDifference, newCarry]);
 
-  // Ergebnisse zurückgeben – angepasst an den Client (difference und carry_over)
+  // Ergebnisse zurückgeben
   return {
     employeeName: employee.name,
     month: parsedMonth,
     year: parsedYear,
-    difference: parseFloat(totalDifference.toFixed(2)),
-    carry_over: parseFloat(newCarry.toFixed(2)),
-    workEntries: workEntries // Enthält jetzt auch 'expectedHours' pro Eintrag
+    monthlyDifference: parseFloat(totalDifference.toFixed(2)),
+    previousCarryOver: parseFloat(previousCarry.toFixed(2)),
+    newCarryOver: parseFloat(newCarry.toFixed(2)),
+    workEntries: workEntries // Enthält nun auch 'expectedHours' pro Eintrag
   };
 }
 
