@@ -11,6 +11,7 @@ const session = require('express-session');
 const pgSession = require('connect-pg-simple')(session);
 const path = require('path');
 const cors = require("cors");
+const PDFDocument = require('pdfkit');  // für PDF-Erstellung
 
 const app = express();
 
@@ -194,7 +195,6 @@ app.get('/next-booking-details', async (req, res) => {
 });
 
 // --- ANGEPASSTER Endpunkt: Buchung Arbeitsbeginn ---
-// Hier wird jetzt zusätzlich geprüft, ob bereits ein abgeschlossener Eintrag am gleichen Tag existiert.
 app.post('/log-start', async (req, res) => {
     const { name, date, startTime } = req.body;
     if (!name || !date || !startTime) return res.status(400).json({ message: 'Fehlende Daten.' });
@@ -480,6 +480,129 @@ app.get('/calculate-monthly-balance', isAdmin, async (req, res) => {
         console.error("Fehler /calculate-monthly-balance:", err);
         res.status(500).send('Fehler.');
     }
+});
+
+// Neuer Endpunkt zur PDF-Erstellung mittels pdfkit
+app.get('/admin/download-pdf', isAdmin, async (req, res) => {
+  const { name, year, month } = req.query;
+  if (!name || !year || !month) {
+    return res.status(400).send('Fehlende Parameter.');
+  }
+  try {
+    // Mitarbeiter abrufen
+    const empResult = await db.query(`SELECT * FROM employees WHERE LOWER(name) = LOWER($1)`, [name]);
+    if (empResult.rows.length === 0) {
+      return res.status(404).send('Mitarbeiter nicht gefunden.');
+    }
+    const employee = empResult.rows[0];
+
+    // Datumsbereich für den Monat
+    const parsedYear = parseInt(year);
+    const parsedMonth = parseInt(month);
+    const startDate = new Date(Date.UTC(parsedYear, parsedMonth - 1, 1));
+    const endDate = new Date(Date.UTC(parsedYear, parsedMonth, 1)); // exklusive
+    const startDateStr = startDate.toISOString().split('T')[0];
+    const endDateFormatted = new Date(endDate.getTime() - 1).toISOString().split('T')[0];
+
+    // Arbeitszeiten für den Monat abrufen
+    const workResult = await db.query(
+      `SELECT date, hours, comment, TO_CHAR(starttime, 'HH24:MI') AS "startTime", TO_CHAR(endtime, 'HH24:MI') AS "endTime"
+       FROM work_hours
+       WHERE LOWER(name) = LOWER($1) AND date >= $2 AND date < $3
+       ORDER BY date ASC`,
+      [name.toLowerCase(), startDateStr, endDate.toISOString().split('T')[0]]
+    );
+    const workEntries = workResult.rows;
+
+    // Berechnungen (Soll, Ist und Differenz)
+    let totalExpected = 0;
+    let totalActual = 0;
+    // Funktion zur Formatierung in HH:MM
+    const formatHours = (num) => {
+      const totalMinutes = Math.round(num * 60);
+      const hours = Math.floor(totalMinutes / 60);
+      const minutes = totalMinutes % 60;
+      return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
+    };
+    workEntries.forEach(entry => {
+       const entryDateStr = new Date(entry.date).toISOString().split('T')[0];
+       const expected = getExpectedHours(employee, entryDateStr);
+       entry.expected = expected;
+       totalExpected += expected;
+       totalActual += entry.hours || 0;
+       entry.diff = (entry.hours || 0) - expected;
+    });
+    const totalDiff = totalActual - totalExpected;
+
+    // PDF generieren
+    const doc = new PDFDocument({ margin: 50 });
+    res.setHeader('Content-Type', 'application/pdf');
+    const filename = `Ueberstundennachweis_${employee.name}_${startDateStr}.pdf`;
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+
+    doc.pipe(res);
+
+    // Logo einfügen (angenommen, image.png liegt in public/)
+    const logoPath = path.join(__dirname, 'public', 'image.png');
+    try {
+      doc.image(logoPath, 50, 45, { width: 50 });
+    } catch(e) {
+      console.error("Logo konnte nicht geladen werden.", e);
+    }
+    doc.fontSize(20).text('Überstundennachweis', 110, 57);
+    doc.moveDown();
+
+    // Mitarbeiterinformationen und Zeitraum
+    doc.fontSize(12);
+    doc.text(`Name: ${employee.name}`);
+    doc.text(`Zeitraum: ${startDateStr} - ${endDateFormatted}`);
+    doc.moveDown();
+
+    // Tabellenkopf
+    doc.fontSize(10);
+    const tableTop = doc.y;
+    const itemX = 50;
+    const colWidths = { date: 80, start: 70, end: 70, expected: 70, actual: 70, diff: 70 };
+
+    doc.text('Datum', itemX, tableTop);
+    doc.text('Arbeitsbeginn', itemX + colWidths.date, tableTop);
+    doc.text('Arbeitsende', itemX + colWidths.date + colWidths.start, tableTop);
+    doc.text('Soll-Zeit', itemX + colWidths.date + colWidths.start + colWidths.end, tableTop);
+    doc.text('Ist-Zeit', itemX + colWidths.date + colWidths.start + colWidths.end + colWidths.expected, tableTop);
+    doc.text('Mehr/-Minder', itemX + colWidths.date + colWidths.start + colWidths.end + colWidths.expected + colWidths.actual, tableTop);
+    doc.moveDown(1.5);
+
+    // Tabellendaten
+    workEntries.forEach(entry => {
+       const y = doc.y;
+       const entryDate = new Date(entry.date);
+       const formattedDate = entryDate.toLocaleDateString('de-DE');
+       doc.text(formattedDate, itemX, y);
+       doc.text(entry.startTime || '', itemX + colWidths.date, y);
+       doc.text(entry.endTime || '', itemX + colWidths.date + colWidths.start, y);
+       doc.text(formatHours(entry.expected || 0), itemX + colWidths.date + colWidths.start + colWidths.end, y);
+       doc.text(formatHours(entry.hours || 0), itemX + colWidths.date + colWidths.start + colWidths.end + colWidths.expected, y);
+       doc.text(formatHours(entry.diff || 0), itemX + colWidths.date + colWidths.start + colWidths.end + colWidths.expected + colWidths.actual, y);
+       doc.moveDown();
+    });
+
+    doc.moveDown();
+    doc.font('Helvetica-Bold');
+    doc.text(`Gesamt Soll-Zeit: ${formatHours(totalExpected)}`);
+    doc.text(`Gesamt Ist-Zeit: ${formatHours(totalActual)}`);
+    doc.text(`Gesamt Mehr-/Minderstunden: ${formatHours(totalDiff)}`);
+    doc.moveDown();
+    doc.font('Helvetica');
+    doc.text('Ich bestätige hiermit, dass die oben genannten Arbeitsstunden erbracht wurden und rechtmäßig in Rechnung gestellt werden.');
+    doc.moveDown();
+    const currentDate = new Date().toLocaleDateString('de-DE');
+    doc.text(`Datum, Unterschrift: ____________________   ${currentDate}`);
+    doc.end();
+
+  } catch(err) {
+    console.error("Fehler bei PDF-Erstellung:", err);
+    res.status(500).send("Fehler bei der PDF-Erstellung.");
+  }
 });
 
 // Start des Servers
