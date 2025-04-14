@@ -528,7 +528,7 @@ app.get('/admin/download-pdf', isAdmin, async (req, res) => {
     doc.pipe(res);
 
     // Logo einfügen (Pfad: public/image.png)
-    const logoPath = path.join(__dirname, 'public', 'image.png');
+    const logoPath = path.join(__dirname, 'public', 'icons', 'Hand-in-Hand-Logo-192x192.png');
     try {
       doc.image(logoPath, 50, 40, { width: 50 });
     } catch(e) {
