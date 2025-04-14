@@ -272,7 +272,10 @@
         <form id="monthlyBalanceForm">
           <div>
             <label for="balanceName">Mitarbeitername:</label>
-            <input type="text" id="balanceName" name="balanceName" required />
+            <!-- Umstellung des Eingabefelds in ein Dropdown -->
+            <select id="balanceName" name="balanceName" required>
+              <option value="">Bitte auswählen</option>
+            </select>
           </div>
           <div>
             <label for="balanceYear">Jahr:</label>
@@ -509,6 +512,36 @@
         }
     }
 
+    // Neue Funktion zum Laden der Mitarbeiteroptionen im Monatsauswertungsbereich
+    function loadMonthlyEmployeeOptions() {
+      const monthlySelect = document.getElementById("balanceName");
+      if (!monthlySelect) return;
+      fetch('/employees')
+        .then(response => {
+            if (!response.ok) {
+                throw new Error("Mitarbeiterliste konnte nicht geladen werden (" + response.status + ").");
+            }
+            return response.json();
+        })
+        .then(employees => {
+          monthlySelect.innerHTML = "";
+          const defaultOption = document.createElement("option");
+          defaultOption.value = "";
+          defaultOption.textContent = "Bitte auswählen";
+          monthlySelect.appendChild(defaultOption);
+          employees.forEach(emp => {
+             const option = document.createElement("option");
+             option.value = emp.name;
+             option.textContent = emp.name;
+             monthlySelect.appendChild(option);
+          });
+        })
+        .catch(error => {
+           console.error("Fehler beim Laden der Mitarbeiterliste für Monatsauswertung:", error);
+           monthlySelect.innerHTML = "<option value=''>Fehler beim Laden</option>";
+        });
+    }
+
     // ==== Admin-Funktionen (Login, Tabs usw.) ====
     async function handleAdminLogin(e) {
       e.preventDefault();
@@ -551,6 +584,7 @@
         targetContent.classList.remove("hidden");
         if (targetContentId === 'tab-workhours') loadAdminWorkHours();
         if (targetContentId === 'tab-employees') loadEmployees();
+        if (targetContentId === 'tab-monthly') loadMonthlyEmployeeOptions();
       } else {
         console.error("Tab content not found for ID:", targetContentId);
       }
@@ -831,7 +865,42 @@
 
     async function handleCalculateMonthlyBalance(e) {
       e.preventDefault();
-      alert("Monatsauswertung – Funktion noch nicht implementiert.");
+      const balanceNameElem = document.getElementById('balanceName');
+      const balanceYearElem = document.getElementById('balanceYear');
+      const balanceMonthElem = document.getElementById('balanceMonth');
+      const resultDiv = document.getElementById('monthlyBalanceResult');
+      
+      const name = balanceNameElem.value;
+      const year = balanceYearElem.value;
+      const month = balanceMonthElem.value;
+      
+      if (!name) {
+        alert("Bitte wählen Sie einen Mitarbeiter aus.");
+        return;
+      }
+      
+      resultDiv.innerHTML = "Berechnung läuft...";
+      
+      try {
+        const response = await fetch(`/calculate-monthly-balance?name=${encodeURIComponent(name)}&year=${year}&month=${month}`, {
+          credentials: "include"
+        });
+        if (!response.ok) {
+          throw new Error(`Fehler ${response.status}: ${await response.text()}`);
+        }
+        const result = await response.json();
+        let html = `<h3>Monatsauswertung für ${result.employeeName || name}</h3>`;
+        if(result.difference !== undefined) {
+           html += `<p>Berechnete Differenz: ${result.difference}</p>`;
+        }
+        if(result.carry_over !== undefined) {
+           html += `<p>Übertrag: ${result.carry_over}</p>`;
+        }
+        resultDiv.innerHTML = html;
+      } catch (error) {
+        console.error("Fehler bei der Monatsauswertung:", error);
+        resultDiv.innerHTML = `<p style="color:red;">Fehler: ${error.message}</p>`;
+      }
     }
 
     async function handleDownloadPdf() {
