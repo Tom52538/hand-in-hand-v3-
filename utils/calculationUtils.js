@@ -99,12 +99,12 @@ async function calculateMonthlyData(db, name, year, month) {
   `;
   await db.query(upsertQuery, [employee.id, currentMonthDateStr, totalDifference, newCarry]);
 
-  // Ergebnisse zurückgeben
+  // Ergebnisse zurückgeben (beachtet: Änderung vom Feldnamen monthlyDifference zu difference)
   return {
     employeeName: employee.name,
     month: parsedMonth,
     year: parsedYear,
-    monthlyDifference: parseFloat(totalDifference.toFixed(2)),
+    difference: parseFloat(totalDifference.toFixed(2)),
     previousCarryOver: parseFloat(previousCarry.toFixed(2)),
     newCarryOver: parseFloat(newCarry.toFixed(2)),
     workEntries: workEntries // Enthält nun auch 'expectedHours' pro Eintrag
