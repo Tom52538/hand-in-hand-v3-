@@ -71,7 +71,7 @@ async function calculateMonthlyData(db, name, year, month) {
       ? entry.date.toISOString().split('T')[0]
       : entry.date;
     const expected = getExpectedHours(employee, entryDateStr);
-    entry.expectedHours = expected;
+    entry.expectedHours = expected;      // (Für spätere Auswertung)
     totalExpected += expected;
     const worked = parseFloat(entry.hours) || 0;
     totalActual += worked;
@@ -79,13 +79,13 @@ async function calculateMonthlyData(db, name, year, month) {
   });
 
   // Übertrag aus dem Vormonat ermitteln
-  let prevMonthDate = new Date(Date.UTC(parsedYear, parsedMonth - 2, 1));
+  const prevMonthDate = new Date(Date.UTC(parsedYear, parsedMonth - 2, 1));
   const prevMonthDateStr = prevMonthDate.toISOString().split('T')[0];
   const prevResult = await db.query(
     `SELECT carry_over FROM monthly_balance WHERE employee_id = $1 AND year_month = $2`,
     [employee.id, prevMonthDateStr]
   );
-  let previousCarry = prevResult.rows.length > 0 ? (parseFloat(prevResult.rows[0].carry_over) || 0) : 0;
+  const previousCarry = prevResult.rows.length > 0 ? (parseFloat(prevResult.rows[0].carry_over) || 0) : 0;
 
   // Neuen Übertrag berechnen: previousCarry + (totalActual - totalExpected)
   const newCarry = previousCarry + totalDifference;
@@ -107,9 +107,9 @@ async function calculateMonthlyData(db, name, year, month) {
     month: parsedMonth,
     year: parsedYear,
     previousCarryOver: parseFloat(previousCarry.toFixed(2)), // Übertrag Vormonat (-/+)
-    totalExpected: parseFloat(totalExpected.toFixed(2)),       // Soll-Arbeitsstunden
-    totalActual: parseFloat(totalActual.toFixed(2)),           // Ist-Arbeitsstunden
-    newCarryOver: parseFloat(newCarry.toFixed(2)),             // Ergebnis
+    totalExpected: parseFloat(totalExpected.toFixed(2)),     // Soll-Arbeitsstunden
+    totalActual: parseFloat(totalActual.toFixed(2)),         // Ist-Arbeitsstunden
+    newCarryOver: parseFloat(newCarry.toFixed(2)),           // Ergebnis
     workEntries: workEntries
   };
 }
