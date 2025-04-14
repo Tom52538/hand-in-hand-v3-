@@ -64,7 +64,7 @@ async function calculateMonthlyData(db, name, year, month) {
   workEntries.forEach(entry => {
     // Soll-Stunden für den Tag berechnen
     const expected = getExpectedHours(employee, entry.date.toISOString().split('T')[0]);
-    // *** NEU: Soll-Stunden zum Eintrag hinzufügen ***
+    // Soll-Stunden zum Eintrag hinzufügen
     entry.expectedHours = expected;
     // Differenz für den Tag berechnen und zur Gesamtdifferenz addieren
     totalDifference += (entry.hours || 0) - expected;
@@ -93,14 +93,13 @@ async function calculateMonthlyData(db, name, year, month) {
   `;
   await db.query(upsertQuery, [employee.id, currentMonthDateStr, totalDifference, newCarry]);
 
-  // Ergebnisse zurückgeben
+  // Ergebnisse zurückgeben – angepasst an den Client (difference und carry_over)
   return {
     employeeName: employee.name,
     month: parsedMonth,
     year: parsedYear,
-    monthlyDifference: parseFloat(totalDifference.toFixed(2)),
-    previousCarryOver: parseFloat(previousCarry.toFixed(2)),
-    newCarryOver: parseFloat(newCarry.toFixed(2)),
+    difference: parseFloat(totalDifference.toFixed(2)),
+    carry_over: parseFloat(newCarry.toFixed(2)),
     workEntries: workEntries // Enthält jetzt auch 'expectedHours' pro Eintrag
   };
 }
