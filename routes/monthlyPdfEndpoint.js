@@ -1,28 +1,27 @@
-// routes/monthlyPdfEndpoint.js
-
 const express = require('express');
 const PDFDocument = require('pdfkit');
 const path = require('path');
 const router = express.Router();
 
-// Importiere die Berechnungsfunktion
+// Importiere die Berechnungsfunktion aus calculationUtils.js
 const { calculateMonthlyData } = require('../utils/calculationUtils');
 
-// Hilfsfunktion: Dezimalstunden in HH:MM Format
+// Hilfsfunktion: Wandelt Dezimalstunden in ein HH:MM-Format um
 function decimalHoursToHHMM(decimalHours) {
-    if (isNaN(decimalHours)) {
-        return "00:00";
-    }
-    const sign = decimalHours < 0 ? "-" : "";
-    const absHours = Math.abs(decimalHours);
-    const totalMinutes = Math.round(absHours * 60);
-    const hours = Math.floor(totalMinutes / 60);
-    const minutes = totalMinutes % 60;
-    return `${sign}${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
+  if (isNaN(decimalHours)) {
+    return "00:00";
+  }
+  const sign = decimalHours < 0 ? "-" : "";
+  const absHours = Math.abs(decimalHours);
+  const totalMinutes = Math.round(absHours * 60);
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  return `${sign}${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
 }
 
 module.exports = function(db) {
 
+  // Middleware für den Admin-Check
   function isAdmin(req, res, next) {
     if (req.session && req.session.isAdmin === true) {
       next();
@@ -32,6 +31,7 @@ module.exports = function(db) {
     }
   }
 
+  // GET-Endpunkt zum Erzeugen des Monats-PDFs
   router.get('/create-monthly-pdf', isAdmin, async (req, res) => {
     const { name, year, month } = req.query;
 
@@ -40,207 +40,184 @@ module.exports = function(db) {
       const parsedYear = parseInt(year);
       const parsedMonth = parseInt(month);
 
-      const doc = new PDFDocument({ margin: 40, size: 'A4' }); // *** Margin leicht reduziert (war 50) ***
+      // PDF-Dokument erstellen mit angepasstem Margin und A4-Größe
+      const doc = new PDFDocument({ margin: 40, size: 'A4' });
 
       const safeName = (monthlyData.employeeName || 'Unbekannt').replace(/[^a-z0-9_\-]/gi, '_');
-      const filename = `Ueberstundennachweis_${safeName}_${String(parsedMonth).padStart(2,'0')}_${parsedYear}.pdf`;
+      const filename = `Ueberstundennachweis_${safeName}_${String(parsedMonth).padStart(2, '0')}_${parsedYear}.pdf`;
 
       res.setHeader('Content-Type', 'application/pdf');
       res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
 
       doc.pipe(res);
 
-      // Konstanten für Positionierung
+      // Layout-Konstanten
       const leftMargin = doc.page.margins.left;
       const rightMargin = doc.page.margins.right;
       const topMargin = doc.page.margins.top;
       const bottomMarginPos = doc.page.height - doc.page.margins.bottom;
       const usableWidth = doc.page.width - leftMargin - rightMargin;
 
-      // Logo Pfad
-      const logoPath = path.join(process.cwd(), 'public', 'icons', 'Hand-in-Hand-Logo-192x192.png');
+      // Definition der Spaltenbreiten (die Summe entspricht etwa der nutzbaren Breite)
+      const colCombinedWidth = 150;  // Spalte 1: Datum + Arbeitsbeginn
+      const colEndWidth = 70;        // Spalte 2: Arbeitsende
+      const colSollWidth = 70;       // Spalte 3: Soll-Zeit (HH:MM)
+      const colIstWidth = 70;        // Spalte 4: Ist-Zeit (HH:MM)
+      const colDiffWidth = usableWidth - (colCombinedWidth + colEndWidth + colSollWidth + colIstWidth);
+      // Bestimmen der X-Positionen der Spalten
+      const colCombinedX = leftMargin;
+      const colEndX = colCombinedX + colCombinedWidth;
+      const colSollX = colEndX + colEndWidth;
+      const colIstX = colSollX + colSollWidth;
+      const colDiffX = colIstX + colIstWidth;
+      const tableRightEdge = doc.page.width - rightMargin;
 
-      // Logo oben rechts platzieren
-      const logoWidth = 90; // Etwas kleiner für weniger Dominanz
+      // Logo in der oberen rechten Ecke platzieren
+      const logoPath = path.join(process.cwd(), 'public', 'icons', 'Hand-in-Hand-Logo-192x192.png');
+      const logoWidth = 90; // Angepasste Logo-Breite
       const logoX = doc.page.width - rightMargin - logoWidth;
-      const logoY = topMargin - 10; // *** ETWAS HÖHER starten, ragt in den oberen Rand ***
-      let initialY = topMargin; // Start Y für Text
+      const logoY = topMargin - 10;
+      let initialY = topMargin;
 
       try {
-          doc.image(logoPath, logoX, logoY, {
-              width: logoWidth
-          });
-          // *** Start des Textes näher am oberen Rand, kleinerer Abstand zum Logo ***
-          initialY = Math.max(topMargin, logoY + logoWidth * 0.3 + 15); // Geschätzte Höhe + kleiner Puffer
+          doc.image(logoPath, logoX, logoY, { width: logoWidth });
+          // Initiale Y-Position anpassen, damit der Text nicht zu weit unten beginnt
+          initialY = Math.max(topMargin, logoY + logoWidth * 0.3 + 15);
       } catch (imgErr) {
           console.error("Fehler beim Laden des PDF-Logos:", imgErr);
           initialY = topMargin;
       }
+      doc.y = initialY;
 
-      doc.y = initialY; // Setze Startposition
-
-      // Header
-      doc.fontSize(16).font('Helvetica-Bold').text('Überstundennachweis', leftMargin, doc.y, { align: 'center', width: usableWidth - logoWidth - 10 }); // Breite anpassen, um Logo nicht zu überlappen
-      doc.moveDown(1.2); // Weniger Abstand
-
-      doc.fontSize(11).font('Helvetica'); // Kleinere Schrift für Header-Infos
+      // Header-Bereich: Überschrift und Mitarbeiterinfos
+      doc.fontSize(16).font('Helvetica-Bold').text('Überstundennachweis', leftMargin, doc.y, { align: 'center', width: usableWidth - logoWidth - 10 });
+      doc.moveDown(1.2);
+      doc.fontSize(11).font('Helvetica');
       doc.text(`Name: ${monthlyData.employeeName}`);
       doc.moveDown(0.4);
 
-      // Zeitraum
+      // Darstellung des Zeitraums im Format TT.MM.JJJJ – TT.MM.JJJJ
       const firstDayOfMonth = new Date(Date.UTC(parsedYear, parsedMonth - 1, 1));
       const lastDayOfMonth = new Date(Date.UTC(parsedYear, parsedMonth, 0));
       const firstDayFormatted = firstDayOfMonth.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'UTC' });
       const lastDayFormatted = lastDayOfMonth.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'UTC' });
       doc.text(`Zeitraum: ${firstDayFormatted} - ${lastDayFormatted}`);
-      doc.moveDown(1.5); // Abstand vor Tabelle
+      doc.moveDown(1.5);
 
-      // Tabelle: Definitionen für Spaltenpositionen und -breiten
+      // --------------------------------------------------
+      // Tabellenkopf anpassen (mittels eingebautem Zeilenumbruch)
+      // --------------------------------------------------
       const tableTop = doc.y;
-      const dateX = leftMargin;
-      const startX = dateX + 105; // Weniger Platz für Datum, da Schrift kleiner
-      const endX = startX + 55;
-      const sollX = endX + 80;
-      const istX = sollX + 65;
-      const diffX = istX + 65;
-      const tableRightEdge = doc.page.width - rightMargin;
-
-      // Tabelle: Kopfzeile zeichnen (Schriftgröße bleibt 10pt fett)
       doc.fontSize(10).font('Helvetica-Bold');
-      doc.text('Datum', dateX, tableTop, { width: 100, align: 'left' });
-      doc.text('Arbeits-', startX, tableTop, { width: 50, align: 'center' });
-      doc.text('beginn', startX, tableTop + 10, { width: 50, align: 'center' });
-      doc.text('Arbeits-', endX, tableTop, { width: 75, align: 'center' });
-      doc.text('ende', endX, tableTop + 10, { width: 75, align: 'center' });
-      doc.text('Soll-Zeit', sollX, tableTop, { width: 60, align: 'center' });
-      doc.text('(HH:MM)', sollX, tableTop + 10, { width: 60, align: 'center' });
-      doc.text('Ist-Zeit', istX, tableTop, { width: 60, align: 'center' });
-      doc.text('(HH:MM)', istX, tableTop + 10, { width: 60, align: 'center' });
-      doc.text('Mehr/-Minder', diffX, tableTop, { width: tableRightEdge - diffX, align: 'center' });
-      doc.text('Std. (HH:MM)', diffX, tableTop + 10, { width: tableRightEdge - diffX, align: 'center' });
+      doc.text("Datum\nArbeits-beginn", colCombinedX, tableTop, { width: colCombinedWidth, align: 'left' });
+      doc.text("Arbeits-ende", colEndX, tableTop, { width: colEndWidth, align: 'center' });
+      doc.text("Soll-Zeit\n(HH:MM)", colSollX, tableTop, { width: colSollWidth, align: 'center' });
+      doc.text("Ist-Zeit\n(HH:MM)", colIstX, tableTop, { width: colIstWidth, align: 'center' });
+      doc.text("Mehr/-Minder\nStd. (HH:MM)", colDiffX, tableTop, { width: colDiffWidth, align: 'center' });
       doc.font('Helvetica');
-      doc.moveDown(1.2); // Weniger Abstand
+      doc.moveDown(1.2);
 
-      // Tabelle: Linie unter Kopfzeile
+      // Linie unter dem Tabellenkopf zeichnen
       const headerLineY = doc.y;
-      doc.moveTo(dateX, headerLineY).lineTo(tableRightEdge, headerLineY).lineWidth(0.5).stroke();
-      doc.moveDown(0.4); // Weniger Abstand
+      doc.moveTo(leftMargin, headerLineY).lineTo(tableRightEdge, headerLineY).lineWidth(0.5).stroke();
+      doc.moveDown(0.4);
 
-      // Tabelle: Zeilen iterieren und zeichnen
+      // --------------------------------------------------
+      // Tabellenzeilen: Iteration über monthlyData.workEntries
+      // In der ersten Spalte werden Datum und Arbeitsbeginn kombiniert.
+      // --------------------------------------------------
       let totalIstHoursMonth = 0;
       let totalExpectedHoursMonth = 0;
       if (monthlyData.workEntries && monthlyData.workEntries.length > 0) {
+        doc.fontSize(9).lineGap(-1);
 
-        // *** SCHRIFTGRÖSSE FÜR TABELLENINHALT REDUZIEREN ***
-        doc.fontSize(9);
-        // *** ZEILENABSTAND REDUZIEREN ***
-        doc.lineGap(-1); // Negativer Wert rückt Zeilen näher zusammen
-
-        monthlyData.workEntries.forEach((buchung) => {
-            const y = doc.y; // Aktuelle Y-Position merken
-
-            // Datum mit Wochentag formatieren
-            const dateFormatted = buchung.date
-                ? new Date(buchung.date.toISOString().split('T')[0] + 'T00:00:00Z').toLocaleDateString('de-DE', { weekday: 'short', year: 'numeric', month: '2-digit', day: '2-digit', timeZone: 'UTC' })
-                : 'n.a.';
-
-            // Stunden holen und Summen bilden
-            const hoursEntry = parseFloat(buchung.hours) || 0;
-            totalIstHoursMonth += hoursEntry;
-            const expectedHours = parseFloat(buchung.expectedHours) || 0;
-            totalExpectedHoursMonth += expectedHours;
-
-            // Texte formatieren
-            const endTimeDisplay = buchung.endTime ? buchung.endTime : 'Buchung fehlt';
-            const expectedHoursFormatted = decimalHoursToHHMM(expectedHours);
-            const istHoursFormatted = decimalHoursToHHMM(hoursEntry);
-            const dailyDifference = hoursEntry - expectedHours;
-            const dailyDifferenceFormatted = decimalHoursToHHMM(dailyDifference);
-
-            // Zeileninhalt zeichnen (mit kleinerer Schrift)
-            // (Breiten bleiben wie beim Header definiert)
-            doc.text(dateFormatted, dateX, y, { width: 100, align: 'left' });
-            doc.text(buchung.startTime || 'n.a.', startX, y, { width: 50, align: 'center' });
-            doc.text(endTimeDisplay, endX, y, { width: 75, align: 'center' });
-            doc.text(expectedHoursFormatted, sollX, y, { width: 60, align: 'center'});
-            doc.text(istHoursFormatted, istX, y, { width: 60, align: 'center'});
-            doc.text(dailyDifferenceFormatted, diffX, y, { width: tableRightEdge - diffX, align: 'center'});
-
-            // Seitenumbruch-Logik
-            if (doc.y > bottomMarginPos - 50) { // Genug Platz für Footer lassen
-                doc.addPage({margins: { top: 40, bottom: 40, left: 40, right: 40}}); // Neue Seite mit gleichen Rändern
-                 // Logo wiederholen
-                 try {
-                      doc.image(logoPath, logoX, logoY, { width: logoWidth });
-                 } catch(imgErr){ console.error("Logo auf Folgeseite fehlgeschlagen:", imgErr); }
-                 // Kopfzeile wiederholen (optional, hier nicht implementiert)
-                 doc.y = topMargin + 20; // Y-Position auf neuer Seite setzen
-                 // Schriftgröße zurücksetzen auf 9pt für Tabelleninhalt
-                 doc.fontSize(9).lineGap(-1);
-            } else {
-                 doc.moveDown(0.5); // *** Kleinerer Abstand zwischen den Zeilen ***
+        monthlyData.workEntries.forEach((entry) => {
+          const y = doc.y;
+          let dateFormatted = 'n.a.';
+          if (entry.date) {
+            try {
+              const dateObj = new Date(entry.date.toString().split('T')[0] + 'T00:00:00Z');
+              dateFormatted = dateObj.toLocaleDateString('de-DE', { weekday: 'short', day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'UTC' });
+            } catch (e) {
+              dateFormatted = entry.date;
             }
+          }
+          const startTimeDisplay = entry.startTime || 'n.a.';
+          // Kombination von Datum und Arbeitsbeginn im gewünschten Format (z. B. "Mo., 03.03.2025 08:00")
+          const combinedStart = `${dateFormatted} ${startTimeDisplay}`;
+          const endTimeDisplay = entry.endTime || 'Buchung fehlt';
+
+          const worked = parseFloat(entry.hours) || 0;
+          totalIstHoursMonth += worked;
+          const expected = parseFloat(entry.expectedHours) || 0;
+          totalExpectedHoursMonth += expected;
+          const expectedFormatted = decimalHoursToHHMM(expected);
+          const istFormatted = decimalHoursToHHMM(worked);
+          const diffFormatted = decimalHoursToHHMM(worked - expected);
+
+          // Zeichnen der Zeile in den definierten Spalten
+          doc.text(combinedStart, colCombinedX, y, { width: colCombinedWidth, align: 'left' });
+          doc.text(endTimeDisplay, colEndX, y, { width: colEndWidth, align: 'center' });
+          doc.text(expectedFormatted, colSollX, y, { width: colSollWidth, align: 'center' });
+          doc.text(istFormatted, colIstX, y, { width: colIstWidth, align: 'center' });
+          doc.text(diffFormatted, colDiffX, y, { width: colDiffWidth, align: 'center' });
+
+          // Seitenumbruch, falls das untere Seitenende erreicht ist
+          if (doc.y > bottomMarginPos - 50) {
+            doc.addPage({ margins: { top: 40, bottom: 40, left: 40, right: 40 } });
+            try {
+              doc.image(logoPath, logoX, logoY, { width: logoWidth });
+            } catch (imgErr) {
+              console.error("Logo auf Folgeseite fehlgeschlagen:", imgErr);
+            }
+            doc.y = topMargin + 20;
+            doc.fontSize(10).font('Helvetica-Bold');
+            doc.text("Datum\nArbeits-beginn", colCombinedX, doc.y, { width: colCombinedWidth, align: 'left' });
+            doc.text("Arbeits-ende", colEndX, doc.y, { width: colEndWidth, align: 'center' });
+            doc.text("Soll-Zeit\n(HH:MM)", colSollX, doc.y, { width: colSollWidth, align: 'center' });
+            doc.text("Ist-Zeit\n(HH:MM)", colIstX, doc.y, { width: colIstWidth, align: 'center' });
+            doc.text("Mehr/-Minder\nStd. (HH:MM)", colDiffX, doc.y, { width: colDiffWidth, align: 'center' });
+            doc.font('Helvetica');
+            doc.moveDown(1.2);
+          } else {
+            doc.moveDown(0.5);
+          }
         });
-
-        // *** Schriftgröße und Zeilenabstand nach der Tabelle zurücksetzen ***
-        doc.fontSize(10).lineGap(0); // Zurück zu normalem Abstand und Standardgröße für Folgetext
-
+        doc.fontSize(10).lineGap(0);
       } else {
-         doc.fontSize(10).text('Keine Buchungen in diesem Monat gefunden.', dateX, doc.y);
-         doc.moveDown();
+        doc.fontSize(10).text('Keine Buchungen in diesem Monat gefunden.', colCombinedX, doc.y);
+        doc.moveDown();
       }
-    // Tabelle: Linie nach letzter Zeile
-      const finalLineY = doc.y + 2; // Näher an die letzte Zeile
-      doc.moveTo(dateX, finalLineY).lineTo(tableRightEdge, finalLineY).lineWidth(0.5).stroke();
-      doc.moveDown(1.0); // Weniger Abstand
 
-      // Zusammenfassung unter der Tabelle (Schriftgröße 10pt)
-      const summaryY = doc.y;
-      const labelWidth = 150;
-      const valueX = istX;
+      // --------------------------------------------------
+      // Zusammenfassungsbereich (Gesamtwerte) und Unterschriftsfeld
+      // --------------------------------------------------
+      const summaryY = doc.y + 20;
+      doc.moveTo(leftMargin, summaryY).lineTo(tableRightEdge, summaryY).lineWidth(0.5).stroke();
+      doc.moveDown(0.5);
 
-      doc.fontSize(10).font('Helvetica-Bold').text('Gesamt Soll-Zeit:', dateX, summaryY, { width: labelWidth, align: 'left' });
-      doc.font('Helvetica').text(decimalHoursToHHMM(totalExpectedHoursMonth), valueX, summaryY, { width: 65, align: 'center' });
+      const totalSollFormatted = decimalHoursToHHMM(totalExpectedHoursMonth);
+      const totalIstFormatted = decimalHoursToHHMM(totalIstHoursMonth);
+      const totalDiffFormatted = decimalHoursToHHMM(totalIstHoursMonth - totalExpectedHoursMonth);
 
-      doc.moveDown(0.3); // Weniger Abstand
-      const summaryY2 = doc.y;
-      doc.font('Helvetica-Bold').text('Gesamt Ist-Zeit:', dateX, summaryY2, { width: labelWidth, align: 'left' });
-      doc.font('Helvetica').text(decimalHoursToHHMM(totalIstHoursMonth), valueX, summaryY2, { width: 65, align: 'center' });
+      doc.font('Helvetica-Bold');
+      doc.text(`Gesamt Soll-Zeit: ${totalSollFormatted}`, leftMargin, doc.y);
+      doc.text(`Gesamt Ist-Zeit: ${totalIstFormatted}`, leftMargin, doc.y + 15);
+      doc.text(`Gesamt Mehr-/Minderstunden: ${totalDiffFormatted}`, leftMargin, doc.y + 30);
+      doc.moveDown(2);
 
-      doc.moveDown(0.3); // Weniger Abstand
-      const summaryY3 = doc.y;
-      doc.font('Helvetica-Bold').text('Gesamt Mehr-/Minderstunden:', dateX, summaryY3, { width: labelWidth, align: 'left' });
-      doc.font('Helvetica').text(decimalHoursToHHMM(monthlyData.monthlyDifference), valueX, summaryY3, { width: 65, align: 'center' });
-      doc.moveDown(2); // Weniger Abstand
+      // Bestätigungstext und Unterschriftsbereich
+      doc.font('Helvetica').fontSize(9);
+      doc.text('Ich bestätige hiermit, dass die oben genannten Arbeitsstunden erbracht wurden und rechtmäßig in Rechnung gestellt werden.', { align: 'left' });
+      doc.moveDown(3);
+      doc.text('Datum, Unterschrift', { align: 'left' });
 
-      // Bestätigungstext (Schriftgröße 9pt)
-      doc.fontSize(9).text('Ich bestätige hiermit, dass die oben genannten Arbeitsstunden erbracht wurden und rechtmäßig in Rechnung gestellt werden.', leftMargin, doc.y, { align: 'left', width: usableWidth });
-      doc.moveDown(3); // Weniger Platz
-
-      // Unterschriftslinie
-      const signatureY = doc.y;
-      doc.moveTo(leftMargin + usableWidth / 2, signatureY)
-         .lineTo(leftMargin + usableWidth, signatureY)
-         .lineWidth(0.5)
-         .stroke();
-      doc.moveDown(0.4); // Weniger Abstand
-      doc.fontSize(9).text('Datum, Unterschrift', leftMargin + usableWidth / 2, doc.y, { width: usableWidth / 2, align: 'center'});
-
-
-      // --- Ende PDF Inhalt ---
       doc.end();
-
-    } catch (error) {
-      // Fehlerbehandlung
-      console.error("Fehler beim Erstellen des PDFs:", error);
-      if (error.message === "Mitarbeiter nicht gefunden." || error.message.startsWith("Ungültiger Name")) {
-         res.status(400).send('Fehler beim Erstellen des PDFs: ' + error.message);
-      } else {
-         res.status(500).send('Serverfehler beim Erstellen des PDFs.');
-      }
+    } catch (err) {
+      console.error("Fehler beim Erstellen des PDFs:", err);
+      res.status(500).send('Fehler beim Erstellen des PDFs.');
     }
   });
 
-  // Router zurückgeben
   return router;
 };
