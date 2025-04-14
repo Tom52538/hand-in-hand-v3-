@@ -1,3 +1,5 @@
+// server.js
+
 // Laden der Umgebungsvariablen aus der .env-Datei
 require('dotenv').config();
 
@@ -8,14 +10,14 @@ const bodyParser = require('body-parser');
 const session = require('express-session');
 const pgSession = require('connect-pg-simple')(session);
 const path = require('path');
-const app = express();
 const cors = require("cors");
 
-// Importiere NUR die ausgelagerten Berechnungsfunktionen (falls vorhanden)
-// Stelle sicher, dass die Datei utils/calculationUtils.js existiert!
+const app = express();
+
+// Importiere ggf. externe Berechnungsfunktionen
 const { calculateMonthlyData, getExpectedHours } = require('./utils/calculationUtils');
 
-// --- HILFSFUNKTIONEN (wieder hier integriert) ---
+// --- HILFSFUNKTIONEN ---
 function parseTime(timeStr) {
   if (!timeStr || !timeStr.includes(':')) return 0;
   const [hh, mm] = timeStr.split(':');
@@ -47,7 +49,10 @@ function convertToCSV(data) {
                 const month = String(dateObj.getUTCMonth() + 1).padStart(2, '0');
                 const day = String(dateObj.getUTCDate()).padStart(2, '0');
                 dateFormatted = `${day}.${month}.${year}`;
-            } catch (e) { dateFormatted = String(row.date); console.error("CSV Datumsformat Fehler:", e)}
+            } catch (e) {
+                dateFormatted = String(row.date);
+                console.error("CSV Datumsformat Fehler:", e);
+            }
         }
         const startTimeFormatted = row.starttime || "";
         const endTimeFormatted = row.endtime || "";
@@ -57,7 +62,9 @@ function convertToCSV(data) {
              try {
                  const dateString = (row.date instanceof Date) ? row.date.toISOString().split('T')[0] : String(row.date).split('T')[0];
                  expected = getExpectedHours(row, dateString);
-             } catch (e) { console.error("Fehler beim Holen der Soll-Stunden für CSV:", e); }
+             } catch (e) {
+                 console.error("Fehler beim Holen der Soll-Stunden für CSV:", e);
+             }
         }
         const diff = istHours - expected;
         const commentFormatted = `"${(row.comment || '').replace(/"/g, '""')}"`;
@@ -71,9 +78,8 @@ function convertToCSV(data) {
 }
 // --- ENDE HILFSFUNKTIONEN ---
 
-
 app.use(cors({
-  origin: "*", // Für Entwicklung, in Produktion spezifischer!
+  origin: "*", // Für Entwicklung, in Produktion bitte spezifischer konfigurieren!
   credentials: true
 }));
 
@@ -108,14 +114,44 @@ app.use(session({
 // --- Datenbank Tabellen Setup ---
 const setupTables = async () => {
   try {
-    await db.query(`CREATE TABLE IF NOT EXISTS work_hours (id SERIAL PRIMARY KEY, name TEXT NOT NULL, date DATE NOT NULL, hours DOUBLE PRECISION, comment TEXT, starttime TIME, endtime TIME);`);
+    await db.query(`CREATE TABLE IF NOT EXISTS work_hours (
+        id SERIAL PRIMARY KEY,
+        name TEXT NOT NULL,
+        date DATE NOT NULL,
+        hours DOUBLE PRECISION,
+        comment TEXT,
+        starttime TIME,
+        endtime TIME
+      );`);
     console.log("Tabelle work_hours geprüft/erstellt.");
-    await db.query(`CREATE TABLE IF NOT EXISTS employees (id SERIAL PRIMARY KEY, name TEXT NOT NULL UNIQUE, mo_hours DOUBLE PRECISION, di_hours DOUBLE PRECISION, mi_hours DOUBLE PRECISION, do_hours DOUBLE PRECISION, fr_hours DOUBLE PRECISION);`);
+
+    await db.query(`CREATE TABLE IF NOT EXISTS employees (
+        id SERIAL PRIMARY KEY,
+        name TEXT NOT NULL UNIQUE,
+        mo_hours DOUBLE PRECISION,
+        di_hours DOUBLE PRECISION,
+        mi_hours DOUBLE PRECISION,
+        do_hours DOUBLE PRECISION,
+        fr_hours DOUBLE PRECISION
+      );`);
     console.log("Tabelle employees geprüft/erstellt.");
-    await db.query(`CREATE TABLE IF NOT EXISTS monthly_balance (id SERIAL PRIMARY KEY, employee_id INTEGER NOT NULL REFERENCES employees(id) ON DELETE CASCADE, year_month DATE NOT NULL, difference DOUBLE PRECISION, carry_over DOUBLE PRECISION, UNIQUE (employee_id, year_month));`);
+
+    await db.query(`CREATE TABLE IF NOT EXISTS monthly_balance (
+        id SERIAL PRIMARY KEY,
+        employee_id INTEGER NOT NULL REFERENCES employees(id) ON DELETE CASCADE,
+        year_month DATE NOT NULL,
+        difference DOUBLE PRECISION,
+        carry_over DOUBLE PRECISION,
+        UNIQUE (employee_id, year_month)
+      );`);
     console.log("Tabelle monthly_balance geprüft/erstellt.");
-  } catch (err) { console.error("!!! DB Setup Fehler:", err); process.exit(1); }
+  } catch (err) {
+    console.error("!!! DB Setup Fehler:", err);
+    process.exit(1);
+  }
 };
+
+setupTables();
 
 // --- Middleware für Admin-Check ---
 function isAdmin(req, res, next) {
@@ -158,6 +194,7 @@ app.get('/next-booking-details', async (req, res) => {
 });
 
 // --- ANGEPASSTER Endpunkt: Buchung Arbeitsbeginn ---
+// Hier wird jetzt zusätzlich geprüft, ob bereits ein abgeschlossener Eintrag am gleichen Tag existiert.
 app.post('/log-start', async (req, res) => {
     const { name, date, startTime } = req.body;
     if (!name || !date || !startTime) return res.status(400).json({ message: 'Fehlende Daten.' });
@@ -169,24 +206,22 @@ app.post('/log-start', async (req, res) => {
              return res.status(409).json({ message: `Es existiert bereits ein offener Eintrag (ID: ${checkOpenResult.rows[0].id}). Bitte erst Arbeitsende buchen.` });
         }
 
-        // --- NEUE PRÜFUNG START ---
         // 2. Prüfen auf bereits abgeschlossenen Eintrag am selben Tag
         const checkCompleteQuery = `SELECT id FROM work_hours WHERE LOWER(name)=LOWER($1) AND date=$2 AND endtime IS NOT NULL`;
         const checkCompleteResult = await db.query(checkCompleteQuery, [name, date]);
         if (checkCompleteResult.rows.length > 0) {
              console.warn(`Versuch, neuen Start für ${name} am ${date} zu buchen, obwohl bereits ein abgeschlossener Eintrag (ID: ${checkCompleteResult.rows[0].id}) existiert.`);
-             // Datum für die Fehlermeldung formatieren
              let displayDateError = date;
-             try { displayDateError = new Date(date + 'T00:00:00Z').toLocaleDateString('de-DE', { timeZone: 'UTC' }); } catch(e){}
+             try {
+                displayDateError = new Date(date + 'T00:00:00Z').toLocaleDateString('de-DE', { timeZone: 'UTC' });
+             } catch(e){}
              return res.status(409).json({ message: `An diesem Tag (${displayDateError}) wurde bereits eine vollständige Arbeitszeit erfasst.` });
         }
-        // --- NEUE PRÜFUNG ENDE ---
 
         // 3. Wenn keine Konflikte, dann einfügen
         const insert = await db.query(`INSERT INTO work_hours (name, date, starttime) VALUES ($1, $2, $3) RETURNING id;`, [name, date, startTime]);
         console.log(`Start gebucht: ${name}, ${date}, ${startTime} (ID: ${insert.rows[0].id})`);
-        res.status(201).json({ id: insert.rows[0].id }); // Wichtig: ID zurückgeben
-
+        res.status(201).json({ id: insert.rows[0].id });
     } catch (err) {
         console.error("Fehler /log-start:", err);
         res.status(500).json({ message: 'Serverfehler beim Buchen des Starts.' });
@@ -231,7 +266,9 @@ app.get('/summary-hours', async (req, res) => {
         // Monatsstunden
         const yearMonth = date.substring(0, 7); // 'YYYY-MM'
         const firstDayOfMonth = `${yearMonth}-01`;
-        const nextMonthDate = new Date(date); nextMonthDate.setUTCMonth(nextMonthDate.getUTCMonth() + 1, 1); nextMonthDate.setUTCDate(nextMonthDate.getUTCDate() - 1);
+        const nextMonthDate = new Date(date);
+        nextMonthDate.setUTCMonth(nextMonthDate.getUTCMonth() + 1, 1);
+        nextMonthDate.setUTCDate(nextMonthDate.getUTCDate() - 1);
         const lastDayOfMonth = nextMonthDate.toISOString().split('T')[0];
         const monthlyResult = await db.query(
              `SELECT SUM(hours) AS total_hours FROM work_hours
@@ -255,7 +292,7 @@ app.get('/employees', (req, res) => {
 });
 
 // --------------------------
-// Admin-Login und geschützte Endpunkte (unverändert)
+// Admin-Login und geschützte Endpunkte
 // --------------------------
 app.post("/admin-login", (req, res) => {
   const { password } = req.body;
@@ -267,16 +304,21 @@ app.post("/admin-login", (req, res) => {
         req.session.isAdmin = true;
         req.session.save((saveErr) => {
           if (saveErr) { console.error("Session Save Fehler:", saveErr); return res.status(500).send("Session Fehler."); }
-          console.log("Admin angemeldet."); res.status(200).send("Admin angemeldet.");
+          console.log("Admin angemeldet.");
+          res.status(200).send("Admin angemeldet.");
         });
     });
-  } else { res.status(401).send("Ungültiges Passwort."); }
+  } else {
+    res.status(401).send("Ungültiges Passwort.");
+  }
 });
 
 app.get('/admin-work-hours', isAdmin, (req, res) => {
   const query = `SELECT id, name, date, hours, comment,
-                 TO_CHAR(starttime, 'HH24:MI') AS "startTime", TO_CHAR(endtime, 'HH24:MI') AS "endTime"
-                 FROM work_hours ORDER BY date DESC, name ASC, starttime ASC;`;
+                 TO_CHAR(starttime, 'HH24:MI') AS "startTime",
+                 TO_CHAR(endtime, 'HH24:MI') AS "endTime"
+                 FROM work_hours
+                 ORDER BY date DESC, name ASC, starttime ASC;`;
   db.query(query)
     .then(result => res.json(result.rows))
     .catch(err => { console.error("DB Fehler GET /admin-work-hours:", err); res.status(500).send('Fehler.'); });
@@ -293,35 +335,60 @@ app.get('/admin-download-csv', isAdmin, async (req, res) => {
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
     res.send(Buffer.concat([Buffer.from('\uFEFF', 'utf8'), Buffer.from(csv, 'utf-8')]));
-  } catch (err) { console.error("DB Fehler GET /admin-download-csv:", err); res.status(500).send('Fehler.'); }
+  } catch (err) {
+    console.error("DB Fehler GET /admin-download-csv:", err);
+    res.status(500).send('Fehler.');
+  }
 });
 
 app.put('/api/admin/update-hours', isAdmin, (req, res) => {
     const { id, name, date, startTime, endTime, comment } = req.body;
-    if (isNaN(parseInt(id)) || !name || !date || !startTime || !endTime) return res.status(400).send('Ungültige/fehlende Daten.');
+    if (isNaN(parseInt(id)) || !name || !date || !startTime || !endTime)
+      return res.status(400).send('Ungültige/fehlende Daten.');
     const netHours = calculateWorkHours(startTime, endTime);
     const query = `UPDATE work_hours SET name = $1, date = $2, hours = $3, comment = $4, starttime = $5, endtime = $6 WHERE id = $7;`;
     db.query(query, [name, date, netHours, comment, startTime, endTime, parseInt(id)])
         .then(result => {
-            if (result.rowCount > 0) { console.log(`Admin Update ID ${id}.`); res.send('Aktualisiert.'); }
-            else res.status(404).send(`ID ${id} nicht gefunden.`);
+            if (result.rowCount > 0) {
+              console.log(`Admin Update ID ${id}.`);
+              res.send('Aktualisiert.');
+            } else {
+              res.status(404).send(`ID ${id} nicht gefunden.`);
+            }
         })
-        .catch(err => { console.error("DB Fehler PUT /api/admin/update-hours:", err); res.status(500).send('Fehler.'); });
+        .catch(err => {
+            console.error("DB Fehler PUT /api/admin/update-hours:", err);
+            res.status(500).send('Fehler.');
+        });
 });
 
 app.delete('/api/admin/delete-hours/:id', isAdmin, (req, res) => {
-    const { id } = req.params; if (isNaN(parseInt(id))) return res.status(400).send('Ungültige ID.');
+    const { id } = req.params;
+    if (isNaN(parseInt(id))) return res.status(400).send('Ungültige ID.');
     db.query('DELETE FROM work_hours WHERE id = $1', [parseInt(id)])
         .then(result => {
-            if (result.rowCount > 0) { console.log(`Admin Delete ID ${id}.`); res.send('Gelöscht.'); }
-            else res.status(404).send(`ID ${id} nicht gefunden.`);
+            if (result.rowCount > 0) {
+              console.log(`Admin Delete ID ${id}.`);
+              res.send('Gelöscht.');
+            } else {
+              res.status(404).send(`ID ${id} nicht gefunden.`);
+            }
         })
-        .catch(err => { console.error("DB Fehler DELETE /api/admin/delete-hours:", err); res.status(500).send('Fehler.'); });
+        .catch(err => {
+            console.error("DB Fehler DELETE /api/admin/delete-hours:", err);
+            res.status(500).send('Fehler.');
+        });
 });
 
 app.delete('/adminDeleteData', isAdmin, async (req, res) => {
-    try { await db.query('DELETE FROM work_hours'); console.log("!!! Admin hat ALLE Arbeitszeiten gelöscht !!!"); res.send('Alle Zeiten gelöscht.'); }
-    catch (err) { console.error("DB Fehler /adminDeleteData:", err); res.status(500).send('Fehler.'); }
+    try {
+        await db.query('DELETE FROM work_hours');
+        console.log("!!! Admin hat ALLE Arbeitszeiten gelöscht !!!");
+        res.send('Alle Zeiten gelöscht.');
+    } catch (err) {
+        console.error("DB Fehler /adminDeleteData:", err);
+        res.status(500).send('Fehler.');
+    }
 });
 
 app.get('/admin/employees', isAdmin, (req, res) => {
@@ -335,87 +402,87 @@ app.post('/admin/employees', isAdmin, (req, res) => {
     if (!name || name.trim() === '') return res.status(400).send('Name fehlt.');
     const hours = [mo_hours, di_hours, mi_hours, do_hours, fr_hours].map(h => parseFloat(h) || null);
     const query = `INSERT INTO employees (name, mo_hours, di_hours, mi_hours, do_hours, fr_hours)
-                   VALUES ($1, $2, $3, $4, $5, $6) ON CONFLICT (name) DO NOTHING RETURNING *;`;
+                   VALUES ($1, $2, $3, $4, $5, $6)
+                   ON CONFLICT (name) DO NOTHING RETURNING *;`;
     db.query(query, [name.trim(), ...hours])
         .then(result => {
-            if (result.rows.length > 0) { console.log(`Admin Add MA: ${name.trim()}`); res.status(201).json(result.rows[0]); }
-            else res.status(409).send(`Name '${name.trim()}' existiert bereits.`);
+            if (result.rows.length > 0) {
+              console.log(`Admin Add MA: ${name.trim()}`);
+              res.status(201).json(result.rows[0]);
+            } else {
+              res.status(409).send(`Name '${name.trim()}' existiert bereits.`);
+            }
         })
-        .catch(err => { console.error("DB Fehler POST /admin/employees:", err); res.status(500).send('Fehler.'); });
+        .catch(err => {
+            console.error("DB Fehler POST /admin/employees:", err);
+            res.status(500).send('Fehler.');
+        });
 });
 
 app.put('/admin/employees/:id', isAdmin, (req, res) => {
-    const { id } = req.params; const { name, mo_hours, di_hours, mi_hours, do_hours, fr_hours } = req.body;
-    if (isNaN(parseInt(id)) || !name || name.trim() === '') return res.status(400).send('Ungültige/fehlende Daten.');
+    const { id } = req.params;
+    const { name, mo_hours, di_hours, mi_hours, do_hours, fr_hours } = req.body;
+    if (isNaN(parseInt(id)) || !name || name.trim() === '')
+      return res.status(400).send('Ungültige/fehlende Daten.');
     const hours = [mo_hours, di_hours, mi_hours, do_hours, fr_hours].map(h => parseFloat(h) || null);
     const query = `UPDATE employees SET name = $1, mo_hours = $2, di_hours = $3, mi_hours = $4, do_hours = $5, fr_hours = $6 WHERE id = $7;`;
     db.query(query, [name.trim(), ...hours, parseInt(id)])
         .then(result => {
-            if (result.rowCount > 0) { console.log(`Admin Update MA ID ${id}.`); res.send('Aktualisiert.'); }
-            else res.status(404).send(`ID ${id} nicht gefunden.`);
+            if (result.rowCount > 0) {
+              console.log(`Admin Update MA ID ${id}.`);
+              res.send('Aktualisiert.');
+            } else {
+              res.status(404).send(`ID ${id} nicht gefunden.`);
+            }
         })
         .catch(err => {
-            if (err.code === '23505') res.status(409).send(`Name '${name.trim()}' existiert bereits.`);
-            else { console.error("DB Fehler PUT /admin/employees:", err); res.status(500).send('Fehler.'); }
+            if (err.code === '23505')
+              res.status(409).send(`Name '${name.trim()}' existiert bereits.`);
+            else {
+              console.error("DB Fehler PUT /admin/employees:", err);
+              res.status(500).send('Fehler.');
+            }
         });
 });
 
 app.delete('/admin/employees/:id', isAdmin, async (req, res) => {
-    const { id } = req.params; if (isNaN(parseInt(id))) return res.status(400).send('Ungültige ID.');
+    const { id } = req.params;
+    if (isNaN(parseInt(id))) return res.status(400).send('Ungültige ID.');
     const client = await db.connect();
     try {
         await client.query('BEGIN');
         const result = await client.query('DELETE FROM employees WHERE id = $1', [parseInt(id)]);
         await client.query('COMMIT');
-        if (result.rowCount > 0) { console.log(`Admin Delete MA ID ${id}.`); res.send('Gelöscht.'); }
-        else res.status(404).send(`ID ${id} nicht gefunden.`);
+        if (result.rowCount > 0) {
+          console.log(`Admin Delete MA ID ${id}.`);
+          res.send('Gelöscht.');
+        } else {
+          res.status(404).send(`ID ${id} nicht gefunden.`);
+        }
     } catch (err) {
         await client.query('ROLLBACK');
-        console.error("DB Fehler DELETE /admin/employees:", err); res.status(500).send('Fehler.');
-    } finally { client.release(); }
+        console.error("DB Fehler DELETE /admin/employees:", err);
+        res.status(500).send('Fehler.');
+    } finally {
+        client.release();
+    }
 });
 
+// (Optionaler Endpunkt für Monatsauswertung)
+// Hier wird die calculateMonthlyData-Funktion genutzt, wenn sie in utils/calculationUtils.js definiert ist.
 app.get('/calculate-monthly-balance', isAdmin, async (req, res) => {
     const { name, year, month } = req.query;
     try {
         const result = await calculateMonthlyData(db, name, year, month);
-        console.log(`Admin Monatsauswertung: ${result.employeeName || name} (${month}/${year}).`);
-        res.json({ message: `Saldo berechnet/gespeichert.`, ...result });
-    } catch (error) {
-        console.error(`Fehler /calculate-monthly-balance (${name}, ${month}/${year}):`, error);
-        if (error.message.includes("gefunden")) res.status(404).send(error.message);
-        else if (error.message.startsWith("Ungültige")) res.status(400).send(error.message);
-        else res.status(500).send("Serverfehler.");
+        console.log(`Admin Monatsauswertung: ${result.employeeName || ''}`);
+        res.json(result);
+    } catch (err) {
+        console.error("Fehler /calculate-monthly-balance:", err);
+        res.status(500).send('Fehler.');
     }
 });
 
-try {
-    const monthlyPdfEndpointFactory = require('./routes/monthlyPdfEndpoint');
-    app.use('/', monthlyPdfEndpointFactory(db));
-} catch (e) {
-    console.warn("PDF Endpunkt konnte nicht geladen werden.", e.message);
-}
-
-// --- Server starten und Graceful Shutdown ---
-async function startServer() {
-  try {
-    await setupTables(); console.log("DB Setup ok.");
-    if (!process.env.DATABASE_URL) console.warn("WARNUNG: DATABASE_URL fehlt.");
-    if (!process.env.SESSION_SECRET) console.warn("WARNUNG: SESSION_SECRET fehlt.");
-    if (!process.env.ADMIN_PASSWORD) console.warn("WARNUNG: ADMIN_PASSWORD fehlt.");
-    if (process.env.NODE_ENV !== 'production') console.warn("WARNUNG: Läuft nicht im Produktionsmodus.");
-
-    const server = app.listen(port, '0.0.0.0', () => console.log(`Server läuft auf Port ${port}`));
-    const gracefulShutdown = async (signal) => {
-      console.log(`Shutdown (${signal})...`); server.close(async (err) => {
-        if (err) console.error("Server schließen Fehler:", err); else console.log("Server geschlossen.");
-        try { await db.end(); console.log("DB Pool geschlossen."); process.exit(0); }
-        catch (dbErr) { console.error("DB Pool schließen Fehler:", dbErr); process.exit(1); }
-      });
-      setTimeout(() => { console.error("Shutdown Timeout!"); process.exit(1); }, 10000);
-    };
-    process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
-    process.on('SIGINT', () => gracefulShutdown('SIGINT'));
-  } catch (error) { console.error("!!! Server Start Fehler:", error); process.exit(1); }
-}
-startServer();
+// Start des Servers
+app.listen(port, () => {
+  console.log(`Server hört auf Port ${port}`);
+});
