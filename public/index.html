@@ -12,69 +12,86 @@
     <meta name="theme-color" content="#ffffff" />
     <style>
       /* Grundlegende Stile */
-      .hidden { display: none; }
-      form > div { margin-bottom: 1rem; }
-      label { display: block; margin-bottom: 0.3rem; }
-      table { width: 100%; border-collapse: collapse; margin-top: 1rem; }
-      th, td { border: 1px solid #ccc; padding: 8px; vertical-align: middle; text-align: left; }
-      td button { margin-right: 5px; padding: 5px 10px; }
-      .table-wrapper { overflow-x: auto; }
+      .hidden { display: none;
+ }
+      form > div { margin-bottom: 1rem;
+ }
+      label { display: block; margin-bottom: 0.3rem;
+ }
+      table { width: 100%; border-collapse: collapse; margin-top: 1rem;
+ }
+      th, td { border: 1px solid #ccc; padding: 8px; vertical-align: middle; text-align: left;
+ }
+      td button { margin-right: 5px; padding: 5px 10px;
+ }
+      .table-wrapper { overflow-x: auto;
+ }
       .container {
         max-width: 900px;
         margin: 20px auto;
-        padding: 20px;
+ padding: 20px;
         background-color: #f9f9f9;
         border-radius: 8px;
         box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-      }
-      h1, h2, h3 { color: #333; }
-      button { padding: 10px 15px; cursor: pointer; }
-      button:disabled { cursor: not-allowed; opacity: 0.6; }
-      hr { margin: 2rem 0; border: 0; border-top: 1px solid #eee; }
-      input[readonly] { background-color: #e9e9e9; cursor: default; }
+ }
+      h1, h2, h3 { color: #333;
+ }
+      button { padding: 10px 15px; cursor: pointer;
+ }
+      button:disabled { cursor: not-allowed; opacity: 0.6;
+ }
+      hr { margin: 2rem 0; border: 0; border-top: 1px solid #eee;
+ }
+      input[readonly] { background-color: #e9e9e9; cursor: default;
+ }
 
       /* Tab-Navigation-Stile */
       .tabs {
         list-style: none;
-        padding: 0;
+ padding: 0;
         margin: 0 0 1rem 0;
         display: flex;
-        flex-wrap: wrap; /* Erlaubt Umbruch bei kleinen Bildschirmen */
+        flex-wrap: wrap;
+ /* Erlaubt Umbruch bei kleinen Bildschirmen */
         border-bottom: 1px solid #ccc;
-      }
+ }
       .tabs li {
         padding: 10px 20px;
-        cursor: pointer;
+ cursor: pointer;
         border: 1px solid #ccc;
         border-bottom: none;
         margin-right: 5px;
-        margin-bottom: -1px; /* Überlappt untere Border */
+        margin-bottom: -1px;
+ /* Überlappt untere Border */
         background: #f1f1f1;
-        border-radius: 4px 4px 0 0; /* Oben abrunden */
+        border-radius: 4px 4px 0 0;
+ /* Oben abrunden */
       }
       .tabs li.active {
         background: #fff;
-        font-weight: bold;
+ font-weight: bold;
         border-bottom: 1px solid #fff; /* Untere Border des aktiven Tabs "verstecken" */
       }
       .tab-content {
         border: 1px solid #ccc;
-        padding: 20px;
+ padding: 20px;
         background: #fff;
         border-radius: 0 0 4px 4px; /* Unten abrunden */
       }
       /* Stil für die Ergebnistabelle der Monatsauswertung */
       #monthlyBalanceResult table {
-        width: auto; /* Tabelle nicht über ganze Breite */
+        width: auto;
+ /* Tabelle nicht über ganze Breite */
         border-collapse: collapse;
         margin-top: 10px;
-      }
+ }
        #monthlyBalanceResult td {
         border: 1px solid #ccc;
-        padding: 5px 8px; /* Etwas mehr Padding */
+ padding: 5px 8px; /* Etwas mehr Padding */
       }
        #monthlyBalanceResult td:last-child {
-         text-align: right; /* Zahlen rechtsbündig */
+         text-align: right;
+ /* Zahlen rechtsbündig */
        }
     </style>
   </head>
@@ -88,16 +105,17 @@
           <select id="employeeSelect" name="employeeSelect" required>
             <option value="">Bitte auswählen</option>
             </select>
-        </div>
+
+ </div>
         <div>
           <button type="button" id="workTimeBtn">Arbeitsbeginn buchen</button>
         </div>
         <input type="hidden" id="date" name="date" />
         <input type="hidden" id="startTime" name="startTime" />
         <input type="hidden" id="endTime" name="endTime" />
-        <div>
-          <label for="comment">Bemerkungen (für Arbeitsende):</label>
-          <input type="text" id="comment" name="comment" disabled />
+        <div class="hidden"> <label for="comment">Bemerkungen (für Arbeitsende):</label>
+          <input type="text" id="comment" name="comment"
+ disabled />
         </div>
       </form>
 
@@ -111,8 +129,8 @@
         </div>
         <button type="submit">Anmelden</button>
       </form>
-
-      <div id="adminTabs" class="hidden">
+      <div id="adminTabs"
+ class="hidden">
          <ul class="tabs">
            <li data-tab="dashboard" class="hidden">Dashboard/Home</li>
            <li data-tab="workhours" class="active">Arbeitszeiten</li>
@@ -121,7 +139,8 @@
          </ul> <div id="tab-dashboard" class="tab-content hidden">
           <h2>Dashboard/Home</h2>
           <p>Willkommen im Admin-Bereich.</p>
-        </div>
+
+    </div>
 
         <div id="tab-workhours" class="tab-content">
           <h2>Arbeitszeiten verwalten</h2>
@@ -130,19 +149,22 @@
               <thead>
                 <tr>
                    <th>ID</th>
-                   <th>Name</th>
+
+                 <th>Name</th>
                    <th>Datum</th>
                    <th>Arbeitszeit</th>
                    <th>Stunden</th>
                    <th>Bemerkungen</th>
-                   <th>Aktionen</th>
+
+            <th>Aktionen</th>
                  </tr>
               </thead>
               <tbody></tbody>
             </table>
           </div>
           <br>
-          <button id="adminDownloadCsv">CSV herunterladen</button>
+          <button id="adminDownloadCsv">CSV
+ herunterladen</button>
           <button id="adminDeleteData" style="color: red;">Alle Arbeitszeiten löschen (Vorsicht!)</button>
           <hr>
           <div id="editWorkHoursSection" class="hidden">
@@ -150,32 +172,37 @@
             <form id="editForm">
               <input type="hidden" id="editId" name="id" />
               <div>
-                <label for="editName">Name:</label>
+
+             <label for="editName">Name:</label>
                  <input type="text" id="editName" name="name" required/>
               </div>
               <div>
                 <label for="editDate">Datum:</label>
                 <input type="date" id="editDate" name="date" required/>
+
               </div>
                <div>
                 <label for="editStartTime">Arbeitsbeginn:</label>
                 <input type="time" id="editStartTime" name="startTime" required />
               </div>
               <div>
-                <label for="editEndTime">Arbeitsende:</label>
+
+           <label for="editEndTime">Arbeitsende:</label>
                  <input type="time" id="editEndTime" name="endTime" required />
               </div>
               <div>
                 <label for="editComment">Bemerkungen:</label>
                 <input type="text" id="editComment" name="comment" />
-              </div>
+
+             </div>
               <button type="button" onclick="saveChanges()">Änderungen Speichern</button>
               <button type="button" onclick="cancelEditWorkHours()">Abbrechen</button>
             </form>
           </div>
         </div> <div id="tab-employees" class="tab-content hidden">
           <h2>Mitarbeiterverwaltung</h2>
-          <h3>Aktuelle Mitarbeiter</h3>
+          <h3>Aktuelle
+ Mitarbeiter</h3>
           <ul id="employeeList"></ul>
            <hr>
           <div id="addEmployeeSection">
@@ -183,85 +210,93 @@
               <h3>Mitarbeiter hinzufügen</h3>
               <div>
                  <label for="employeeName">Name:</label>
-                 <input type="text" id="employeeName" name="employeeName" required />
+
+           <input type="text" id="employeeName" name="employeeName" required />
                </div>
               <div>
                  <label for="mo_hours">Montag (Soll-Std.):</label>
                  <input type="number" id="mo_hours" name="mo_hours" step="0.1" value="0" min="0"/>
-              </div>
+
+ </div>
               <div>
                  <label for="di_hours">Dienstag (Soll-Std.):</label>
                  <input type="number" id="di_hours" name="di_hours" step="0.1" value="0" min="0"/>
               </div>
               <div>
-                 <label for="mi_hours">Mittwoch (Soll-Std.):</label>
+
+  <label for="mi_hours">Mittwoch (Soll-Std.):</label>
                  <input type="number" id="mi_hours" name="mi_hours" step="0.1" value="0" min="0"/>
               </div>
               <div>
                  <label for="do_hours">Donnerstag (Soll-Std.):</label>
                  <input type="number" id="do_hours" name="do_hours" step="0.1" value="0" min="0"/>
-              </div>
+
+           </div>
                <div>
                  <label for="fr_hours">Freitag (Soll-Std.):</label>
                  <input type="number" id="fr_hours" name="fr_hours" step="0.1" value="0" min="0"/>
               </div>
               <button type="submit">Mitarbeiter hinzufügen</button>
-            </form>
+
+          </form>
           </div>
            <div id="editEmployeeSection" class="hidden">
             <form id="editEmployeeForm">
               <hr>
               <h3>Mitarbeiter bearbeiten</h3>
               <input type="hidden" id="editEmployeeId" name="id" />
-              <div>
+
+       <div>
                  <label for="editEmployeeName">Name:</label>
                   <input type="text" id="editEmployeeName" name="name" required />
               </div>
               <div>
                  <label for="editMoHours">Montag (Soll-Std.):</label>
-                 <input type="number" id="editMoHours" name="mo_hours" step="0.1" value="0" min="0"/>
+
+            <input type="number" id="editMoHours" name="mo_hours" step="0.1" value="0" min="0"/>
                </div>
               <div>
                  <label for="editDiHours">Dienstag (Soll-Std.):</label>
                  <input type="number" id="editDiHours" name="di_hours" step="0.1" value="0" min="0"/>
-              </div>
+
+   </div>
               <div>
                  <label for="editMiHours">Mittwoch (Soll-Std.):</label>
                  <input type="number" id="editMiHours" name="mi_hours" step="0.1" value="0" min="0"/>
               </div>
               <div>
-                 <label for="editDoHours">Donnerstag (Soll-Std.):</label>
+
+    <label for="editDoHours">Donnerstag (Soll-Std.):</label>
                  <input type="number" id="editDoHours" name="do_hours" step="0.1" value="0" min="0"/>
               </div>
               <div>
                  <label for="editFrHours">Freitag (Soll-Std.):</label>
                  <input type="number" id="editFrHours" name="fr_hours" step="0.1" value="0" min="0"/>
-              </div>
+
+             </div>
               <button type="button" onclick="saveEmployeeChanges()">Änderungen Speichern</button>
               <button type="button" onclick="cancelEditEmployee()">Abbrechen</button>
              </form>
           </div>
-        </div> ```
-
----
-
-**Teil 3 von 3: HTML Body (Monatsauswertung) und JavaScript**
-
-```html
+        </div>
         <div id="tab-monthly" class="tab-content hidden">
-          <h2>Monatsauswertung</h2>
+
+       <h2>Monatsauswertung</h2>
           <form id="monthlyBalanceForm">
             <div>
                <label for="balanceName">Mitarbeitername:</label>
-              <input type="text" id="balanceName" name="balanceName" placeholder="z.B. Anne Schmitz" required />
+              <input type="text" id="balanceName" name="balanceName" placeholder="z.B.
+ Anne Schmitz" required />
             </div>
             <div>
               <label for="balanceYear">Jahr:</label>
-              <input type="number" id="balanceYear" name="balanceYear" placeholder="z.B. 2025" required />
+              <input type="number" id="balanceYear" name="balanceYear" placeholder="z.B.
+ 2025" required />
             </div>
             <div>
               <label for="balanceMonth">Monat (1-12):</label>
-              <input type="number" id="balanceMonth" name="balanceMonth" placeholder="z.B. 4" required min="1" max="12" />
+              <input type="number" id="balanceMonth" name="balanceMonth" placeholder="z.B.
+ 4" required min="1" max="12" />
             </div>
             <button type="submit">Monatsabschluss berechnen</button>
           </form>
@@ -270,7 +305,16 @@
 
           <div id="monthlyBalanceResult" style="margin-top: 1rem;">
              </div>
-        </div> </div> </div> <script>
+        </div>
+      </div> </div> ```
+
+---
+
+**Teil 4 von 4: JavaScript**
+
+```html
+ <script>
+
       // ==== Globale Zustandsvariablen ====
       let currentWorkEntryId = null; // ID des aktuellen, offenen Eintrags
 
@@ -282,88 +326,92 @@
        });
 
       // ==== Event Listener Setup ====
-      function setupEventListeners() {
+
+  function setupEventListeners() {
         // Mitarbeiter-Auswahl
         document.getElementById('employeeSelect').addEventListener('change', handleEmployeeSelection);
         // Arbeitszeit Start/Stop Button
         document.getElementById('workTimeBtn').addEventListener('click', handleWorkTimeToggle);
-        // Admin Login
+ // Admin Login
         document.getElementById('adminLoginForm').addEventListener('submit', handleAdminLogin);
-        // Tab-Navigation
+ // Tab-Navigation
         document.querySelectorAll(".tabs li").forEach(tab => {
           tab.addEventListener("click", handleTabSwitch);
         });
-        // Admin: CSV Download
+ // Admin: CSV Download
         document.getElementById('adminDownloadCsv').addEventListener('click', downloadAdminCsv);
-        // Admin: Alle Daten löschen
+ // Admin: Alle Daten löschen
         document.getElementById('adminDeleteData').addEventListener('click', deleteAllWorkHours);
-        // Admin: Mitarbeiter hinzufügen
+ // Admin: Mitarbeiter hinzufügen
         document.getElementById('addEmployeeForm').addEventListener('submit', handleAddEmployee);
-        // Admin: Monatsabschluss berechnen
+ // Admin: Monatsabschluss berechnen
         document.getElementById('monthlyBalanceForm').addEventListener('submit', handleCalculateMonthlyBalance);
-        // Admin: PDF Download
+ // Admin: PDF Download
         document.getElementById('downloadPdfBtn').addEventListener('click', handleDownloadPdf);
-        // Hinweis: Listener für Buttons in dynamisch geladenen Tabellen (edit/delete)
+ // Hinweis: Listener für Buttons in dynamisch geladenen Tabellen (edit/delete)
         // oder in den Bearbeiten-Formularen sind hier nicht enthalten,
         // da sie über onclick im HTML oder direkt in den Funktionen aufgerufen werden.
-      }
+ }
 
       // ==== Funktionen für die Haupt-Zeiterfassung ====
 
       function handleEmployeeSelection() {
         const selectedName = document.getElementById('employeeSelect').value;
-        checkNextBookingAction(); // Prüfen, ob Start/Ende angezeigt werden soll
+ checkNextBookingAction(); // Prüfen, ob Start/Ende angezeigt werden soll
       }
 
       async function checkNextBookingAction() {
           const name = document.getElementById("employeeSelect").value;
-          const btn = document.getElementById("workTimeBtn");
+ const btn = document.getElementById("workTimeBtn");
           const commentInput = document.getElementById("comment");
-          btn.disabled = true; // Erstmal deaktivieren, bis Prüfung abgeschlossen
+          btn.disabled = true;
+ // Erstmal deaktivieren, bis Prüfung abgeschlossen
           commentInput.disabled = true;
-          currentWorkEntryId = null; // ID zurücksetzen
+ currentWorkEntryId = null; // ID zurücksetzen
 
           if (!name) {
             btn.textContent = "Arbeitsbeginn buchen";
-            btn.disabled = true; // Kein Mitarbeiter -> Button deaktiviert
+ btn.disabled = true; // Kein Mitarbeiter -> Button deaktiviert
             return;
-          }
+ }
 
           try {
             const response = await fetch(`/next-booking?name=${encodeURIComponent(name)}`);
-            if (!response.ok) {
+ if (!response.ok) {
                 throw new Error(`Fehler ${response.status} beim Prüfen des Buchungsstatus.`);
-            }
+ }
             const { nextBooking, id } = await response.json();
-            if (nextBooking === 'arbeitsende') {
+ if (nextBooking === 'arbeitsende') {
               btn.textContent = 'Arbeitsende buchen';
-              btn.style.backgroundColor = 'orange'; // Farbe ändern für Ende
-              currentWorkEntryId = id; // ID des offenen Eintrags speichern
-              commentInput.disabled = false; // Kommentarfeld aktivieren
+ btn.style.backgroundColor = 'orange'; // Farbe ändern für Ende
+              currentWorkEntryId = id;
+ // ID des offenen Eintrags speichern
+              commentInput.disabled = false;
+ // Kommentarfeld aktivieren (obwohl es hidden ist)
               btn.disabled = false;
-            } else { // arbeitsbeginn
+ } else { // arbeitsbeginn
               btn.textContent = 'Arbeitsbeginn buchen';
-              btn.style.backgroundColor = ''; // Standardfarbe
+ btn.style.backgroundColor = ''; // Standardfarbe
               commentInput.disabled = true;
-              commentInput.value = ''; // Kommentar leeren
+ commentInput.value = ''; // Kommentar leeren
               btn.disabled = false;
-            }
+ }
           } catch (error) {
               console.error("Fehler bei '/next-booking':", error);
-              alert("❌ Fehler beim Prüfen des Buchungsstatus: " + error.message);
+ alert("❌ Fehler beim Prüfen des Buchungsstatus: " + error.message);
               btn.textContent = 'Fehler';
-          }
+ }
       }
 
       async function handleWorkTimeToggle() {
         const name = document.getElementById("employeeSelect").value;
-        if (!name) return; // Sollte durch disabled verhindert werden, aber sicher ist sicher
+ if (!name) return; // Sollte durch disabled verhindert werden, aber sicher ist sicher
 
         const btn = document.getElementById("workTimeBtn");
-        const commentInput = document.getElementById("comment");
+ const commentInput = document.getElementById("comment"); // Wird noch referenziert, aber nicht mehr ausgelesen
         const action = btn.textContent.includes('Arbeitsbeginn') ? 'start' : 'end';
         const now = new Date();
-        const date = now.toISOString().split("T")[0];
+ const date = now.toISOString().split("T")[0];
         const time = now.toTimeString().slice(0, 5); // HH:MM
 
         if (action === 'start') {
@@ -372,43 +420,45 @@
             const response = await fetch("/log-start", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
-               body: JSON.stringify({ name, date, startTime: time })
+
+           body: JSON.stringify({ name, date, startTime: time })
             });
-            if (response.ok) {
+ if (response.ok) {
               alert("✅ Arbeitsbeginn erfolgreich gebucht.");
-              checkNextBookingAction(); // Status und Button aktualisieren
+ checkNextBookingAction(); // Status und Button aktualisieren
             } else {
               const result = await response.json().catch(() => ({ message: 'Unbekannter Fehler oder keine JSON-Antwort.' }));
-              alert("❌ Fehler beim Buchen: " + (result.message || response.statusText));
+ alert("❌ Fehler beim Buchen: " + (result.message || response.statusText));
             }
           } catch (err) {
             console.error("Fehler beim Buchen des Arbeitsbeginns:", err);
-            alert("❌ Netzwerkfehler!");
+ alert("❌ Netzwerkfehler!");
           }
         } else {
           // Arbeitsende buchen
           if (!currentWorkEntryId) {
             alert("Fehler: Keine ID für den offenen Eintrag gefunden. Bitte Seite neu laden.");
-            return;
+ return;
           }
-          const comment = commentInput.value;
-          try {
+          // const comment = commentInput.value; // *** HIER: Nicht mehr benötigt ***
+ try {
             const response = await fetch(`/log-end/${currentWorkEntryId}`, {
               method: "PUT",
               headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ endTime: time, comment: comment })
+              body: JSON.stringify({ endTime: time, comment: "" }) // *** HIER: Immer leeren Kommentar senden ***
             });
-            if (response.ok) {
+ if (response.ok) {
               alert("✅ Arbeitsende erfolgreich gebucht.");
-              commentInput.value = ''; // Kommentarfeld leeren
-              checkNextBookingAction(); // Status und Button aktualisieren
+ commentInput.value = ''; // Kommentarfeld leeren (obwohl hidden)
+              checkNextBookingAction();
+ // Status und Button aktualisieren
             } else {
               const result = await response.json().catch(() => ({ message: 'Unbekannter Fehler oder keine JSON-Antwort.' }));
-              alert("❌ Fehler beim Buchen des Endes: " + (result.message || response.statusText));
-            }
+ alert("❌ Fehler beim Buchen des Endes: " + (result.message || response.statusText));
+ }
           } catch (err) {
             console.error("Fehler beim Buchen des Arbeitsendes:", err);
-            alert("❌ Netzwerkfehler!");
+ alert("❌ Netzwerkfehler!");
           }
         }
       }
@@ -416,149 +466,159 @@
       function resetWorkTimeForm() {
         // Stellt den initialen Zustand des Zeiterfassungsformulars her
         document.getElementById('employeeSelect').value = '';
-        document.getElementById('workTimeBtn').textContent = 'Arbeitsbeginn buchen';
+ document.getElementById('workTimeBtn').textContent = 'Arbeitsbeginn buchen';
         document.getElementById('workTimeBtn').style.backgroundColor = '';
-        document.getElementById('workTimeBtn').disabled = true; // Deaktiviert, bis Mitarbeiter gewählt
+        document.getElementById('workTimeBtn').disabled = true;
+ // Deaktiviert, bis Mitarbeiter gewählt
         document.getElementById('comment').value = '';
         document.getElementById('comment').disabled = true;
-        currentWorkEntryId = null;
+ currentWorkEntryId = null;
       }
 
       async function loadEmployeeOptions() {
          // Lädt Mitarbeiter in das Dropdown
          try {
           const response = await fetch('/employees');
-          if (!response.ok) throw new Error(`Mitarbeiterliste konnte nicht geladen werden (${response.status}).`);
+ if (!response.ok) throw new Error(`Mitarbeiterliste konnte nicht geladen werden (${response.status}).`);
           const employees = await response.json();
           const select = document.getElementById('employeeSelect');
-          select.innerHTML = '<option value="">Bitte auswählen</option>';
+ select.innerHTML = '<option value="">Bitte auswählen</option>';
           employees.forEach(emp => {
             const option = document.createElement('option');
             option.value = emp.name;
             option.textContent = emp.name;
             select.appendChild(option);
           });
-         } catch (error) {
+ } catch (error) {
           console.error("Fehler beim Laden der Mitarbeiteroptionen:", error);
-          document.getElementById('employeeSelect').innerHTML = '<option value="">Fehler</option>';
+ document.getElementById('employeeSelect').innerHTML = '<option value="">Fehler</option>';
           alert("❌ Mitarbeiterliste Ladefehler: " + error.message);
-         }
+ }
       }
       // ==== Admin-Funktionen ====
 
       async function handleAdminLogin(e) {
           e.preventDefault();
-          const password = document.getElementById("adminPassword").value;
+ const password = document.getElementById("adminPassword").value;
           try {
             const response = await fetch("/admin-login", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({ password }),
               credentials: "include" // Wichtig für Session-Cookie
-             });
+
+     });
             if (response.ok) {
               alert("✅ Admin erfolgreich angemeldet.");
-              document.getElementById("adminPassword").value = ""; // Feld leeren
+ document.getElementById("adminPassword").value = ""; // Feld leeren
               document.getElementById("adminTabs").classList.remove("hidden");
-              document.getElementById("adminLoginForm").classList.add("hidden");
+ document.getElementById("adminLoginForm").classList.add("hidden");
               // Initiales Laden der Admin-Daten
               loadAdminWorkHours();
-              loadEmployees();
+ loadEmployees();
               // Geänderten Standard-Tab anzeigen (workhours statt dashboard)
               // Direkt den Tab auswählen und den Event Handler simulieren oder direkt die Klassen setzen
               const workHoursTab = document.querySelector(".tabs li[data-tab='workhours']");
-              if (workHoursTab) {
-                  handleTabSwitch({ currentTarget: workHoursTab }); // Simuliert Klick auf Tab
+ if (workHoursTab) {
+                  handleTabSwitch({ currentTarget: workHoursTab });
+ // Simuliert Klick auf Tab
               }
             } else {
               const result = await response.text();
-              alert("❌ Login fehlgeschlagen: " + response.status + " – " + result);
-            }
+ alert("❌ Login fehlgeschlagen: " + response.status + " – " + result);
+ }
           } catch (error) {
             console.error("❌ Netzwerkfehler beim Admin-Login:", error);
-            alert("❌ Netzwerkfehler oder Server nicht erreichbar.");
+ alert("❌ Netzwerkfehler oder Server nicht erreichbar.");
           }
       }
 
       function handleTabSwitch(event) {
-         const clickedTab = event.currentTarget || event.target;
+         const clickedTab = event.currentTarget ||
+ event.target;
          // Sicherstellen, dass es ein gültiger Tab ist und nicht der versteckte Dashboard-Tab
          if (!clickedTab || !clickedTab.getAttribute("data-tab") || clickedTab.classList.contains("hidden")) return;
-
-         document.querySelectorAll(".tabs li").forEach(t => t.classList.remove("active"));
+ document.querySelectorAll(".tabs li").forEach(t => t.classList.remove("active"));
          document.querySelectorAll(".tab-content").forEach(tc => tc.classList.add("hidden"));
 
          clickedTab.classList.add("active");
          const targetContentId = "tab-" + clickedTab.getAttribute("data-tab");
          const targetContent = document.getElementById(targetContentId);
-         if (targetContent) {
+ if (targetContent) {
              targetContent.classList.remove("hidden");
-             // Daten neu laden, wenn der Tab aktiviert wird (optional aber oft sinnvoll)
+ // Daten neu laden, wenn der Tab aktiviert wird (optional aber oft sinnvoll)
              if (targetContentId === 'tab-workhours') loadAdminWorkHours();
-             if (targetContentId === 'tab-employees') loadEmployees();
+ if (targetContentId === 'tab-employees') loadEmployees();
          } else {
              console.error("Tab content not found for ID:", targetContentId);
-         }
+ }
       }
 
       async function loadAdminWorkHours() {
           // Lädt Arbeitszeiten für den Admin-Tab
           try {
               const response = await fetch('/admin-work-hours', { credentials: "include" });
-              if (!response.ok) throw new Error(`Admin-Arbeitszeiten konnten nicht geladen werden (${response.status}).`);
+ if (!response.ok) throw new Error(`Admin-Arbeitszeiten konnten nicht geladen werden (${response.status}).`);
               const data = await response.json();
               const tbody = document.querySelector("#workHoursTable tbody");
-              tbody.innerHTML = "";
+ tbody.innerHTML = "";
               if (data.length === 0) {
                 tbody.innerHTML = "<tr><td colspan='7'>Keine Daten vorhanden.</td></tr>";
-                return;
+ return;
               }
               data.forEach(entry => {
                 const row = document.createElement("tr");
                 const hours = parseFloat(entry.hours) || 0;
                 // Format für Datum anpassen (UTC behandeln)
-                const displayDate = entry.date ? new Date(entry.date.split('T')[0] + 'T00:00:00Z').toLocaleDateString("de-DE", { timeZone: 'UTC' }) : 'N/A';
+                const displayDate = entry.date ?
+ new Date(entry.date.split('T')[0] + 'T00:00:00Z').toLocaleDateString("de-DE", { timeZone: 'UTC' }) : 'N/A';
                 row.innerHTML = `<td>${entry.id}</td>
                                  <td>${entry.name || 'Unbekannt'}</td>
                                  <td>${displayDate}</td>
-                                 <td>${entry.startTime || 'n.a.'} - ${entry.endTime || 'n.a.'}</td>
+
+                             <td>${entry.startTime || 'n.a.'} - ${entry.endTime || 'n.a.'}</td>
                                  <td>${hours.toFixed(2)}</td>
-                                 <td>${entry.comment || ''}</td>
+
+ <td>${entry.comment || ''}</td>
                                  <td>
                                    <button onclick='editEntry(${JSON.stringify(entry)})'>Bearbeiten</button>
-                                   <button onclick="deleteEntry(${entry.id})">Löschen</button>
+
+       <button onclick="deleteEntry(${entry.id})">Löschen</button>
                                  </td>`;
-                tbody.appendChild(row);
+ tbody.appendChild(row);
               });
             } catch (error) {
               console.error("Fehler beim Laden der Admin-Arbeitszeiten:", error);
-              document.querySelector("#workHoursTable tbody").innerHTML = `<tr><td colspan="7">❌ Fehler beim Laden der Zeiten.</td></tr>`;
+ document.querySelector("#workHoursTable tbody").innerHTML = `<tr><td colspan="7">❌ Fehler beim Laden der Zeiten.</td></tr>`;
               alert("❌ " + error.message);
-            }
+ }
       }
 
       function editEntry(entry) {
          // Füllt das Bearbeitungsformular für Arbeitszeiten
          document.getElementById("editId").value = entry.id;
-         document.getElementById("editName").value = entry.name || "";
+ document.getElementById("editName").value = entry.name || "";
          document.getElementById("editDate").value = entry.date ? entry.date.split("T")[0] : "";
          document.getElementById("editStartTime").value = entry.startTime || "";
-         document.getElementById("editEndTime").value = entry.endTime || "";
+ document.getElementById("editEndTime").value = entry.endTime || "";
          document.getElementById("editComment").value = entry.comment || "";
-         document.getElementById("editWorkHoursSection").classList.remove("hidden"); // Formular anzeigen
+         document.getElementById("editWorkHoursSection").classList.remove("hidden");
+ // Formular anzeigen
          document.getElementById("editWorkHoursSection").scrollIntoView({ behavior: "smooth" });
-      }
+ }
 
       function cancelEditWorkHours() {
-          document.getElementById("editWorkHoursSection").classList.add("hidden"); // Formular verstecken
-          document.getElementById("editForm").reset(); // Formular leeren
+          document.getElementById("editWorkHoursSection").classList.add("hidden");
+ // Formular verstecken
+          document.getElementById("editForm").reset();
+ // Formular leeren
           document.getElementById("editId").value = "";
-      }
+ }
 
       async function saveChanges() {
           // Speichert Änderungen an Arbeitszeiten
           const id = document.getElementById("editId").value;
-          if (!id) return;
+ if (!id) return;
           const data = {
             id: id,
             name: document.getElementById("editName").value,
@@ -567,9 +627,9 @@
             endTime: document.getElementById("editEndTime").value,
             comment: document.getElementById("editComment").value
           };
-          if (!data.name || !data.date || !data.startTime || !data.endTime) {
+ if (!data.name || !data.date || !data.startTime || !data.endTime) {
             alert("Bitte füllen Sie alle erforderlichen Felder aus (Name, Datum, Start, Ende).");
-            return;
+ return;
           }
           try {
             const response = await fetch("/api/admin/update-hours", {
@@ -577,63 +637,66 @@
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify(data),
               credentials: "include" // Wichtig für Admin-Rechte
-             });
+
+          });
             const result = await response.text();
-            if (response.ok) {
+ if (response.ok) {
               alert("✅ Änderungen erfolgreich gespeichert.");
-              cancelEditWorkHours(); // Formular ausblenden/leeren
-              loadAdminWorkHours(); // Tabelle neu laden
+ cancelEditWorkHours(); // Formular ausblenden/leeren
+              loadAdminWorkHours();
+ // Tabelle neu laden
             } else {
               alert(`❌ Fehler beim Speichern (${response.status}): ${result}`);
-            }
+ }
           } catch (error) {
             console.error("Fehler beim Speichern der Änderungen:", error);
-            alert("❌ Netzwerkfehler beim Speichern: " + error.message);
+ alert("❌ Netzwerkfehler beim Speichern: " + error.message);
           }
       }
 
       async function deleteEntry(id) {
           // Löscht einen Arbeitszeiteintrag
           if (!confirm(`Möchten Sie den Eintrag mit ID ${id} wirklich löschen?`)) return;
-          try {
+ try {
             const response = await fetch(`/api/admin/delete-hours/${id}`, {
                method: "DELETE",
                credentials: "include" // Wichtig für Admin-Rechte
             });
-            const result = await response.text();
+ const result = await response.text();
             if (response.ok) {
               alert("✅ Eintrag erfolgreich gelöscht.");
-              loadAdminWorkHours(); // Tabelle neu laden
+ loadAdminWorkHours(); // Tabelle neu laden
             } else {
                alert(`❌ Fehler beim Löschen (${response.status}): ${result}`);
-            }
+ }
           } catch (error) {
             console.error(`Fehler beim Löschen des Eintrags ${id}:`, error);
-            alert("❌ Netzwerkfehler beim Löschen: " + error.message);
+ alert("❌ Netzwerkfehler beim Löschen: " + error.message);
           }
       }
 
       async function downloadAdminCsv() {
-          window.open('/admin-download-csv', '_blank'); // Einfach den Endpunkt öffnen
+          window.open('/admin-download-csv', '_blank');
+ // Einfach den Endpunkt öffnen
       }
 
       async function deleteAllWorkHours() {
           if (!confirm('WARNUNG!\nSind Sie sicher, dass Sie ALLE Arbeitszeiteinträge unwiderruflich löschen möchten?')) return;
-          try {
+ try {
               const response = await fetch('/adminDeleteData', {
                   method: 'DELETE',
                   credentials: 'include' // Admin-Rechte nötig
               });
-              const result = await response.text();
+ const result = await response.text();
               if (response.ok) {
                   alert('✅ Alle Arbeitszeiten wurden gelöscht.');
-                  loadAdminWorkHours(); // Tabelle leeren/neu laden
+ loadAdminWorkHours(); // Tabelle leeren/neu laden
               } else {
                   alert(`❌ Fehler beim Löschen (${response.status}): ${result}`);
-              }
+ }
           } catch (error) {
               console.error('Fehler beim Löschen aller Daten:', error);
-              alert('❌ Netzwerkfehler beim Löschen aller Daten: ' + error.message);
+ alert('❌ Netzwerkfehler beim Löschen aller Daten: ' + error.message);
           }
       }
 
@@ -641,163 +704,185 @@
          // Lädt Mitarbeiterliste für den Admin-Tab
           try {
             const response = await fetch("/admin/employees", { credentials: "include" });
-            if (!response.ok) throw new Error(`Mitarbeiter konnten nicht geladen werden (${response.status}).`);
+ if (!response.ok) throw new Error(`Mitarbeiter konnten nicht geladen werden (${response.status}).`);
             const data = await response.json();
             const list = document.getElementById("employeeList");
-            list.innerHTML = ""; // Liste leeren
+ list.innerHTML = ""; // Liste leeren
             if (data.length > 0) {
                data.forEach(emp => {
                  const li = document.createElement("li");
                  li.textContent = `${emp.name} (Mo: ${emp.mo_hours || 0}, Di: ${emp.di_hours || 0}, Mi: ${emp.mi_hours || 0}, Do: ${emp.do_hours || 0}, Fr: ${emp.fr_hours || 0})`;
 
-                 const btnEdit = document.createElement("button");
+
+               const btnEdit = document.createElement("button");
                  btnEdit.textContent = "Bearbeiten";
                  btnEdit.onclick = () => editEmployee(emp); // Direkte Funktion aufrufen
                  const btnDel = document.createElement("button");
-                 btnDel.textContent = "Löschen";
+                 btnDel.textContent =
+ "Löschen";
                  btnDel.onclick = () => deleteEmployee(emp.id, emp.name); // Direkte Funktion aufrufen
                  li.append(" ", btnEdit, " ", btnDel); // Buttons anhängen
                  list.appendChild(li);
                });
-            } else {
+ } else {
                list.innerHTML = "<li>Keine Mitarbeiter gefunden.</li>";
-            }
+ }
           } catch (error) {
             console.error("Fehler beim Laden der Mitarbeiter:", error);
-            document.getElementById("employeeList").innerHTML = `<li>❌ Fehler beim Laden der Mitarbeiter.</li>`;
+ document.getElementById("employeeList").innerHTML = `<li>❌ Fehler beim Laden der Mitarbeiter.</li>`;
             alert("❌ " + error.message);
-          }
+ }
       }
       async function handleAddEmployee(event) {
          event.preventDefault();
-         const form = event.target;
+ const form = event.target;
          const data = {
              name: form.employeeName.value,
-             mo_hours: parseFloat(form.mo_hours.value) || 0,
-             di_hours: parseFloat(form.di_hours.value) || 0,
-             mi_hours: parseFloat(form.mi_hours.value) || 0,
-             do_hours: parseFloat(form.do_hours.value) || 0,
-             fr_hours: parseFloat(form.fr_hours.value) || 0
+             mo_hours: parseFloat(form.mo_hours.value) ||
+ 0,
+             di_hours: parseFloat(form.di_hours.value) ||
+ 0,
+             mi_hours: parseFloat(form.mi_hours.value) ||
+ 0,
+             do_hours: parseFloat(form.do_hours.value) ||
+ 0,
+             fr_hours: parseFloat(form.fr_hours.value) ||
+ 0
          };
-         if (!data.name) {
+ if (!data.name) {
              alert("Bitte geben Sie einen Mitarbeiternamen ein.");
-             return;
+ return;
          }
          try {
              const response = await fetch('/admin/employees', {
                  method: 'POST',
                  headers: { 'Content-Type': 'application/json' },
                  body: JSON.stringify(data),
-                 credentials: 'include' // Admin-Rechte nötig
+
+    credentials: 'include' // Admin-Rechte nötig
              });
-             if (response.ok) {
-                 const result = await response.json(); // Erwarte JSON zurück bei Erfolg
+ if (response.ok) {
+                 const result = await response.json();
+ // Erwarte JSON zurück bei Erfolg
                  alert(`✅ Mitarbeiter "${result.name}" hinzugefügt.`);
-                 form.reset(); // Formular leeren
-                 loadEmployees(); // Liste aktualisieren
-                 loadEmployeeOptions(); // Dropdown aktualisieren
+ form.reset(); // Formular leeren
+                 loadEmployees();
+ // Liste aktualisieren
+                 loadEmployeeOptions();
+ // Dropdown aktualisieren
              } else {
                  // Versuche Text zu lesen, wenn JSON fehlschlägt oder bei Fehler
                  const errorText = await response.text().catch(() => response.statusText);
-                 alert(`❌ Fehler beim Hinzufügen (${response.status}): ${errorText}`);
+ alert(`❌ Fehler beim Hinzufügen (${response.status}): ${errorText}`);
              }
          } catch (error) {
              console.error('Fehler beim Hinzufügen des Mitarbeiters:', error);
-             alert('❌ Netzwerkfehler beim Hinzufügen: ' + error.message);
+ alert('❌ Netzwerkfehler beim Hinzufügen: ' + error.message);
          }
       }
 
       function editEmployee(emp) {
           // Füllt das Bearbeitungsformular für Mitarbeiter
           document.getElementById("editEmployeeId").value = emp.id;
-          document.getElementById("editEmployeeName").value = emp.name;
+ document.getElementById("editEmployeeName").value = emp.name;
           document.getElementById("editMoHours").value = emp.mo_hours || 0;
           document.getElementById("editDiHours").value = emp.di_hours || 0;
           document.getElementById("editMiHours").value = emp.mi_hours || 0;
-          document.getElementById("editDoHours").value = emp.do_hours || 0;
+ document.getElementById("editDoHours").value = emp.do_hours || 0;
           document.getElementById("editFrHours").value = emp.fr_hours || 0;
-          document.getElementById("editEmployeeSection").classList.remove("hidden"); // Formular anzeigen
-          document.getElementById("addEmployeeSection").classList.add("hidden"); // Hinzufügen-Form ausblenden
+          document.getElementById("editEmployeeSection").classList.remove("hidden");
+ // Formular anzeigen
+          document.getElementById("addEmployeeSection").classList.add("hidden");
+ // Hinzufügen-Form ausblenden
           document.getElementById("editEmployeeSection").scrollIntoView({ behavior: "smooth" });
-      }
+ }
 
       function cancelEditEmployee() {
-          document.getElementById("editEmployeeSection").classList.add("hidden"); // Bearbeiten-Form ausblenden
+          document.getElementById("editEmployeeSection").classList.add("hidden");
+ // Bearbeiten-Form ausblenden
           document.getElementById("editEmployeeForm").reset();
           document.getElementById("editEmployeeId").value = "";
-          document.getElementById("addEmployeeSection").classList.remove("hidden"); // Hinzufügen-Form anzeigen
+          document.getElementById("addEmployeeSection").classList.remove("hidden");
+ // Hinzufügen-Form anzeigen
       }
 
       async function saveEmployeeChanges() {
           // Speichert Änderungen an Mitarbeitern
           const id = document.getElementById("editEmployeeId").value;
-          const data = {
+ const data = {
             id: id,
             name: document.getElementById("editEmployeeName").value,
-            mo_hours: parseFloat(document.getElementById("editMoHours").value) || 0,
-            di_hours: parseFloat(document.getElementById("editDiHours").value) || 0,
-            mi_hours: parseFloat(document.getElementById("editMiHours").value) || 0,
-            do_hours: parseFloat(document.getElementById("editDoHours").value) || 0,
-            fr_hours: parseFloat(document.getElementById("editFrHours").value) || 0
+            mo_hours: parseFloat(document.getElementById("editMoHours").value) ||
+ 0,
+            di_hours: parseFloat(document.getElementById("editDiHours").value) ||
+ 0,
+            mi_hours: parseFloat(document.getElementById("editMiHours").value) ||
+ 0,
+            do_hours: parseFloat(document.getElementById("editDoHours").value) ||
+ 0,
+            fr_hours: parseFloat(document.getElementById("editFrHours").value) ||
+ 0
           };
           if (!data.name) return alert("Mitarbeitername darf nicht leer sein.");
-          try {
+ try {
             const response = await fetch(`/admin/employees/${id}`, {
               method: "PUT",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify(data),
               credentials: "include"
             });
-            const result = await response.text();
+ const result = await response.text();
             if (response.ok) {
               alert("✅ Mitarbeiter erfolgreich gespeichert.");
-              cancelEditEmployee();
+ cancelEditEmployee();
               loadEmployees();
               loadEmployeeOptions();
             } else {
               alert(`❌ Fehler beim Speichern (${response.status}): ${result}`);
-            }
+ }
           } catch (error) {
             console.error("Fehler beim Speichern des Mitarbeiters:", error);
-            alert("❌ Netzwerkfehler beim Speichern: " + error.message);
+ alert("❌ Netzwerkfehler beim Speichern: " + error.message);
           }
       }
 
       async function deleteEmployee(id, name) {
           // Löscht einen Mitarbeiter
           if (!confirm(`Möchten Sie den Mitarbeiter "${name}" (ID: ${id}) wirklich löschen?\nZugehörige Arbeitszeiten bleiben bestehen, sind aber evtl. nicht mehr korrekt zugeordnet.`)) return;
-          try {
+ try {
             const response = await fetch(`/admin/employees/${id}`, {
               method: "DELETE",
               credentials: "include"
             });
-            const result = await response.text();
+ const result = await response.text();
             if (response.ok) {
               alert("✅ Mitarbeiter erfolgreich gelöscht.");
-              cancelEditEmployee(); // Falls gerade bearbeitet wurde
+ cancelEditEmployee(); // Falls gerade bearbeitet wurde
               loadEmployees();
-              loadEmployeeOptions();
+ loadEmployeeOptions();
             } else {
               alert(`❌ Fehler beim Löschen (${response.status}): ${result}`);
-            }
+ }
           } catch (error) {
             console.error(`Fehler beim Löschen des Mitarbeiters ${id}:`, error);
-            alert("❌ Netzwerkfehler beim Löschen: " + error.message);
+ alert("❌ Netzwerkfehler beim Löschen: " + error.message);
           }
       }
 
       // Event Listener für Monatsabschluss (Submit des Formulars)
       async function handleCalculateMonthlyBalance(event) {
-        event.preventDefault(); // Standard-Submit unterbinden
+        event.preventDefault();
+ // Standard-Submit unterbinden
         const name = document.getElementById("balanceName").value;
         const year = document.getElementById("balanceYear").value;
-        const month = document.getElementById("balanceMonth").value;
+ const month = document.getElementById("balanceMonth").value;
         const resultElement = document.getElementById("monthlyBalanceResult"); // Ziel-Element holen
-        resultElement.innerHTML = '<p>Berechne...</p>'; // Feedback geben
+        resultElement.innerHTML = '<p>Berechne...</p>';
+ // Feedback geben
 
         if (!name || !year || !month) {
             resultElement.innerHTML = '<p style="color: orange;">Bitte Mitarbeitername, Jahr und Monat angeben.</p>';
-            return;
+ return;
         }
 
         try {
@@ -805,27 +890,31 @@
             `/calculate-monthly-balance?name=${encodeURIComponent(name)}&year=${year}&month=${month}`,
              { credentials: "include" } // Wichtig für Admin-Rechte
           );
-          // Fehler beim Fetch oder Server-Fehler (z.B. 500)
+ // Fehler beim Fetch oder Server-Fehler (z.B. 500)
           if (!response.ok) {
-            const errorText = await response.text() || response.statusText;
+            const errorText = await response.text() ||
+ response.statusText;
             resultElement.innerHTML = `<p style="color: red;">❌ Fehler bei Monatsauswertung: ${errorText}</p>`;
             return;
-          }
+ }
 
           // Erfolgreiche Antwort vom Server
           const result = await response.json();
-          // --- ANZEIGE-LOGIK ---
-          resultElement.innerHTML = ''; // Alten Inhalt löschen
+ // --- ANZEIGE-LOGIK ---
+          resultElement.innerHTML = '';
+ // Alten Inhalt löschen
 
           // Nachricht (falls vorhanden) anzeigen
           if (result.message) {
              resultElement.innerHTML += `<p style="color: green; font-weight: bold;">${result.message}</p>`;
-          }
+ }
 
           // Grunddaten anzeigen
-          resultElement.innerHTML += `<p><strong>Mitarbeiter:</strong> ${result.employeeName || 'N/A'}</p>`;
+          resultElement.innerHTML += `<p><strong>Mitarbeiter:</strong> ${result.employeeName ||
+ 'N/A'}</p>`;
           resultElement.innerHTML += `<p><strong>Zeitraum:</strong> ${String(result.month || '??').padStart(2,'0')}/${result.year || '????'}</p>`;
-          resultElement.innerHTML += '<hr style="margin: 0.5rem 0;">'; // Kleinere Trennlinie
+          resultElement.innerHTML += '<hr style="margin: 0.5rem 0;">';
+ // Kleinere Trennlinie
 
           // Tabelle für die Salden erstellen
           let summaryTable = `
@@ -833,26 +922,29 @@
               <tbody>
                 <tr>
                   <td>Übertrag aus Vormonat:</td>
-                  <td>${(result.previousCarryOver !== undefined ? result.previousCarryOver.toFixed(2) : 'N/A')} Std.</td>
+
+           <td>${(result.previousCarryOver !== undefined ? result.previousCarryOver.toFixed(2) : 'N/A')} Std.</td>
                 </tr>
                 <tr>
                   <td>Monatsdifferenz (Ist - Soll):</td>
                   <td>${(result.monthlyDifference !== undefined ? result.monthlyDifference.toFixed(2) : 'N/A')} Std.</td>
-                 </tr>
+
+             </tr>
                 <tr>
                   <td><strong>Neuer Übertrag für Folgemonat:</strong></td>
                   <td><strong>${(result.newCarryOver !== undefined ? result.newCarryOver.toFixed(2) : 'N/A')} Std.</strong></td>
                 </tr>
-               </tbody>
+
+      </tbody>
             </table>
             <br>
           `;
-          resultElement.innerHTML += summaryTable;
+ resultElement.innerHTML += summaryTable;
 
         } catch (err) {
           // Fehler im Frontend (z.B. Netzwerkproblem)
           console.error("Client-Fehler beim Berechnen des Monatsabschlusses:", err);
-          resultElement.innerHTML = `<p style="color: red;">❌ Client-Fehler bei Monatsauswertung: ${err.message}</p>`;
+ resultElement.innerHTML = `<p style="color: red;">❌ Client-Fehler bei Monatsauswertung: ${err.message}</p>`;
         }
       } // Ende handleCalculateMonthlyBalance
 
@@ -860,15 +952,15 @@
       async function handleDownloadPdf() {
           // Lädt das PDF herunter
           const name = document.getElementById("balanceName").value;
-          const year = document.getElementById("balanceYear").value;
+ const year = document.getElementById("balanceYear").value;
           const month = document.getElementById("balanceMonth").value;
           if (!name || !year || !month) {
             alert("Bitte füllen Sie Mitarbeitername, Jahr und Monat aus, bevor Sie das PDF herunterladen.");
-            return;
+ return;
           }
           // Öffnet die URL in einem neuen Tab/Fenster
           window.open(`/create-monthly-pdf?name=${encodeURIComponent(name)}&year=${year}&month=${month}`, '_blank');
-      }
+ }
 
     </script>
   </body>
