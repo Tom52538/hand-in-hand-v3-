@@ -72,60 +72,6 @@
       border-top: none;
       margin-bottom: 2rem;
     }
-    /* Tägliche Buchungsdetails & Zusammenfassung */
-    #dailyBookingDetails {
-        margin-top: 1rem;
-        padding: 15px;
-        border: 1px solid #e0e0e0;
-        border-radius: 4px;
-        background-color: #ffffff;
-    }
-    #dailyBookingDetails > div {
-        display: flex;
-        align-items: center;
-        margin-bottom: 8px;
-    }
-    #dailyBookingDetails label {
-        flex-basis: 120px;
-        flex-shrink: 0;
-        margin-bottom: 0;
-        color: #555;
-        font-size: 0.95em;
-    }
-    #dailyBookingDetails input[readonly] {
-        flex-grow: 1;
-        background-color: #f8f8f8 !important;
-        border: 1px solid #eee;
-        padding: 6px 10px;
-        font-size: 1em;
-        color: #333;
-        box-shadow: none;
-    }
-    #summaryHours {
-        margin-top: 10px;
-        padding: 10px 15px;
-        border: 1px solid #c3e6cb;
-        border-radius: 4px;
-        background-color: #d4edda;
-    }
-    #summaryHours > div {
-        display: flex;
-        align-items: center;
-        margin-bottom: 5px;
-    }
-    #summaryHours label {
-        flex-basis: 150px;
-        flex-shrink: 0;
-        margin-bottom: 0;
-        font-weight: bold;
-        color: #155724;
-        font-size: 0.95em;
-    }
-    #summaryHours span {
-        font-weight: bold;
-        color: #155724;
-        font-size: 1.1em;
-    }
   </style>
 </head>
 <body>
@@ -144,29 +90,30 @@
         <button type="button" id="workTimeBtn">Arbeitsbeginn buchen</button>
       </div>
 
-      <div id="dailyBookingDetails">
-        <div>
-            <label for="displayDate">Datum:</label>
-            <input type="text" id="displayDate" name="displayDate" readonly>
+      <!-- Neuer zusammengefasster Container für Buchungsdetails -->
+      <div id="bookingDetails" class="booking-details">
+        <div class="booking-row">
+          <label for="displayDate">Datum:</label>
+          <input type="text" id="displayDate" readonly>
         </div>
-        <div>
-            <label for="displayStartTime">Arbeitsbeginn:</label>
-            <input type="text" id="displayStartTime" name="displayStartTime" readonly>
+        <div class="booking-row">
+          <label for="displayStartTime">Arbeitsbeginn:</label>
+          <input type="text" id="displayStartTime" readonly>
         </div>
-        <div>
-            <label for="displayEndTime">Arbeitsende:</label>
-            <input type="text" id="displayEndTime" name="displayEndTime" readonly>
+        <div class="booking-row">
+          <label for="displayEndTime">Arbeitsende:</label>
+          <input type="text" id="displayEndTime" readonly>
         </div>
-      </div>
-      <div id="summaryHours" class="hidden">
-         <div>
-             <label for="dailyTotalHours">Arbeitszeit Tag:</label>
-             <span id="dailyTotalHours">--</span>
-         </div>
-         <div>
-             <label for="monthlyTotalHours">Gesamtzeit Monat:</label>
-             <span id="monthlyTotalHours">--</span>
-         </div>
+        <div id="summaryHours" class="hidden">
+          <div class="booking-row">
+            <label>Arbeitszeit Tag:</label>
+            <span id="dailyTotalHours">--</span>
+          </div>
+          <div class="booking-row">
+            <label>Arbeitszeit Monat:</label>
+            <span id="monthlyTotalHours">--</span>
+          </div>
+        </div>
       </div>
       <input type="hidden" id="date" name="date" />
       <input type="hidden" id="startTime" name="startTime" />
@@ -325,17 +272,14 @@
         <form id="monthlyBalanceForm">
           <div>
             <label for="balanceName">Mitarbeitername:</label>
-            <!-- Platzhalter entfernt -->
             <input type="text" id="balanceName" name="balanceName" required />
           </div>
           <div>
             <label for="balanceYear">Jahr:</label>
-            <!-- Platzhalter entfernt -->
             <input type="number" id="balanceYear" name="balanceYear" required />
           </div>
           <div>
             <label for="balanceMonth">Monat (1-12):</label>
-            <!-- Platzhalter entfernt -->
             <input type="number" id="balanceMonth" name="balanceMonth" required min="1" max="12" />
           </div>
           <button type="submit">Monatsabschluss berechnen</button>
@@ -887,8 +831,6 @@
 
     async function handleCalculateMonthlyBalance(e) {
       e.preventDefault();
-      // Hier kann bei Bedarf die Logik zur Monatsauswertung implementiert werden,
-      // wenn auf dem Server (server.js) ein passender Endpunkt existiert.
       alert("Monatsauswertung – Funktion noch nicht implementiert.");
     }
 
