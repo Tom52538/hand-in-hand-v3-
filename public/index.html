@@ -60,7 +60,7 @@
       }
       button:disabled {
         cursor: not-allowed;
-        opacity: 0.6;
+        /* opacity: 0.6;  <- DIESE ZEILE WURDE ENTFERNT */
       }
       hr {
         margin: 2rem 0;
@@ -107,7 +107,8 @@
       }
       /* Stil für die Ergebnistabelle der Monatsauswertung */
       #monthlyBalanceResult table {
-        width: auto; /* Tabelle nicht über ganze Breite */
+        width: auto;
+        /* Tabelle nicht über ganze Breite */
         border-collapse: collapse;
         margin-top: 10px;
       }
@@ -116,7 +117,8 @@
         padding: 5px 8px; /* Etwas mehr Padding */
       }
       #monthlyBalanceResult td:last-child {
-        text-align: right; /* Zahlen rechtsbündig */
+        text-align: right;
+        /* Zahlen rechtsbündig */
       }
     </style>
   </head>
@@ -144,7 +146,6 @@
       </form>
 
       <hr>
-
       <h2>Admin Login</h2>
       <form id="adminLoginForm">
         <div>
@@ -375,8 +376,7 @@
           if (nextBooking === 'arbeitsende') {
             btn.textContent = 'Arbeitsende buchen';
             btn.style.backgroundColor = 'orange'; // Farbe ändern für Ende
-            currentWorkEntryId = id;
-            // ID des offenen Eintrags speichern
+            currentWorkEntryId = id; // ID des offenen Eintrags speichern
             commentInput.disabled = false; // Kommentarfeld aktivieren (obwohl es hidden ist)
             btn.disabled = false;
           } else { // arbeitsbeginn
@@ -832,7 +832,6 @@
         const month = document.getElementById("balanceMonth").value;
         const resultElement = document.getElementById("monthlyBalanceResult");
         resultElement.innerHTML = '<p>Berechne...</p>';
-
         if (!name || !year || !month) {
           resultElement.innerHTML = '<p style="color: orange;">Bitte Mitarbeitername, Jahr und Monat angeben.</p>';
           return;
