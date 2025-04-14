@@ -16,8 +16,16 @@
     form > div { margin-bottom: 1rem; }
     label { display: block; margin-bottom: 0.3rem; }
     table { width: 100%; border-collapse: collapse; margin-top: 1rem; }
-    th, td { border: 1px solid #ccc; padding: 8px; text-align: left; vertical-align: middle; }
-    td button { margin-right: 5px; padding: 5px 10px; }
+    th, td {
+      border: 1px solid #ccc;
+      padding: 8px;
+      text-align: left;
+      vertical-align: middle;
+    }
+    td button {
+      margin-right: 5px;
+      padding: 5px 10px;
+    }
     .table-wrapper { overflow-x: auto; }
     .container {
       max-width: 900px;
@@ -241,6 +249,7 @@
           </form>
         </div>
       </div>
+
       <div id="tab-employees" class="tab-content hidden">
         <h2>Mitarbeiterverwaltung</h2>
         <h3>Aktuelle Mitarbeiter</h3>
@@ -310,20 +319,24 @@
           </form>
         </div>
       </div>
+
       <div id="tab-monthly" class="tab-content hidden">
         <h2>Monatsauswertung</h2>
         <form id="monthlyBalanceForm">
           <div>
             <label for="balanceName">Mitarbeitername:</label>
-            <input type="text" id="balanceName" name="balanceName" placeholder="z.B. Anne Schmitz" required />
+            <!-- Platzhalter entfernt -->
+            <input type="text" id="balanceName" name="balanceName" required />
           </div>
           <div>
             <label for="balanceYear">Jahr:</label>
-            <input type="number" id="balanceYear" name="balanceYear" placeholder="z.B. 2025" required />
+            <!-- Platzhalter entfernt -->
+            <input type="number" id="balanceYear" name="balanceYear" required />
           </div>
           <div>
             <label for="balanceMonth">Monat (1-12):</label>
-            <input type="number" id="balanceMonth" name="balanceMonth" placeholder="z.B. 4" required min="1" max="12" />
+            <!-- Platzhalter entfernt -->
+            <input type="number" id="balanceMonth" name="balanceMonth" required min="1" max="12" />
           </div>
           <button type="submit">Monatsabschluss berechnen</button>
         </form>
@@ -333,6 +346,7 @@
       </div>
     </div>
   </div>
+
   <script>
     // ==== Globale Zustandsvariablen ====
     let currentWorkEntryId = null;
@@ -551,7 +565,7 @@
         }
     }
 
-    // ==== Admin-Funktionen (Admin Login, Tab Switch, etc.) ==== 
+    // ==== Admin-Funktionen (Login, Tabs usw.) ====
     async function handleAdminLogin(e) {
       e.preventDefault();
       const password = document.getElementById("adminPassword").value;
@@ -697,7 +711,10 @@
     async function deleteEntry(id) {
       if (!confirm(`Eintrag ID ${id} löschen?`)) return;
       try {
-        const response = await fetch(`/api/admin/delete-hours/${id}`, { method: "DELETE", credentials: "include" });
+        const response = await fetch(`/api/admin/delete-hours/${id}`, {
+          method: "DELETE",
+          credentials: "include"
+        });
         const result = await response.text();
         if (response.ok) {
           alert("✅ Gelöscht.");
@@ -718,7 +735,10 @@
     async function deleteAllWorkHours() {
       if (!confirm('WARNUNG! ALLE Arbeitszeiten löschen?')) return;
       try {
-        const response = await fetch('/adminDeleteData', { method: 'DELETE', credentials: 'include' });
+        const response = await fetch('/adminDeleteData', {
+          method: 'DELETE',
+          credentials: 'include'
+        });
         const result = await response.text();
         if (response.ok) {
           alert('✅ Alle Zeiten gelöscht.');
@@ -867,7 +887,8 @@
 
     async function handleCalculateMonthlyBalance(e) {
       e.preventDefault();
-      // Hier kann die Logik zur Monatsauswertung implementiert werden
+      // Hier kann bei Bedarf die Logik zur Monatsauswertung implementiert werden,
+      // wenn auf dem Server (server.js) ein passender Endpunkt existiert.
       alert("Monatsauswertung – Funktion noch nicht implementiert.");
     }
 
