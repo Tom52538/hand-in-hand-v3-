@@ -199,26 +199,21 @@ app.post('/log-start', async (req, res) => {
     const { name, date, startTime } = req.body;
     if (!name || !date || !startTime) return res.status(400).json({ message: 'Fehlende Daten.' });
     try {
-        // 1. Prüfen auf offenen Eintrag am selben Tag
         const checkOpenQuery = `SELECT id FROM work_hours WHERE LOWER(name)=LOWER($1) AND date=$2 AND endtime IS NULL`;
         const checkOpenResult = await db.query(checkOpenQuery, [name, date]);
         if (checkOpenResult.rows.length > 0) {
              return res.status(409).json({ message: `Es existiert bereits ein offener Eintrag (ID: ${checkOpenResult.rows[0].id}). Bitte erst Arbeitsende buchen.` });
         }
-
-        // 2. Prüfen auf bereits abgeschlossenen Eintrag am selben Tag
         const checkCompleteQuery = `SELECT id FROM work_hours WHERE LOWER(name)=LOWER($1) AND date=$2 AND endtime IS NOT NULL`;
         const checkCompleteResult = await db.query(checkCompleteQuery, [name, date]);
         if (checkCompleteResult.rows.length > 0) {
-             console.warn(`Versuch, neuen Start für ${name} am ${date} zu buchen, obwohl bereits ein abgeschlossener Eintrag (ID: ${checkCompleteResult.rows[0].id}) existiert.`);
+             console.warn(`Versuch, neuen Start für ${name} am ${date} zu buchen, obwohl bereits ein abgeschlossener Eintrag existiert.`);
              let displayDateError = date;
              try {
                 displayDateError = new Date(date + 'T00:00:00Z').toLocaleDateString('de-DE', { timeZone: 'UTC' });
              } catch(e){}
              return res.status(409).json({ message: `An diesem Tag (${displayDateError}) wurde bereits eine vollständige Arbeitszeit erfasst.` });
         }
-
-        // 3. Wenn keine Konflikte, dann einfügen
         const insert = await db.query(`INSERT INTO work_hours (name, date, starttime) VALUES ($1, $2, $3) RETURNING id;`, [name, date, startTime]);
         console.log(`Start gebucht: ${name}, ${date}, ${startTime} (ID: ${insert.rows[0].id})`);
         res.status(201).json({ id: insert.rows[0].id });
@@ -254,17 +249,15 @@ app.put('/log-end/:id', async (req, res) => {
 
 // Endpunkt für Tages-/Monatszusammenfassung (unverändert)
 app.get('/summary-hours', async (req, res) => {
-    const { name, date } = req.query; // date im Format YYYY-MM-DD
+    const { name, date } = req.query;
     if (!name || !date) return res.status(400).json({ message: 'Name und Datum erforderlich.' });
     try {
-        // Tagesstunden
         const dailyResult = await db.query(
             `SELECT hours FROM work_hours WHERE LOWER(name) = LOWER($1) AND date = $2 AND hours IS NOT NULL ORDER BY endtime DESC LIMIT 1`,
             [name, date]
         );
         const dailyHours = dailyResult.rows.length > 0 ? dailyResult.rows[0].hours : 0;
-        // Monatsstunden
-        const yearMonth = date.substring(0, 7); // 'YYYY-MM'
+        const yearMonth = date.substring(0, 7);
         const firstDayOfMonth = `${yearMonth}-01`;
         const nextMonthDate = new Date(date);
         nextMonthDate.setUTCMonth(nextMonthDate.getUTCMonth() + 1, 1);
@@ -469,7 +462,6 @@ app.delete('/admin/employees/:id', isAdmin, async (req, res) => {
 });
 
 // (Optionaler Endpunkt für Monatsauswertung)
-// Hier wird die calculateMonthlyData-Funktion genutzt, wenn sie in utils/calculationUtils.js definiert ist.
 app.get('/calculate-monthly-balance', isAdmin, async (req, res) => {
     const { name, year, month } = req.query;
     try {
@@ -482,7 +474,7 @@ app.get('/calculate-monthly-balance', isAdmin, async (req, res) => {
     }
 });
 
-// Neuer Endpunkt zur PDF-Erstellung mittels pdfkit
+// Neuer Endpunkt zur PDF-Erstellung mittels pdfkit – angepasst an das Ziel-Layout
 app.get('/admin/download-pdf', isAdmin, async (req, res) => {
   const { name, year, month } = req.query;
   if (!name || !year || !month) {
@@ -496,15 +488,16 @@ app.get('/admin/download-pdf', isAdmin, async (req, res) => {
     }
     const employee = empResult.rows[0];
 
-    // Datumsbereich für den Monat
+    // Datumsbereich festlegen
     const parsedYear = parseInt(year);
     const parsedMonth = parseInt(month);
     const startDate = new Date(Date.UTC(parsedYear, parsedMonth - 1, 1));
-    const endDate = new Date(Date.UTC(parsedYear, parsedMonth, 1)); // exklusive
+    const endDate = new Date(Date.UTC(parsedYear, parsedMonth, 1)); // exklusiv
     const startDateStr = startDate.toISOString().split('T')[0];
+    // Für den Zeitraum im PDF das Ende als letzten Tag des Monats anzeigen
     const endDateFormatted = new Date(endDate.getTime() - 1).toISOString().split('T')[0];
 
-    // Arbeitszeiten für den Monat abrufen
+    // Arbeitszeiten abrufen
     const workResult = await db.query(
       `SELECT date, hours, comment, TO_CHAR(starttime, 'HH24:MI') AS "startTime", TO_CHAR(endtime, 'HH24:MI') AS "endTime"
        FROM work_hours
@@ -514,16 +507,9 @@ app.get('/admin/download-pdf', isAdmin, async (req, res) => {
     );
     const workEntries = workResult.rows;
 
-    // Berechnungen (Soll, Ist und Differenz)
+    // Berechnungen: Soll-Stunden, Ist-Zeit und Differenz ermitteln
     let totalExpected = 0;
     let totalActual = 0;
-    // Funktion zur Formatierung in HH:MM
-    const formatHours = (num) => {
-      const totalMinutes = Math.round(num * 60);
-      const hours = Math.floor(totalMinutes / 60);
-      const minutes = totalMinutes % 60;
-      return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
-    };
     workEntries.forEach(entry => {
        const entryDateStr = new Date(entry.date).toISOString().split('T')[0];
        const expected = getExpectedHours(employee, entryDateStr);
@@ -539,64 +525,89 @@ app.get('/admin/download-pdf', isAdmin, async (req, res) => {
     res.setHeader('Content-Type', 'application/pdf');
     const filename = `Ueberstundennachweis_${employee.name}_${startDateStr}.pdf`;
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
-
     doc.pipe(res);
 
-    // Logo einfügen (angenommen, image.png liegt in public/)
+    // Logo einfügen (Pfad: public/image.png)
     const logoPath = path.join(__dirname, 'public', 'image.png');
     try {
-      doc.image(logoPath, 50, 45, { width: 50 });
+      doc.image(logoPath, 50, 40, { width: 50 });
     } catch(e) {
       console.error("Logo konnte nicht geladen werden.", e);
     }
-    doc.fontSize(20).text('Überstundennachweis', 110, 57);
+
+    // Überschrift (zentriert)
+    doc.fontSize(18).font('Helvetica-Bold').text('Überstundennachweis', { align: 'center' });
     doc.moveDown();
 
     // Mitarbeiterinformationen und Zeitraum
-    doc.fontSize(12);
+    doc.fontSize(12).font('Helvetica');
     doc.text(`Name: ${employee.name}`);
     doc.text(`Zeitraum: ${startDateStr} - ${endDateFormatted}`);
     doc.moveDown();
 
-    // Tabellenkopf
-    doc.fontSize(10);
-    const tableTop = doc.y;
-    const itemX = 50;
-    const colWidths = { date: 80, start: 70, end: 70, expected: 70, actual: 70, diff: 70 };
+    // Tabellenkopf in zwei Zeilen (angepasst an das Ziel-Layout)
+    const tableTop = doc.y + 10;
+    const xStart = 50;
+    // Spaltenbreiten: Datum, Arbeitsbeginn, Arbeitsende, Soll-Zeit, Ist-Zeit, Mehr/-Minder
+    const colWidths = [80, 70, 70, 70, 70, 70];
+    const colPositions = [];
+    colPositions[0] = xStart;
+    for (let i = 1; i < colWidths.length; i++){
+      colPositions[i] = colPositions[i-1] + colWidths[i-1];
+    }
+    // Header Zeile 1 und Zeile 2
+    const headerRow1 = ['Datum', 'Arbeits-', 'Arbeits-', 'Soll-Zeit', 'Ist-Zeit', 'Mehr/-Minder'];
+    const headerRow2 = ['', 'beginn', 'ende', '(HH:MM)', '(HH:MM)', 'Std. (HH:MM)'];
+    doc.font('Helvetica-Bold').fontSize(10);
+    for (let i = 0; i < headerRow1.length; i++){
+      doc.text(headerRow1[i], colPositions[i], tableTop, { width: colWidths[i], align: 'center' });
+    }
+    const rowHeight = 12;
+    for (let i = 0; i < headerRow2.length; i++){
+      doc.text(headerRow2[i], colPositions[i], tableTop + rowHeight, { width: colWidths[i], align: 'center' });
+    }
+    let rowY = tableTop + rowHeight * 2 + 4; // Abstand zu den Datenzeilen
 
-    doc.text('Datum', itemX, tableTop);
-    doc.text('Arbeitsbeginn', itemX + colWidths.date, tableTop);
-    doc.text('Arbeitsende', itemX + colWidths.date + colWidths.start, tableTop);
-    doc.text('Soll-Zeit', itemX + colWidths.date + colWidths.start + colWidths.end, tableTop);
-    doc.text('Ist-Zeit', itemX + colWidths.date + colWidths.start + colWidths.end + colWidths.expected, tableTop);
-    doc.text('Mehr/-Minder', itemX + colWidths.date + colWidths.start + colWidths.end + colWidths.expected + colWidths.actual, tableTop);
-    doc.moveDown(1.5);
+    // Hilfsfunktion zur Zeitformatierung (HH:MM)
+    const formatHours = (num) => {
+      const totalMinutes = Math.round(num * 60);
+      const hours = Math.floor(totalMinutes / 60);
+      const minutes = totalMinutes % 60;
+      return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
+    };
 
-    // Tabellendaten
+    // Tabellenzeilen
+    doc.font('Helvetica').fontSize(10);
     workEntries.forEach(entry => {
-       const y = doc.y;
        const entryDate = new Date(entry.date);
        const formattedDate = entryDate.toLocaleDateString('de-DE');
-       doc.text(formattedDate, itemX, y);
-       doc.text(entry.startTime || '', itemX + colWidths.date, y);
-       doc.text(entry.endTime || '', itemX + colWidths.date + colWidths.start, y);
-       doc.text(formatHours(entry.expected || 0), itemX + colWidths.date + colWidths.start + colWidths.end, y);
-       doc.text(formatHours(entry.hours || 0), itemX + colWidths.date + colWidths.start + colWidths.end + colWidths.expected, y);
-       doc.text(formatHours(entry.diff || 0), itemX + colWidths.date + colWidths.start + colWidths.end + colWidths.expected + colWidths.actual, y);
-       doc.moveDown();
+       const rowData = [
+         formattedDate,
+         entry.startTime || '',
+         entry.endTime || '',
+         formatHours(entry.expected || 0),
+         formatHours(entry.hours || 0),
+         formatHours(entry.diff || 0)
+       ];
+       for (let i = 0; i < rowData.length; i++){
+         doc.text(rowData[i], colPositions[i], rowY, { width: colWidths[i], align: 'center' });
+       }
+       rowY += rowHeight + 2;
     });
 
     doc.moveDown();
+    // Zusammenfassung in fett
     doc.font('Helvetica-Bold');
-    doc.text(`Gesamt Soll-Zeit: ${formatHours(totalExpected)}`);
-    doc.text(`Gesamt Ist-Zeit: ${formatHours(totalActual)}`);
-    doc.text(`Gesamt Mehr-/Minderstunden: ${formatHours(totalDiff)}`);
+    doc.text(`Gesamt Soll-Zeit: ${formatHours(totalExpected)}`, { align: 'left' });
+    doc.text(`Gesamt Ist-Zeit: ${formatHours(totalActual)}`, { align: 'left' });
+    doc.text(`Gesamt Mehr-/Minderstunden: ${formatHours(totalDiff)}`, { align: 'left' });
     doc.moveDown();
+    // Bestätigungstext
     doc.font('Helvetica');
     doc.text('Ich bestätige hiermit, dass die oben genannten Arbeitsstunden erbracht wurden und rechtmäßig in Rechnung gestellt werden.');
     doc.moveDown();
     const currentDate = new Date().toLocaleDateString('de-DE');
-    doc.text(`Datum, Unterschrift: ____________________   ${currentDate}`);
+    doc.text(`Datum, Unterschrift: ____________________   ${currentDate}`, { align: 'left' });
     doc.end();
 
   } catch(err) {
