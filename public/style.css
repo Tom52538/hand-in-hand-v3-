@@ -5,14 +5,17 @@ body {
   padding: 0;
   display: flex;
   justify-content: center;
-  align-items: center;
+  align-items: flex-start; /* Geändert von center zu flex-start, damit bei viel Inhalt oben begonnen wird */
   min-height: 100vh;
   background-color: #f4f4f9;
+  padding-top: 20px; /* Etwas Abstand oben */
+  padding-bottom: 20px; /* Etwas Abstand unten */
 }
 
 .container {
   width: 90%;
-  max-width: 600px;
+  /* max-width: 600px;  <- Entfernt, da Admin-Bereich breiter sein darf */
+  max-width: 900px; /* Angepasst für Admin-Bereich */
   padding: 20px;
   background-color: #fff;
   border-radius: 8px;
@@ -22,15 +25,17 @@ body {
 h1, h2 {
   text-align: center;
   color: #333;
+  margin-top: 0; /* Standard-Margin entfernen */
 }
 
-input, button {
+input, select, button { /* Select hinzugefügt */
   width: 100%;
   padding: 12px;
   margin-bottom: 10px;
   border: 1px solid #ccc;
   border-radius: 4px;
-  box-sizing: border-box;
+  box-sizing: border-box; /* Wichtig für konsistente Breite */
+  font-size: 1em; /* Einheitliche Schriftgröße */
 }
 
 button {
@@ -38,46 +43,200 @@ button {
   color: white;
   border: none;
   cursor: pointer;
+  transition: background-color 0.2s ease; /* Übergang für Hover */
 }
 
-button:hover {
+button:hover:not(:disabled) { /* Hover-Effekt nur für aktive Buttons */
   background-color: #45a049;
 }
+
+button:disabled {
+    background-color: #cccccc; /* Grauer Hintergrund für deaktivierte Buttons */
+    cursor: not-allowed;
+}
+
+button#workTimeBtn[style*="background-color: orange"] { /* Spezifischer Stil für Arbeitsende-Button */
+     background-color: orange !important; /* Wichtig, um Inline-Style zu überschreiben */
+}
+button#workTimeBtn[style*="background-color: orange"]:hover:not(:disabled) {
+     background-color: #e69500 !important; /* Dunkleres Orange für Hover */
+}
+
 
 ul {
   list-style-type: none;
   padding: 0;
 }
 
-li {
+li { /* Styling für Admin Mitarbeiterliste */
   background: #f9f9f9;
   margin-bottom: 10px;
-  padding: 15px;
+  padding: 10px 15px; /* Padding angepasst */
   border-radius: 4px;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05); /* Schatten subtiler */
+  display: flex; /* Für Button-Anordnung */
+  justify-content: space-between; /* Text links, Buttons rechts */
+  align-items: center; /* Vertikal zentrieren */
 }
 
-/* Neu: Readonly-Felder optisch abgrenzen */
+li button { /* Buttons in der Mitarbeiterliste */
+    width: auto; /* Nicht volle Breite */
+    padding: 5px 10px;
+    margin-left: 5px; /* Kleiner Abstand zwischen Buttons */
+    font-size: 0.9em;
+}
+
+/* Readonly-Felder generell */
 input[readonly] {
-  background-color: #e9e9e9;
+  background-color: #e9e9e9 !important; /* Wichtig um spezifischere Regeln zu überschreiben */
   cursor: default;
+  border-color: #ddd; /* Hellere Border */
 }
 
-/* Neu: Wrapper für Tabellen, um horizontales Scrollen zu ermöglichen */
+/* Spezifische Readonly-Felder in bookingInfo (optional, da auch in <style> oben) */
+#bookingInfo input[readonly] {
+  background-color: #f0f0f0 !important; /* Überschreibt allgemeinen readonly Stil */
+  border: none !important;
+  padding: 5px !important;
+  margin-bottom: 5px !important;
+  box-shadow: none !important;
+  width: auto; /* Nur so breit wie nötig */
+  display: inline-block; /* Für Label daneben */
+  vertical-align: middle;
+}
+#bookingInfo label {
+    display: inline-block; /* Label neben Input */
+    width: 110px; /* Feste Breite für Ausrichtung */
+    margin-bottom: 5px; /* Abstand wie Input */
+    vertical-align: middle;
+    font-weight: normal;
+    color: #555;
+}
+#bookingInfo > div { /* Sorgt für Zeilenumbruch zwischen Datum und Zeit */
+    margin-bottom: 5px;
+}
+#bookingInfo {
+    margin-top: 1rem;
+    padding: 10px 15px;
+    border: 1px dashed #ccc;
+    border-radius: 4px;
+    background-color: #fafafa;
+}
+
+
+/* Wrapper für Admin-Tabellen, um horizontales Scrollen zu ermöglichen */
 .table-wrapper {
   width: 100%;
   overflow-x: auto;
-  -webkit-overflow-scrolling: touch;
+  -webkit-overflow-scrolling: touch; /* Für besseres Scrolling auf iOS */
+  margin-bottom: 1rem; /* Abstand nach der Tabelle */
 }
 
+/* Admin Tabs (aus <style> extrahiert für Übersicht) */
+.tabs {
+    list-style: none;
+    padding: 0;
+    margin: 0 0 1rem 0;
+    display: flex;
+    flex-wrap: wrap;
+    border-bottom: 1px solid #ccc;
+}
+.tabs li {
+    padding: 10px 20px;
+    cursor: pointer;
+    border: 1px solid #ccc;
+    border-bottom: none;
+    margin-right: 5px;
+    margin-bottom: -1px; /* Überlappt untere Border */
+    background: #f1f1f1;
+    border-radius: 4px 4px 0 0;
+}
+.tabs li.active {
+    background: #fff;
+    font-weight: bold;
+    border-bottom: 1px solid #fff; /* Versteckt untere Border */
+}
+.tab-content {
+    border: 1px solid #ccc;
+    padding: 20px;
+    background: #fff;
+    border-radius: 0 0 4px 4px;
+    border-top: none; /* Verhindert doppelte Border */
+}
+
+/* Admin Monatsauswertung Tabelle */
+#monthlyBalanceResult table {
+    width: auto; /* Nicht volle Breite */
+    border-collapse: collapse;
+    margin-top: 10px;
+}
+#monthlyBalanceResult td {
+    border: 1px solid #ccc;
+    padding: 6px 10px; /* Padding angepasst */
+    text-align: left;
+}
+#monthlyBalanceResult td:last-child {
+    text-align: right; /* Zahlen rechtsbündig */
+    font-weight: bold; /* Wichtige Zahlen hervorheben */
+}
+#monthlyBalanceResult td:first-child {
+    min-width: 200px; /* Mindestbreite für Beschreibung */
+}
+
+/* Formular-Layout im Admin Bereich */
+#editWorkHoursSection form div,
+#addEmployeeForm form div,
+#editEmployeeForm form div,
+#monthlyBalanceForm form div {
+    margin-bottom: 1rem;
+}
+
+#editWorkHoursSection form label,
+#addEmployeeForm form label,
+#editEmployeeForm form label,
+#monthlyBalanceForm form label {
+    display: block;
+    margin-bottom: 0.3rem;
+    font-weight: bold;
+}
+
+/* Responsivität */
 @media (max-width: 600px) {
+  body {
+      padding-top: 10px; /* Weniger Abstand auf kleinen Screens */
+      padding-bottom: 10px;
+  }
   .container {
     width: 95%;
+    padding: 15px;
   }
   h1, h2 {
     font-size: 1.5em;
   }
-  input, button {
+  input, select, button {
     font-size: 1em;
+    padding: 10px; /* Etwas kleineres Padding */
+  }
+  .tabs li {
+      padding: 8px 15px; /* Kleinere Tabs */
+  }
+  .tab-content {
+      padding: 15px;
+  }
+  li { /* Mitarbeiterliste auf kleinen Screens */
+      flex-direction: column; /* Untereinander anordnen */
+      align-items: flex-start; /* Links ausrichten */
+  }
+  li div { /* Wrapper für Buttons */
+      margin-top: 8px;
+  }
+  #bookingInfo label {
+      display: block; /* Labels über Inputs */
+      width: auto;
+      margin-bottom: 2px;
+  }
+  #bookingInfo input[readonly] {
+      display: block; /* Inputs unter Labels */
+      width: 100%; /* Volle Breite nutzen */
   }
 }
