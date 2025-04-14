@@ -272,7 +272,7 @@
         <form id="monthlyBalanceForm">
           <div>
             <label for="balanceName">Mitarbeitername:</label>
-            <!-- Umstellung des Eingabefelds in ein Dropdown -->
+            <!-- Drop-Down für Mitarbeiter -->
             <select id="balanceName" name="balanceName" required>
               <option value="">Bitte auswählen</option>
             </select>
@@ -288,6 +288,7 @@
           <button type="submit">Monatsabschluss berechnen</button>
         </form>
         <br>
+        <!-- PDF-Download-Button -->
         <button id="downloadPdfBtn">PDF herunterladen</button>
         <div id="monthlyBalanceResult" style="margin-top: 1rem;"></div>
       </div>
@@ -327,6 +328,8 @@
       document.getElementById('adminDeleteData').addEventListener('click', deleteAllWorkHours);
       document.getElementById('addEmployeeForm').addEventListener('submit', handleAddEmployee);
       document.getElementById('monthlyBalanceForm').addEventListener('submit', handleCalculateMonthlyBalance);
+
+      // Neue Implementierung für PDF-Button
       document.getElementById('downloadPdfBtn').addEventListener('click', handleDownloadPdf);
     }
 
@@ -903,8 +906,22 @@
       }
     }
 
+    // WICHTIG: Diese Funktion ruft nun den neuen PDF-Endpunkt auf
     async function handleDownloadPdf() {
-      alert("PDF-Download – Funktion noch nicht implementiert.");
+      const name = document.getElementById('balanceName').value;
+      const year = document.getElementById('balanceYear').value;
+      const month = document.getElementById('balanceMonth').value;
+
+      if (!name || !year || !month) {
+        alert("Bitte Name, Jahr und Monat eingeben, bevor Sie das PDF herunterladen.");
+        return;
+      }
+
+      // Öffnen Sie in einem neuen Tab das PDF (Erstellt vom Server-Endpunkt /admin/download-pdf)
+      window.open(
+        `/admin/download-pdf?name=${encodeURIComponent(name)}&year=${encodeURIComponent(year)}&month=${encodeURIComponent(month)}`,
+        '_blank'
+      );
     }
   </script>
 </body>
