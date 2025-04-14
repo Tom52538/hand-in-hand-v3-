@@ -10,13 +10,14 @@ body {
   background-color: #f4f4f9;
   padding-top: 20px;
   padding-bottom: 20px;
+  font-size: 16px; /* Basis-Schriftgröße für Desktop */
 }
 
 .container {
   width: 90%;
-  max-width: 900px;
+  max-width: 900px; /* Behält Breite für Admin-Bereich */
   padding: 20px;
-  background-color: #f9f9f9; /* Leichter grauer Hintergrund */
+  background-color: #f9f9f9;
   border-radius: 8px;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
@@ -27,6 +28,7 @@ h1, h2 {
   margin-top: 0;
 }
 
+/* Generelle Stile für Inputs, Selects, Buttons */
 input, select, button {
   width: 100%;
   padding: 12px;
@@ -34,44 +36,69 @@ input, select, button {
   border: 1px solid #ccc;
   border-radius: 4px;
   box-sizing: border-box;
-  font-size: 1em;
+  font-size: 1em; /* Nutzt Basis-Schriftgröße von body */
 }
 
-select { /* Spezielles Styling für Select, falls nötig */
+select {
     background-color: #fff;
+    /* Ggf. spezifische Stile für besseres Aussehen */
 }
 
+/* Button Stile */
 button {
-  background-color: #4CAF50; /* Grün */
+  background-color: #4CAF50; /* Standard Grün */
   color: white;
   border: none;
   cursor: pointer;
-  transition: background-color 0.2s ease;
+  transition: background-color 0.2s ease, opacity 0.2s ease; /* Übergang für Hover und Deaktivierung */
+  font-weight: bold;
 }
 button:hover:not(:disabled) {
   background-color: #45a049; /* Dunkleres Grün */
 }
+
+/* --- ÄNDERUNG: Deaktivierte Buttons --- */
 button:disabled {
-    background-color: #cccccc;
     cursor: not-allowed;
+    opacity: 0.7; /* Macht Button leicht transparent statt grau */
+    /* background-color: #cccccc; <- Entfernt, damit Farbe bleibt */
 }
-button#workTimeBtn[style*="background-color: orange"] {
-     background-color: orange !important;
+
+/* Behält spezifische Farben für workTimeBtn auch wenn disabled */
+button#workTimeBtn[style*="background-color: orange"]:disabled {
+     background-color: orange !important; /* Behält Orange */
+     opacity: 0.7; /* Bleibt transparent */
 }
+button#workTimeBtn:disabled { /* Standard Grün bleibt auch erhalten */
+     background-color: #4CAF50 !important; /* Behält Grün */
+     opacity: 0.7;
+}
+
+/* Hover Effekt nur anwenden, wenn die Farbe nicht explizit orange ist */
+button#workTimeBtn:hover:not(:disabled):not([style*="background-color: orange"]) {
+     background-color: #45a049 !important; /* Dunkleres Grün Hover */
+}
+/* Hover Effekt für orangen Button */
 button#workTimeBtn[style*="background-color: orange"]:hover:not(:disabled) {
-     background-color: #e69500 !important;
+     background-color: #e69500 !important; /* Dunkleres Orange Hover */
 }
-button[style*="color: red"] { /* Für Löschen-Buttons */
-    background-color: #f44336; /* Rot */
+
+
+button[style*="color: red"] {
+    background-color: #f44336 !important; /* Wichtig wg. Spezifität */
 }
 button[style*="color: red"]:hover:not(:disabled) {
-    background-color: #d32f2f; /* Dunkleres Rot */
+    background-color: #d32f2f !important;
+}
+button[style*="color: red"]:disabled {
+    background-color: #f44336 !important; /* Behält Rot */
+    opacity: 0.7;
 }
 
 
+/* Admin Liste */
 ul { list-style-type: none; padding: 0; }
-
-li { /* Mitarbeiterliste Admin */
+li {
   background: #fff;
   margin-bottom: 10px;
   padding: 10px 15px;
@@ -83,148 +110,183 @@ li { /* Mitarbeiterliste Admin */
 }
 li button { width: auto; padding: 5px 10px; margin-left: 5px; font-size: 0.9em; }
 
-/* Readonly-Felder generell (weniger auffällig) */
+/* Generelle Readonly Felder */
 input[readonly] {
-  background-color: #f1f1f1 !important; /* Helleres Grau */
+  background-color: #f1f1f1 !important;
   cursor: default;
   border-color: #e0e0e0 !important;
-  color: #555; /* Etwas dunklere Schrift */
+  color: #555;
 }
 
 
-/* --- NEU: Styling für tägliche Buchungsdetails & Zusammenfassung --- */
+/* Styling für tägliche Buchungsdetails & Zusammenfassung (Desktop) */
 #dailyBookingDetails {
-    margin-top: 1.5rem; /* Mehr Abstand nach Button */
-    margin-bottom: 1rem; /* Abstand zur Zusammenfassung oder Admin-Bereich */
+    margin-top: 1.5rem;
+    margin-bottom: 1rem;
     padding: 15px;
     border: 1px solid #e0e0e0;
     border-radius: 4px;
-    background-color: #ffffff; /* Weißer Hintergrund */
+    background-color: #ffffff;
 }
 #dailyBookingDetails > div {
     display: flex;
     align-items: center;
-    margin-bottom: 8px; /* Abstand zwischen Zeilen */
+    margin-bottom: 8px;
 }
-#dailyBookingDetails > div:last-child {
-    margin-bottom: 0; /* Kein Abstand nach letzter Zeile */
-}
+#dailyBookingDetails > div:last-child { margin-bottom: 0; }
 #dailyBookingDetails label {
-    flex-basis: 120px; /* Feste Breite für Labels */
-    flex-shrink: 0;    /* Verhindert Schrumpfen */
-    margin-bottom: 0;  /* Label-Abstand hier nicht nötig */
-    color: #555;       /* Graue Label-Schrift */
+    flex-basis: 120px;
+    flex-shrink: 0;
+    margin-bottom: 0;
+    color: #555;
     font-size: 0.95em;
-    padding-right: 10px; /* Abstand zum Input */
+    padding-right: 10px;
 }
 #dailyBookingDetails input[readonly] {
-    flex-grow: 1; /* Nimmt restlichen Platz ein */
-    background-color: #f8f8f8 !important; /* Sehr helles Grau für Inputs */
+    flex-grow: 1;
+    background-color: #f8f8f8 !important;
     border: 1px solid #eee !important;
     padding: 6px 10px;
-    font-size: 1em;
+    font-size: 1em; /* Schriftgröße hier für Desktop */
     color: #333;
     box-shadow: none;
     border-radius: 3px;
 }
 
 #summaryHours {
-    margin-top: 0; /* Direkt unter Details */
+    margin-top: 0;
     padding: 10px 15px;
-    border: 1px solid #c3e6cb; /* Grüner Rahmen */
+    border: 1px solid #c3e6cb;
     border-radius: 4px;
-    background-color: #dff0d8; /* Heller grüner Hintergrund */
+    background-color: #dff0d8;
 }
- #summaryHours > div {
-    display: flex;
-    align-items: center;
-    margin-bottom: 5px;
- }
-  #summaryHours > div:last-child {
-    margin-bottom: 0;
- }
+ #summaryHours > div { display: flex; align-items: center; margin-bottom: 5px; }
+ #summaryHours > div:last-child { margin-bottom: 0; }
 #summaryHours label {
-    flex-basis: 150px; /* Breite für Labels */
+    flex-basis: 150px;
     flex-shrink: 0;
     margin-bottom: 0;
     font-weight: bold;
-    color: #3c763d; /* Dunkelgrüne Schrift */
+    color: #3c763d;
     font-size: 0.95em;
     padding-right: 10px;
 }
 #summaryHours span {
     font-weight: bold;
     color: #3c763d;
-    font-size: 1.1em;
+    font-size: 1.1em; /* Schriftgröße hier für Desktop */
 }
 
 
-/* Admin Tabelle Wrapper */
-.table-wrapper {
-  width: 100%;
-  overflow-x: auto;
-  -webkit-overflow-scrolling: touch;
-  margin-bottom: 1rem;
-  border: 1px solid #ccc; /* Rahmen um Tabelle */
-  border-radius: 4px;
-}
-.table-wrapper table {
-    margin-top: 0; /* Kein extra Margin für Tabelle im Wrapper */
-    border: none; /* Rahmen kommt vom Wrapper */
-}
-.table-wrapper th, .table-wrapper td {
-    border-left: none;
-    border-right: none;
-    border-bottom: 1px solid #eee; /* Leichte Trennlinien */
-}
-.table-wrapper th {
-    background-color: #f9f9f9; /* Heller Header */
-    border-bottom: 1px solid #ccc; /* Stärkere Linie unter Header */
-}
-.table-wrapper tr:last-child td {
-    border-bottom: none; /* Keine Linie unter letzter Zeile */
-}
+/* Admin Bereich Stile (Desktop) */
+.table-wrapper { width: 100%; overflow-x: auto; margin-bottom: 1rem; border: 1px solid #ccc; border-radius: 4px; }
+.table-wrapper table { margin-top: 0; border: none; }
+.table-wrapper th, .table-wrapper td { border-left: none; border-right: none; border-bottom: 1px solid #eee; padding: 8px 12px; /* Mehr Padding */}
+.table-wrapper th { background-color: #f0f0f0; border-bottom: 1px solid #ccc; font-size: 0.95em; text-align: left;}
+.table-wrapper tr:last-child td { border-bottom: none; }
+.table-wrapper td button { padding: 4px 8px; font-size: 0.85em; } /* Kleinere Buttons in Tabelle */
 
-
-/* Admin Tabs */
 .tabs { list-style: none; padding: 0; margin: 1.5rem 0 0 0; display: flex; flex-wrap: wrap; border-bottom: 1px solid #ccc; }
 .tabs li { padding: 10px 20px; cursor: pointer; border: 1px solid #ccc; border-bottom: none; margin-right: 5px; margin-bottom: -1px; background: #f1f1f1; border-radius: 4px 4px 0 0; }
 .tabs li.active { background: #fff; font-weight: bold; border-bottom: 1px solid #fff; }
 .tab-content { border: 1px solid #ccc; padding: 20px; background: #fff; border-radius: 0 0 4px 4px; border-top: none; margin-bottom: 2rem; }
-
-/* Admin Monatsauswertung Tabelle */
 #monthlyBalanceResult table { width: auto; border-collapse: collapse; margin-top: 10px; }
 #monthlyBalanceResult td { border: 1px solid #ccc; padding: 6px 10px; text-align: left; }
 #monthlyBalanceResult td:last-child { text-align: right; font-weight: bold; }
 #monthlyBalanceResult td:first-child { min-width: 200px; }
-
-/* Admin Formular-Layout */
-#editWorkHoursSection form div, #addEmployeeForm div, #editEmployeeForm div, #monthlyBalanceForm div {
-    margin-bottom: 1rem;
-}
-#editWorkHoursSection form label, #addEmployeeForm label, #editEmployeeForm label, #monthlyBalanceForm label {
-    display: block; margin-bottom: 0.3rem; font-weight: bold;
-}
+#editWorkHoursSection form div, #addEmployeeForm div, #editEmployeeForm div, #monthlyBalanceForm div { margin-bottom: 1rem; }
+#editWorkHoursSection form label, #addEmployeeForm label, #editEmployeeForm label, #monthlyBalanceForm label { display: block; margin-bottom: 0.3rem; font-weight: bold; }
 
 
-/* Responsivität */
-@media (max-width: 600px) {
-  body { padding-top: 10px; padding-bottom: 10px; }
-  .container { width: 95%; padding: 15px; }
-  h1, h2 { font-size: 1.5em; }
-  input, select, button { font-size: 1em; padding: 10px; }
-  .tabs li { padding: 8px 15px; }
+/* --- Responsivität --- */
+/* Kleinere Bildschirme / Smartphones */
+@media (max-width: 768px) { /* Etwas größerer Breakpoint für Tablets/kleine Laptops */
+  body {
+      padding-top: 10px;
+      padding-bottom: 10px;
+      font-size: 15px; /* Leicht kleinere Basis-Schriftgröße auf Mobile? Oder 16px lassen? */
+  }
+  .container {
+    width: 95%;
+    padding: 15px;
+  }
+  h1 { font-size: 1.6em; } /* Größere Hauptüberschrift */
+  h2 { font-size: 1.4em; }
+
+  /* Oberer Buchungsbereich: Größere Schrift und Anpassungen */
+  #workHoursForm select,
+  #workHoursForm button#workTimeBtn {
+    font-size: 1.1em; /* Deutlich größer */
+    padding: 14px; /* Mehr Klickfläche */
+  }
+
+  #dailyBookingDetails > div {
+      flex-direction: column; /* Label über Input */
+      align-items: flex-start;
+      margin-bottom: 12px;
+  }
+  #dailyBookingDetails label {
+      flex-basis: auto; /* Breite aufheben */
+      margin-bottom: 4px;
+      padding-right: 0;
+      font-size: 1.05em; /* Größere Labels */
+      font-weight: bold; /* Wichtiger machen */
+      color: #333;
+  }
+  #dailyBookingDetails input[readonly] {
+      width: 100%; /* Volle Breite */
+      font-size: 1.1em; /* Größere Schrift im Feld */
+      padding: 8px 10px; /* Angepasstes Padding */
+      background-color: #f0f0f0 !important; /* Noch helleres Grau zur Abhebung */
+      border: 1px solid #ddd !important;
+  }
+
+  #summaryHours > div {
+      flex-direction: column;
+      align-items: flex-start;
+      margin-bottom: 10px;
+  }
+   #summaryHours label {
+      flex-basis: auto;
+      margin-bottom: 3px;
+      font-size: 1.05em; /* Größere Labels */
+  }
+  #summaryHours span {
+      font-size: 1.25em; /* Größere Werte */
+      padding-left: 5px; /* Kleiner Einzug */
+  }
+
+  /* Admin Bereich: Weniger starke Anpassungen */
+  .tabs li { padding: 10px 15px; font-size: 0.95em; } /* Tabs etwas kleiner */
   .tab-content { padding: 15px; }
-  li { /* Mitarbeiterliste Admin */ flex-direction: column; align-items: flex-start; }
-  li div { margin-top: 8px; } /* Button Div in Liste */
 
-  /* Tägliche Details responsive */
-  #dailyBookingDetails > div { flex-direction: column; align-items: flex-start; margin-bottom: 12px;}
-  #dailyBookingDetails label { flex-basis: auto; margin-bottom: 4px; padding-right: 0;}
-  #dailyBookingDetails input[readonly] { width: 100%; } /* Volle Breite */
+  /* Admin Tabelle auf Mobile */
+  .table-wrapper th, .table-wrapper td {
+      padding: 6px 8px; /* Weniger Padding */
+      font-size: 0.9em; /* Kleinere Schrift in Tabelle */
+      /* Optional: Textumbruch erlauben, wenn nötig */
+      white-space: normal;
+      word-break: break-word;
+  }
+   .table-wrapper td button {
+      padding: 5px; /* Kleinere Buttons */
+      font-size: 0.9em;
+      margin-right: 3px;
+   }
 
-  /* Zusammenfassung responsive */
-  #summaryHours > div { flex-direction: column; align-items: flex-start; margin-bottom: 8px;}
-  #summaryHours label { flex-basis: auto; margin-bottom: 2px; padding-right: 0;}
-  #summaryHours span { font-size: 1.2em; } /* Etwas größer auf Mobile */
+  /* Admin Mitarbeiter Liste */
+  li { flex-direction: column; align-items: flex-start; }
+  li span { font-size: 0.95em; margin-bottom: 5px; } /* Mitarbeitername etc. */
+  li div { margin-top: 8px; } /* Button Div */
+  li div button { font-size: 0.9em; } /* Buttons in Liste */
+
+  /* Admin Formulare */
+  #editWorkHoursSection form label, #addEmployeeForm label, #editEmployeeForm label, #monthlyBalanceForm label {
+      font-size: 1em; /* Standardgröße beibehalten oder leicht anpassen */
+  }
+   #editWorkHoursSection form input, #addEmployeeForm input, #editEmployeeForm input, #monthlyBalanceForm input {
+       font-size: 1em; /* Standardgröße beibehalten oder leicht anpassen */
+       padding: 10px;
+   }
+
 }
