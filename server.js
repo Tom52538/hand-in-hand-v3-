@@ -15,7 +15,8 @@ const PDFDocument = require('pdfkit');  // für PDF-Erstellung
 
 const app = express();
 
-// Importiere externe Berechnungsfunktionen (siehe calculationUtils.js)
+// Importiere externe Berechnungsfunktionen – beachten Sie, dass die Funktion calculateMonthlyData in calculationUtils.js
+// jetzt zusätzlich totalExpected und totalActual berechnet und zurückgibt.
 const { calculateMonthlyData, getExpectedHours } = require('./utils/calculationUtils');
 
 // --- HILFSFUNKTIONEN ---
@@ -31,7 +32,7 @@ function calculateWorkHours(startTime, endTime) {
   const endMinutes = parseTime(endTime);
   const diffInMin = endMinutes - startMinutes;
   if (diffInMin < 0) {
-      console.warn(`Negative Arbeitszeit berechnet (${startTime} - ${endTime}). Eventuell über Mitternacht?`);
+    console.warn(`Negative Arbeitszeit berechnet (${startTime} - ${endTime}). Eventuell über Mitternacht?`);
   }
   return diffInMin / 60;
 }
@@ -117,35 +118,35 @@ app.use(session({
 const setupTables = async () => {
   try {
     await db.query(`CREATE TABLE IF NOT EXISTS work_hours (
-        id SERIAL PRIMARY KEY,
-        name TEXT NOT NULL,
-        date DATE NOT NULL,
-        hours DOUBLE PRECISION,
-        comment TEXT,
-        starttime TIME,
-        endtime TIME
-      );`);
+      id SERIAL PRIMARY KEY,
+      name TEXT NOT NULL,
+      date DATE NOT NULL,
+      hours DOUBLE PRECISION,
+      comment TEXT,
+      starttime TIME,
+      endtime TIME
+    );`);
     console.log("Tabelle work_hours geprüft/erstellt.");
 
     await db.query(`CREATE TABLE IF NOT EXISTS employees (
-        id SERIAL PRIMARY KEY,
-        name TEXT NOT NULL UNIQUE,
-        mo_hours DOUBLE PRECISION,
-        di_hours DOUBLE PRECISION,
-        mi_hours DOUBLE PRECISION,
-        do_hours DOUBLE PRECISION,
-        fr_hours DOUBLE PRECISION
-      );`);
+      id SERIAL PRIMARY KEY,
+      name TEXT NOT NULL UNIQUE,
+      mo_hours DOUBLE PRECISION,
+      di_hours DOUBLE PRECISION,
+      mi_hours DOUBLE PRECISION,
+      do_hours DOUBLE PRECISION,
+      fr_hours DOUBLE PRECISION
+    );`);
     console.log("Tabelle employees geprüft/erstellt.");
 
     await db.query(`CREATE TABLE IF NOT EXISTS monthly_balance (
-        id SERIAL PRIMARY KEY,
-        employee_id INTEGER NOT NULL REFERENCES employees(id) ON DELETE CASCADE,
-        year_month DATE NOT NULL,
-        difference DOUBLE PRECISION,
-        carry_over DOUBLE PRECISION,
-        UNIQUE (employee_id, year_month)
-      );`);
+      id SERIAL PRIMARY KEY,
+      employee_id INTEGER NOT NULL REFERENCES employees(id) ON DELETE CASCADE,
+      year_month DATE NOT NULL,
+      difference DOUBLE PRECISION,
+      carry_over DOUBLE PRECISION,
+      UNIQUE (employee_id, year_month)
+    );`);
     console.log("Tabelle monthly_balance geprüft/erstellt.");
   } catch (err) {
     console.error("!!! DB Setup Fehler:", err);
@@ -181,7 +182,8 @@ app.get('/next-booking-details', async (req, res) => {
     if (result.rows.length > 0) {
       const last = result.rows[0];
       if (!last.endtime && last.starttime_formatted) { // Offener Eintrag
-        nextBooking = 'arbeitsende'; entryId = last.id;
+        nextBooking = 'arbeitsende';
+        entryId = last.id;
         startDate = last.date.toISOString().split('T')[0];
         startTime = last.starttime_formatted;
       }
@@ -376,7 +378,7 @@ app.delete('/adminDeleteData', isAdmin, async (req, res) => {
   }
 });
 
-// (Optional) Admin Mitarbeiterverwaltung
+// Admin Mitarbeiterverwaltung
 app.get('/admin/employees', isAdmin, (req, res) => {
   db.query('SELECT * FROM employees ORDER BY name ASC')
     .then(result => res.json(result.rows))
@@ -454,10 +456,14 @@ app.delete('/admin/employees/:id', isAdmin, async (req, res) => {
   }
 });
 
-// Endpunkt für Monatsauswertung – hier wird mittels calculateMonthlyData 
-// (in calculationUtils.js) die Logik zur Berechnung ausgeführt.
-// Wichtig: Das Rückgabeobjekt verwendet nun die Eigenschaft difference, 
-// sodass das Frontend (index.html) die Daten korrekt anzeigen kann.
+// === Endpunkt für Monatsauswertung ===
+// Dieser Endpunkt ruft calculateMonthlyData auf, das neben der berechneten Differenz nun auch
+// totalExpected (Soll-Arbeitsstunden) und totalActual (Ist-Arbeitsstunden) zurückliefert.
+// Die Rückgabe enthält folgende Felder:
+// - previousCarryOver: Übertrag Vormonat (-/+)
+// - totalExpected: Soll-Arbeitsstunden (Summe der erwarteten Stunden des Monats)
+// - totalActual: Ist-Arbeitsstunden (Summe der tatsächlich geleisteten Stunden)
+// - newCarryOver: Ergebnis (Neuer Übertrag = previousCarryOver + (totalActual - totalExpected))
 app.get('/calculate-monthly-balance', isAdmin, async (req, res) => {
   const { name, year, month } = req.query;
   try {
@@ -506,7 +512,7 @@ app.get('/admin/download-pdf', isAdmin, async (req, res) => {
       totalActual += entry.hours || 0;
       entry.diff = (entry.hours || 0) - expected;
     });
-    const totalDiff = totalActual - totalExpected;
+    const newCarryOver = totalActual - totalExpected + (result && result.previousCarryOver ? result.previousCarryOver : 0);
     const doc = new PDFDocument({ margin: 50 });
     res.setHeader('Content-Type', 'application/pdf');
     const filename = `Ueberstundennachweis_${employee.name}_${startDateStr}.pdf`;
@@ -524,7 +530,7 @@ app.get('/admin/download-pdf', isAdmin, async (req, res) => {
     doc.text(`Name: ${employee.name}`);
     doc.text(`Zeitraum: ${startDateStr} - ${endDateFormatted}`);
     doc.moveDown();
-    // Weitere PDF-Erstellungslogik (Tabellen, Zusammenfassung, etc.) kann hier ergänzt werden.
+    // PDF-Erstellung (Tabellen, Zusammenfassung, etc.) kann hier ergänzt werden.
     doc.end();
   } catch (err) {
     console.error("Fehler /admin/download-pdf:", err);
