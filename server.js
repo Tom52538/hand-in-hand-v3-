@@ -1,6 +1,7 @@
 // Laden der Umgebungsvariablen aus der .env-Datei
 require('dotenv').config();
-require('./utils/timeUtils')
+
+// Benötigte Module importieren
 const express = require('express');
 const { Pool } = require('pg');
 const bodyParser = require('body-parser');
@@ -10,9 +11,77 @@ const path = require('path');
 const app = express();
 const cors = require("cors");
 
-// Importiere ausgelagerte Funktionen (Pfad ggf. anpassen)
+// Importiere NUR die ausgelagerten Berechnungsfunktionen (falls vorhanden)
+// Stelle sicher, dass die Datei utils/calculationUtils.js existiert!
 const { calculateMonthlyData, getExpectedHours } = require('./utils/calculationUtils');
-const { parseTime, calculateWorkHours, convertToCSV } = require('./utils/timeUtils'); // NEU: Zeitfunktionen ausgelagert
+
+// --- HILFSFUNKTIONEN (wieder hier integriert) ---
+function parseTime(timeStr) {
+  if (!timeStr || !timeStr.includes(':')) return 0;
+  const [hh, mm] = timeStr.split(':');
+  return parseInt(hh, 10) * 60 + parseInt(mm, 10);
+}
+
+function calculateWorkHours(startTime, endTime) {
+  if (!startTime || !endTime) return 0;
+  const startMinutes = parseTime(startTime);
+  const endMinutes = parseTime(endTime);
+  // Einfache Differenz, ignoriert Mitternacht aktuell
+  const diffInMin = endMinutes - startMinutes;
+  if (diffInMin < 0) {
+      console.warn(`Negative Arbeitszeit berechnet (${startTime} - ${endTime}). Eventuell über Mitternacht?`);
+  }
+  return diffInMin / 60;
+}
+
+function convertToCSV(data) {
+    if (!data || data.length === 0) return '';
+    const csvRows = [];
+    // Kopfzeile anpassen (Soll-Std. werden jetzt korrekt aus getExpectedHours geholt)
+    const headers = ["Name", "Datum", "Arbeitsbeginn", "Arbeitsende", "Soll-Std", "Ist-Std", "Differenz", "Bemerkung"];
+    csvRows.push(headers.join(','));
+
+    for (const row of data) {
+        let dateFormatted = "";
+        if (row.date) {
+            try {
+                const dateObj = (row.date instanceof Date) ? row.date : new Date(row.date);
+                const year = dateObj.getUTCFullYear();
+                const month = String(dateObj.getUTCMonth() + 1).padStart(2, '0');
+                const day = String(dateObj.getUTCDate()).padStart(2, '0');
+                dateFormatted = `${day}.${month}.${year}`;
+            } catch (e) { dateFormatted = String(row.date); console.error("CSV Datumsformat Fehler:", e)}
+        }
+
+        // Annahme: row.starttime und row.endtime sind bereits HH:MI Strings oder null
+        const startTimeFormatted = row.starttime || "";
+        const endTimeFormatted = row.endtime || "";
+        const istHours = row.hours || 0;
+        let expected = 0;
+
+        // Soll-Stunden holen (benötigt getExpectedHours und employee Daten in 'row')
+        if (typeof getExpectedHours === 'function' && row.date) {
+             try {
+                 // Stelle sicher, dass das Datum im Format YYYY-MM-DD übergeben wird
+                 const dateString = (row.date instanceof Date) ? row.date.toISOString().split('T')[0] : String(row.date).split('T')[0];
+                 // row muss die Felder mo_hours, di_hours etc. enthalten (kommen aus dem JOIN in /admin-download-csv)
+                 expected = getExpectedHours(row, dateString);
+             } catch (e) { console.error("Fehler beim Holen der Soll-Stunden für CSV:", e); }
+        }
+
+        const diff = istHours - expected;
+        const commentFormatted = `"${(row.comment || '').replace(/"/g, '""')}"`; // Maskiert Anführungszeichen im Kommentar
+
+        const values = [
+            row.name, dateFormatted, startTimeFormatted, endTimeFormatted,
+            expected.toFixed(2), istHours.toFixed(2), diff.toFixed(2), commentFormatted
+        ];
+        csvRows.push(values.join(','));
+    }
+    return csvRows.join('\n');
+}
+// --- ENDE HILFSFUNKTIONEN ---
+
 
 app.use(cors({
   origin: "*", // Für Entwicklung, in Produktion spezifischer!
@@ -150,7 +219,7 @@ app.put('/log-end/:id', async (req, res) => {
         const startTime = startResult.rows[0].starttime;
         if (!startTime) return res.status(400).json({ message: 'Keine Startzeit für Berechnung gefunden.' });
 
-        // Stunden berechnen (ausgelagerte Funktion)
+        // Stunden berechnen (jetzt lokale Funktion)
         const netHours = calculateWorkHours(startTime, endTime); // Keine Pausen aktuell
         if (netHours < 0) console.warn(`Negative Arbeitszeit (${netHours}h) für ID ${entryId} berechnet (${startTime}-${endTime}).`);
 
@@ -165,45 +234,35 @@ app.put('/log-end/:id', async (req, res) => {
     }
 });
 
-// --- NEUER Endpunkt für Tages-/Monatszusammenfassung ---
+// Endpunkt für Tages-/Monatszusammenfassung
 app.get('/summary-hours', async (req, res) => {
     const { name, date } = req.query; // date im Format YYYY-MM-DD
     if (!name || !date) return res.status(400).json({ message: 'Name und Datum erforderlich.' });
-
     try {
-        // Tagesstunden für den spezifischen Tag holen
+        // Tagesstunden
         const dailyResult = await db.query(
             `SELECT hours FROM work_hours WHERE LOWER(name) = LOWER($1) AND date = $2 AND hours IS NOT NULL ORDER BY endtime DESC LIMIT 1`,
             [name, date]
         );
         const dailyHours = dailyResult.rows.length > 0 ? dailyResult.rows[0].hours : 0;
-
-        // Monatsstunden für den Monat des gegebenen Datums holen
-        // Extrahiere Jahr und Monat aus dem Datum (z.B. '2025-04-14' -> '2025-04')
+        // Monatsstunden
         const yearMonth = date.substring(0, 7); // 'YYYY-MM'
         const firstDayOfMonth = `${yearMonth}-01`;
-        // Letzten Tag des Monats finden (etwas umständlich in JS, einfacher in SQL)
-        const nextMonthDate = new Date(date);
-        nextMonthDate.setUTCMonth(nextMonthDate.getUTCMonth() + 1, 1); // Erster Tag des nächsten Monats
-        nextMonthDate.setUTCDate(nextMonthDate.getUTCDate() - 1); // Letzter Tag des aktuellen Monats
+        const nextMonthDate = new Date(date); nextMonthDate.setUTCMonth(nextMonthDate.getUTCMonth() + 1, 1); nextMonthDate.setUTCDate(nextMonthDate.getUTCDate() - 1);
         const lastDayOfMonth = nextMonthDate.toISOString().split('T')[0];
-
         const monthlyResult = await db.query(
              `SELECT SUM(hours) AS total_hours FROM work_hours
               WHERE LOWER(name) = LOWER($1) AND date >= $2 AND date <= $3 AND hours IS NOT NULL`,
               [name, firstDayOfMonth, lastDayOfMonth]
         );
         const monthlyHours = monthlyResult.rows.length > 0 && monthlyResult.rows[0].total_hours ? monthlyResult.rows[0].total_hours : 0;
-
-        console.log(`Zusammenfassung für ${name}: Tag ${date} -> ${dailyHours.toFixed(2)}h, Monat ${yearMonth} -> ${monthlyHours.toFixed(2)}h`);
+        console.log(`Zusammenfassung ${name}: Tag ${date}=${dailyHours.toFixed(2)}h, Monat ${yearMonth}=${monthlyHours.toFixed(2)}h`);
         res.json({ dailyHours, monthlyHours });
-
     } catch (err) {
-        console.error(`Fehler /summary-hours für ${name}, ${date}:`, err);
-        res.status(500).json({ message: 'Serverfehler beim Berechnen der Zusammenfassung.' });
+        console.error(`Fehler /summary-hours (${name}, ${date}):`, err);
+        res.status(500).json({ message: 'Serverfehler bei Zusammenfassung.' });
     }
 });
-
 
 // Mitarbeiterliste für Dropdown (öffentlich)
 app.get('/employees', (req, res) => {
@@ -248,7 +307,7 @@ app.get('/admin-download-csv', isAdmin, async (req, res) => {
                  ORDER BY w.date ASC, w.name ASC, w.starttime ASC;`;
   try {
     const result = await db.query(query);
-    const csv = convertToCSV(result.rows); // Ausgelagerte Funktion nutzen
+    const csv = convertToCSV(result.rows); // Lokale Funktion nutzen
     const filename = `arbeitszeiten_${new Date().toISOString().split('T')[0]}.csv`;
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
@@ -260,7 +319,7 @@ app.get('/admin-download-csv', isAdmin, async (req, res) => {
 app.put('/api/admin/update-hours', isAdmin, (req, res) => {
     const { id, name, date, startTime, endTime, comment } = req.body;
     if (isNaN(parseInt(id)) || !name || !date || !startTime || !endTime) return res.status(400).send('Ungültige/fehlende Daten.');
-    // Stunden neu berechnen
+    // Stunden neu berechnen (lokale Funktion)
     const netHours = calculateWorkHours(startTime, endTime);
     const query = `UPDATE work_hours SET name = $1, date = $2, hours = $3, comment = $4, starttime = $5, endtime = $6
                    WHERE id = $7;`;
@@ -331,11 +390,9 @@ app.put('/admin/employees/:id', isAdmin, (req, res) => {
 // Admin: Mitarbeiter löschen
 app.delete('/admin/employees/:id', isAdmin, async (req, res) => {
     const { id } = req.params; if (isNaN(parseInt(id))) return res.status(400).send('Ungültige ID.');
-    // Transaktion, falls Löschen von abhängigen Daten nötig wäre
     const client = await db.connect();
     try {
         await client.query('BEGIN');
-        // Optional: Verknüpfte work_hours löschen oder anonymisieren
         const result = await client.query('DELETE FROM employees WHERE id = $1', [parseInt(id)]);
         await client.query('COMMIT');
         if (result.rowCount > 0) { console.log(`Admin Delete MA ID ${id}.`); res.send('Gelöscht.'); }
@@ -350,11 +407,11 @@ app.delete('/admin/employees/:id', isAdmin, async (req, res) => {
 app.get('/calculate-monthly-balance', isAdmin, async (req, res) => {
     const { name, year, month } = req.query;
     try {
-        const result = await calculateMonthlyData(db, name, year, month);
+        const result = await calculateMonthlyData(db, name, year, month); // calculateMonthlyData muss existieren!
         console.log(`Admin Monatsauswertung: ${result.employeeName || name} (${month}/${year}).`);
         res.json({ message: `Saldo berechnet/gespeichert.`, ...result });
     } catch (error) {
-        console.error(`Fehler /calculate-monthly-balance für ${name}, ${month}/${year}:`, error);
+        console.error(`Fehler /calculate-monthly-balance (${name}, ${month}/${year}):`, error);
         if (error.message.includes("gefunden")) res.status(404).send(error.message);
         else if (error.message.startsWith("Ungültige")) res.status(400).send(error.message);
         else res.status(500).send("Serverfehler.");
@@ -366,18 +423,16 @@ try {
     const monthlyPdfEndpointFactory = require('./routes/monthlyPdfEndpoint');
     app.use('/', monthlyPdfEndpointFactory(db));
 } catch (e) {
-    console.warn("PDF Endpunkt konnte nicht geladen werden. Stelle sicher, dass './routes/monthlyPdfEndpoint.js' existiert und alle Abhängigkeiten (pdfkit) installiert sind.", e.message);
+    console.warn("PDF Endpunkt konnte nicht geladen werden.", e.message);
 }
-
 
 // --- Server starten und Graceful Shutdown ---
 async function startServer() {
   try {
     await setupTables(); console.log("DB Setup ok.");
-    // Warnungen für fehlende ENV Vars
     if (!process.env.DATABASE_URL) console.warn("WARNUNG: DATABASE_URL fehlt.");
     if (!process.env.SESSION_SECRET) console.warn("WARNUNG: SESSION_SECRET fehlt.");
-    if (!process.env.ADMIN_PASSWORD) console.warn("WARNUNG: ADMIN_PASSWORD fehlt (Fallback 'admin').");
+    if (!process.env.ADMIN_PASSWORD) console.warn("WARNUNG: ADMIN_PASSWORD fehlt.");
     if (process.env.NODE_ENV !== 'production') console.warn("WARNUNG: Läuft nicht im Produktionsmodus.");
 
     const server = app.listen(port, '0.0.0.0', () => console.log(`Server läuft auf Port ${port}`));
