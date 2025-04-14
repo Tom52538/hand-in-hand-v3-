@@ -123,14 +123,13 @@ input[readonly] {
     border-radius: 4px;
     background-color: #ffffff;
 }
+
 #dailyBookingDetails > div {
     display: flex;
     align-items: center;
     margin-bottom: 8px;
 }
-#dailyBookingDetails > div:last-child {
-    margin-bottom: 0;
-}
+
 #dailyBookingDetails label {
     flex-basis: 120px;
     flex-shrink: 0;
@@ -139,6 +138,7 @@ input[readonly] {
     font-size: 0.95em;
     padding-right: 10px;
 }
+
 #dailyBookingDetails input[readonly] {
     flex-grow: 1;
     background-color: #f8f8f8 !important;
@@ -157,14 +157,13 @@ input[readonly] {
     border-radius: 4px;
     background-color: #dff0d8;
 }
+
 #summaryHours > div {
     display: flex;
     align-items: center;
     margin-bottom: 5px;
 }
-#summaryHours > div:last-child {
-    margin-bottom: 0;
-}
+
 #summaryHours label {
     flex-basis: 150px;
     flex-shrink: 0;
@@ -174,6 +173,7 @@ input[readonly] {
     font-size: 0.95em;
     padding-right: 10px;
 }
+
 #summaryHours span {
     font-weight: bold;
     color: #3c763d;
@@ -267,40 +267,43 @@ input[readonly] {
     font-size: 1.1em;
     padding: 14px;
   }
+  /* Angepasst: Anzeige der täglichen Buchungsdetails in einer Zeile */
+  #dailyBookingDetails {
+     display: flex;
+     flex-direction: row;
+     justify-content: space-between;
+     align-items: center;
+  }
   #dailyBookingDetails > div {
-      flex-direction: column;
-      align-items: flex-start;
-      margin-bottom: 12px;
+     flex: 1;
+     display: flex;
+     flex-direction: row;
+     align-items: center;
+     margin-right: 5px;
+     margin-bottom: 0;
   }
-  #dailyBookingDetails label {
-      flex-basis: auto;
-      margin-bottom: 4px;
-      padding-right: 0;
-      font-size: 1.05em;
-      font-weight: bold;
-      color: #333;
+  #dailyBookingDetails > div label {
+      margin-right: 5px;
   }
-  #dailyBookingDetails input[readonly] {
-      width: 100%;
-      font-size: 1.1em;
-      padding: 8px 10px;
-      background-color: #f0f0f0 !important;
-      border: 1px solid #ddd !important;
+  #dailyBookingDetails > div:last-child {
+     margin-right: 0;
+  }
+  /* Angepasst: Anzeige der Zusammenfassung in einer Zeile */
+  #summaryHours {
+      display: flex;
+      flex-direction: row;
+      justify-content: space-between;
+      align-items: center;
   }
   #summaryHours > div {
-      flex-direction: column;
-      align-items: flex-start;
-      margin-bottom: 10px;
+      flex: 1;
+      text-align: center;
+      margin-right: 5px;
   }
-  #summaryHours label {
-      flex-basis: auto;
-      margin-bottom: 3px;
-      font-size: 1.05em;
+  #summaryHours > div:last-child {
+     margin-right: 0;
   }
-  #summaryHours span {
-      font-size: 1.25em;
-      padding-left: 5px;
-  }
+  
   .tabs li {
       padding: 10px 15px;
       font-size: 0.95em;
