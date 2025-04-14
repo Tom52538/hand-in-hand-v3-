@@ -1,151 +1,134 @@
-      // Tabelleninhalt
-      let currentY = doc.y;
-      doc.font('Helvetica').fontSize(9).lineGap(-1);
+// utils/calculationUtils.js
 
-      // Falls keine Einträge vorhanden
-      if (!workEntries || workEntries.length === 0) {
-        doc.text('Keine Buchungen in diesem Monat gefunden.', col1X, currentY);
-        doc.moveDown(2);
-      } else {
-        for (let i = 0; i < workEntries.length; i++) {
-          const entry = workEntries[i];
-          const rowY = doc.y; // Aktuelle Y-Position
-
-          // Datum formatieren (z.B. Mo., 03.03.2025)
-          let dateFormatted = "n.a.";
-          if (entry.date) {
-            try {
-              const dateObj = new Date(entry.date.toString().split('T')[0] + "T00:00:00Z");
-              dateFormatted = dateObj.toLocaleDateString('de-DE', {
-                weekday: 'short', day: '2-digit', month: '2-digit', year: 'numeric',
-                timeZone: 'UTC'
-              });
-            } catch (e) {
-              dateFormatted = entry.date;
-            }
-          }
-
-          // Zeiten formatieren
-          const startDisplay = entry.startTime || "";
-          const endDisplay   = entry.endTime || "";
-          const workedHours  = parseFloat(entry.hours) || 0;
-          const expected     = parseFloat(entry.expectedHours) || 0;
-
-          // In HH:MM umwandeln
-          const expectedStr = decimalHoursToHHMM(expected);
-          const workedStr   = decimalHoursToHHMM(workedHours);
-          const diffStr     = decimalHoursToHHMM(workedHours - expected);
-
-          // Zeile eintragen
-          doc.text(dateFormatted,     col1X, rowY, { width: col1Width, align: 'left' });
-          doc.text(startDisplay,      col2X, rowY, { width: col2Width, align: 'center' });
-          doc.text(endDisplay,        col3X, rowY, { width: col3Width, align: 'center' });
-          doc.text(expectedStr,       col4X, rowY, { width: col4Width, align: 'center' });
-          doc.text(workedStr,         col5X, rowY, { width: col5Width, align: 'center' });
-          doc.text(diffStr,           col6X, rowY, { width: col6Width, align: 'center' });
-
-          // Zeilenabstand
-          doc.moveDown(1);
-
-          // Falls das Seitenende naht, neue Seite erstellen
-          if (doc.y > bottomMarginPos - 50) {
-            doc.addPage();
-            // Kopfzeile wiederholen
-            doc.font('Helvetica-Bold').fontSize(10);
-            doc.text("Datum",         col1X, doc.y, { width: col1Width, align: 'left' });
-            doc.text("Arbeitsbeginn", col2X, doc.y, { width: col2Width, align: 'center' });
-            doc.text("Arbeitsende",   col3X, doc.y, { width: col3Width, align: 'center' });
-            doc.text("Soll-Zeit\n(HH:MM)", col4X, doc.y, { width: col4Width, align: 'center' });
-            doc.text("Ist-Zeit\n(HH:MM)",  col5X, doc.y, { width: col5Width, align: 'center' });
-            doc.text("Mehr/Minder\nStd. (HH:MM)", col6X, doc.y, { width: col6Width, align: 'center' });
-            doc.moveDown(2);
-
-            doc.moveTo(col1X, doc.y).lineTo(col6X + col6Width, doc.y).lineWidth(0.5).stroke();
-            doc.moveDown(0.5);
-
-            doc.font('Helvetica').fontSize(9).lineGap(-1);
-          }
-        }
-      }
-
-      // Abstand vor der Zusammenfassung
-      doc.moveDown(1.5);
-
-      // ------------------------------
-      // Zusammenfassung: 4 Zeilen
-      // * Übertrag Vormonat (+/-)
-      // * Gesamt Soll-Zeit
-      // * Gesamt Ist-Zeit
-      // * Gesamt Mehr/Minderstunden
-      // Beschriftung in Spalte 1, Werte in Spalte 5 (wie gewünscht)
-      // ------------------------------
-      doc.fontSize(10).font('Helvetica-Bold');
-
-      const summaryLabelWidth = col4X - col1X; // Damit wir links Platz haben
-      const summaryValueX = col5X; // Werte in Spalte 5
-      const summaryLineHeight = doc.y; // Start-Y
-
-      const previousCarryStr = decimalHoursToHHMM(previousCarryOver || 0);
-      const totalExpectedStr = decimalHoursToHHMM(totalExpected || 0);
-      const totalActualStr   = decimalHoursToHHMM(totalActual || 0);
-      // Falls totalDifference nicht direkt verfügbar, berechnen wir (totalActual - totalExpected)
-      const diff = (typeof totalDifference === 'number')
-        ? totalDifference
-        : (totalActual - totalExpected);
-      const totalDiffStr = decimalHoursToHHMM(diff);
-
-      // Zeile 1: Übertrag Vormonat (+/-)
-      doc.text("Übertrag Vormonat (+/-):", col1X, summaryLineHeight, {
-        width: summaryLabelWidth, align: 'left'
-      });
-      doc.text(previousCarryStr, summaryValueX, summaryLineHeight, {
-        width: col5Width, align: 'right'
-      });
-      // Zeile 2
-      doc.moveDown(1);
-      doc.text("Gesamt Soll-Zeit:", col1X, doc.y, {
-        width: summaryLabelWidth, align: 'left'
-      });
-      doc.text(totalExpectedStr, summaryValueX, doc.y, {
-        width: col5Width, align: 'right'
-      });
-      // Zeile 3
-      doc.moveDown(1);
-      doc.text("Gesamt Ist-Zeit:", col1X, doc.y, {
-        width: summaryLabelWidth, align: 'left'
-      });
-      doc.text(totalActualStr, summaryValueX, doc.y, {
-        width: col5Width, align: 'right'
-      });
-      // Zeile 4
-      doc.moveDown(1);
-      doc.text("Gesamt Mehr/Minderstunden:", col1X, doc.y, {
-        width: summaryLabelWidth, align: 'left'
-      });
-      doc.text(totalDiffStr, summaryValueX, doc.y, {
-        width: col5Width, align: 'right'
-      });
-
-      // Platz für Bestätigungstext
-      doc.moveDown(3);
-      doc.fontSize(9).font('Helvetica');
-      doc.text(
-        "Ich bestätige hiermit, dass die oben genannten Arbeitsstunden erbracht " +
-        "wurden und rechtmäßig in Rechnung gestellt werden.",
-        { align: 'left' }
-      );
-
-      doc.moveDown(3);
-      doc.text("Datum, Unterschrift", { align: 'left' });
-
-      // PDF-Dokument beenden
-      doc.end();
-
-    } catch (err) {
-      console.error("Fehler beim Erstellen des PDFs:", err);
-      res.status(500).send('Fehler beim Erstellen des PDFs.');
+/**
+ * Ermittelt die Soll-Stunden für einen Mitarbeiter an einem bestimmten Datum.
+ * @param {Object} employeeData - Datensatz des Mitarbeiters.
+ * @param {string} dateStr - Datum im Format "YYYY-MM-DD".
+ * @returns {number} - Soll-Stunden für den Tag.
+ */
+function getExpectedHours(employeeData, dateStr) {
+  if (!employeeData || !dateStr) return 0;
+  try {
+    // Datum als gültiges Datum interpretieren (YYYY-MM-DD), UTC-Zeit verwenden
+    const d = new Date(dateStr + 'T00:00:00Z');
+    if (isNaN(d.getTime())) {
+      console.warn(`Ungültiges Datum für getExpectedHours: ${dateStr}`);
+      return 0;
     }
+    const day = d.getUTCDay(); // 0 = Sonntag, 1 = Montag, ... 6 = Samstag
+    switch (day) {
+      case 1: return employeeData.mo_hours || 0;
+      case 2: return employeeData.di_hours || 0;
+      case 3: return employeeData.mi_hours || 0;
+      case 4: return employeeData.do_hours || 0;
+      case 5: return employeeData.fr_hours || 0;
+      default: return 0; // Wochenende oder nicht definiert
+    }
+  } catch (e) {
+    console.error(`Fehler in getExpectedHours mit Datum: ${dateStr}`, e);
+    return 0;
+  }
+}
+
+/**
+ * Berechnet für einen Mitarbeiter die Monatsdaten, fasst Arbeitszeiten zusammen und
+ * aktualisiert ggf. die Tabelle monthly_balance.
+ * @param {Object} db - Die PostgreSQL-Datenbankverbindung (Pool).
+ * @param {string} name - Name des Mitarbeiters.
+ * @param {string|number} year - Jahr, z. B. "2025".
+ * @param {string|number} month - Monat, z. B. "3" für März.
+ * @returns {Object} - Ein Objekt mit den ermittelten Monatsdaten und den Arbeitszeiteinträgen.
+ */
+async function calculateMonthlyData(db, name, year, month) {
+  const parsedYear = parseInt(year);
+  const parsedMonth = parseInt(month);
+  if (!name || !year || !month || isNaN(parsedYear) || isNaN(parsedMonth) || parsedMonth < 1 || parsedMonth > 12) {
+    throw new Error("Ungültiger Name, Jahr oder Monat angegeben.");
+  }
+
+  // Mitarbeiter-Daten abrufen
+  const empResult = await db.query(
+    `SELECT * FROM employees WHERE LOWER(name) = LOWER($1)`,
+    [name]
+  );
+  if (empResult.rows.length === 0) {
+    throw new Error("Mitarbeiter nicht gefunden.");
+  }
+  const employee = empResult.rows[0];
+
+  // Datumsbereich für den Monat festlegen (UTC)
+  const startDate = new Date(Date.UTC(parsedYear, parsedMonth - 1, 1));
+  const endDate = new Date(Date.UTC(parsedYear, parsedMonth, 1)); // Exklusiv – erster Tag des Folgemonats
+  const startDateStr = startDate.toISOString().split('T')[0];
+  const endDateStr = endDate.toISOString().split('T')[0];
+
+  // Arbeitszeiten für den Monat abrufen
+  const workResult = await db.query(
+    `SELECT id, date, hours, break_time, comment, 
+            TO_CHAR(starttime, 'HH24:MI') AS "startTime", 
+            TO_CHAR(endtime, 'HH24:MI') AS "endTime"
+     FROM work_hours
+     WHERE LOWER(name) = LOWER($1) AND date >= $2 AND date < $3
+     ORDER BY date ASC`,
+    [name.toLowerCase(), startDateStr, endDateStr]
+  );
+  const workEntries = workResult.rows;
+
+  // Initialisierung der Summen: Differenz, Soll- und Ist-Arbeitsstunden
+  let totalExpected = 0;
+  let totalActual = 0;
+  let totalDifference = 0;
+
+  // Für jeden Arbeitszeiteintrag: Soll-Stunden ermitteln, Summen fortlaufend addieren
+  workEntries.forEach(entry => {
+    // Datum als String
+    const entryDateStr = (entry.date instanceof Date)
+      ? entry.date.toISOString().split('T')[0]
+      : entry.date;
+    const expected = getExpectedHours(employee, entryDateStr);
+    entry.expectedHours = expected;      // Für spätere Auswertung
+    totalExpected += expected;
+    const worked = parseFloat(entry.hours) || 0;
+    totalActual += worked;
+    totalDifference += worked - expected;
   });
 
-  return router;
+  // Übertrag aus dem Vormonat ermitteln
+  const prevMonthDate = new Date(Date.UTC(parsedYear, parsedMonth - 2, 1));
+  const prevMonthDateStr = prevMonthDate.toISOString().split('T')[0];
+  const prevResult = await db.query(
+    `SELECT carry_over FROM monthly_balance WHERE employee_id = $1 AND year_month = $2`,
+    [employee.id, prevMonthDateStr]
+  );
+  const previousCarry = prevResult.rows.length > 0 ? (parseFloat(prevResult.rows[0].carry_over) || 0) : 0;
+
+  // Neuen Übertrag berechnen: previousCarry + (totalActual - totalExpected)
+  const newCarry = previousCarry + totalDifference;
+
+  // Saldo des aktuellen Monats in der Datenbank speichern/aktualisieren
+  const currentMonthDateStr = startDateStr;
+  const upsertQuery = `
+    INSERT INTO monthly_balance (employee_id, year_month, difference, carry_over)
+    VALUES ($1, $2, $3, $4)
+    ON CONFLICT (employee_id, year_month) DO UPDATE SET
+      difference = EXCLUDED.difference,
+      carry_over = EXCLUDED.carry_over;
+  `;
+  await db.query(upsertQuery, [employee.id, currentMonthDateStr, totalDifference, newCarry]);
+
+  return {
+    employeeName: employee.name,
+    month: parsedMonth,
+    year: parsedYear,
+    previousCarryOver: parseFloat(previousCarry.toFixed(2)),
+    totalExpected: parseFloat(totalExpected.toFixed(2)),
+    totalActual: parseFloat(totalActual.toFixed(2)),
+    newCarryOver: parseFloat(newCarry.toFixed(2)),
+    workEntries: workEntries
+  };
+}
+
+module.exports = {
+  getExpectedHours,
+  calculateMonthlyData
 };
