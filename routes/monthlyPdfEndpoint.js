@@ -90,76 +90,46 @@ module.exports = function (db) {
             const fontSizeHeader = 16;
             const fontSizeSubHeader = 11;
             const fontSizeTableHeader = 9;
-            const fontSizeTableContent = 9; // Schrift in Tabelle bleibt 9pt
+            const fontSizeTableContent = 9;
             const fontSizeSummary = 8;
             const fontSizeFooter = 8;
 
-            const vSpaceTiny = 1;      // *** MINIMALSTER ABSTAND ***
+            const vSpaceTiny = 1;
             const vSpaceSmall = 4;
-            const vSpaceMedium = 10;   // Auch hier ggf. etwas sparen
+            const vSpaceMedium = 10;
             const vSpaceLarge = 18;
-            const vSpaceXLarge = 30;
-            const tableRowHeight = 10.5; // *** ALLERLETZTE REDUZIERUNG DER ZEILENHÖHE ***
+            const vSpaceXLarge = 30; // Wird ggf. für Abstand vor Linie verwendet
+            const tableRowHeight = 10.5;
 
             //-------------------------------
-            // Kopfzeile
+            // Kopfzeile (unverändert)
             //-------------------------------
             let currentY = pageTopMargin;
-
             const logoPath = path.join(process.cwd(), 'public', 'icons', 'Hand-in-Hand-Logo-192x192.png');
             const logoWidth = 80;
             const logoHeight = 80;
             const logoX = doc.page.width - pageRightMargin - logoWidth;
             const logoY = currentY;
-            try {
-                doc.image(logoPath, logoX, logoY, { width: logoWidth, height: logoHeight });
-            } catch (errLogo) {
-                console.warn("Logo konnte nicht geladen werden:", errLogo);
-            }
-
+            try { doc.image(logoPath, logoX, logoY, { width: logoWidth, height: logoHeight }); } catch (errLogo) { console.warn("Logo konnte nicht geladen werden:", errLogo); }
             doc.font(fontBold).fontSize(fontSizeHeader);
-            doc.text("Überstundennachweis", pageLeftMargin, currentY + vSpaceTiny, {
-                align: 'center',
-                width: usableWidth
-            });
+            doc.text("Überstundennachweis", pageLeftMargin, currentY + vSpaceTiny, { align: 'center', width: usableWidth });
             currentY = Math.max(currentY + fontSizeHeader + vSpaceTiny, logoY + logoHeight);
-            // *** KEIN zusätzlicher Abstand mehr nach Titel/Logo ***
-            // currentY += vSpaceTiny; // Entfernt!
-
             doc.font(fontNormal).fontSize(fontSizeSubHeader);
-            // Name startet direkt unter dem unteren Rand von Titel/Logo
             doc.text(`Name: ${employeeName}`, pageLeftMargin, currentY);
             currentY += fontSizeSubHeader + vSpaceSmall;
-
             const firstDay = new Date(Date.UTC(parsedYear, parsedMonth - 1, 1));
             const lastDay = new Date(Date.UTC(parsedYear, parsedMonth, 0));
             const firstDayStr = firstDay.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'UTC' });
             const lastDayStr = lastDay.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'UTC' });
             doc.text(`Zeitraum: ${firstDayStr} - ${lastDayStr}`, pageLeftMargin, currentY);
-            currentY += fontSizeSubHeader + vSpaceLarge; // Abstand zur Tabelle
+            currentY += fontSizeSubHeader + vSpaceLarge;
 
             //-------------------------------
-            // Tabelle
+            // Tabelle (unverändert)
             //-------------------------------
             const tableStartY = currentY;
-
-            const colWidths = {
-                date: 115,
-                start: 75,
-                end: 75,
-                expected: 85,
-                actual: 85,
-                diff: usableWidth - 115 - 75 - 75 - 85 - 85
-            };
-
-            const colPositions = {
-                date: pageLeftMargin,
-                start: pageLeftMargin + colWidths.date,
-                end: pageLeftMargin + colWidths.date + colWidths.start,
-                expected: pageLeftMargin + colWidths.date + colWidths.start + colWidths.end,
-                actual: pageLeftMargin + colWidths.date + colWidths.start + colWidths.end + colWidths.expected,
-                diff: pageLeftMargin + colWidths.date + colWidths.start + colWidths.end + colWidths.expected + colWidths.actual
-            };
+            const colWidths = { date: 115, start: 75, end: 75, expected: 85, actual: 85, diff: usableWidth - 115 - 75 - 75 - 85 - 85 };
+            const colPositions = { date: pageLeftMargin, start: pageLeftMargin + colWidths.date, end: pageLeftMargin + colWidths.date + colWidths.start, expected: pageLeftMargin + colWidths.date + colWidths.start + colWidths.end, actual: pageLeftMargin + colWidths.date + colWidths.start + colWidths.end + colWidths.expected, diff: pageLeftMargin + colWidths.date + colWidths.start + colWidths.end + colWidths.expected + colWidths.actual };
 
             const drawTableHeader = (yPos) => {
                 doc.font(fontBold).fontSize(fontSizeTableHeader);
@@ -171,23 +141,20 @@ module.exports = function (db) {
                 doc.text("Ist-Zeit\n(HH:MM)", colPositions.actual, headerTextY, { width: colWidths.actual, align: 'center' });
                 doc.text("Mehr/Minder\nStd. (HH:MM)", colPositions.diff, headerTextY, { width: colWidths.diff, align: 'center' });
                 const headerBottomY = yPos + (fontSizeTableHeader * 2) + vSpaceSmall;
-                doc.moveTo(pageLeftMargin, headerBottomY)
-                    .lineTo(pageLeftMargin + usableWidth, headerBottomY)
-                    .lineWidth(0.5)
-                    .stroke();
-                // Abstand nach Kopfzeile auch leicht reduziert
-                return headerBottomY + vSpaceMedium - 2; // Statt vSpaceMedium
+                doc.moveTo(pageLeftMargin, headerBottomY).lineTo(pageLeftMargin + usableWidth, headerBottomY).lineWidth(0.5).stroke();
+                return headerBottomY + vSpaceMedium - 2;
             };
-
             currentY = drawTableHeader(currentY);
 
-            doc.font(fontNormal).fontSize(fontSizeTableContent).lineGap(-0.5); // Negatives LineGap für extreme Kompaktheit
+            doc.font(fontNormal).fontSize(fontSizeTableContent).lineGap(-0.5);
             let contentStartY = currentY;
             doc.y = contentStartY;
 
+            // --- HÖHE BERECHNEN für Summary und Footer (mit neuer Footer-Struktur) ---
             const summaryLineHeight = fontSizeSummary + vSpaceTiny;
             const summaryHeight = 5 * summaryLineHeight + vSpaceLarge;
-            const footerHeight = fontSizeFooter + vSpaceXLarge + fontSizeFooter;
+            // *** NEUE Footer-Höhe: Bestätigungstext + Abstand + Linienhöhe(ca. 1) + Abstand + Unterschrift-Text ***
+            const footerHeight = fontSizeFooter + vSpaceXLarge + 1 + vSpaceSmall + fontSizeFooter;
 
             if (!workEntries || workEntries.length === 0) {
                 doc.text('Keine Arbeitszeitbuchungen in diesem Monat gefunden.', pageLeftMargin, currentY, { width: usableWidth });
@@ -195,128 +162,93 @@ module.exports = function (db) {
             } else {
                 for (let i = 0; i < workEntries.length; i++) {
                     const entry = workEntries[i];
-
-                    // Berechnung der benötigten Höhe für den Rest auf der Seite
-                    // Hier verwenden wir die neue, extrem kleine tableRowHeight
                     const spaceNeededForRest = tableRowHeight + summaryHeight + footerHeight;
-
                     if (doc.y + spaceNeededForRest > doc.page.height - pageBottomMargin && i > 0) {
-                        doc.addPage();
-                        currentY = pageTopMargin;
-                        currentY = drawTableHeader(currentY);
-                        doc.font(fontNormal).fontSize(fontSizeTableContent).lineGap(-0.5); // LineGap hier auch setzen
-                        doc.y = currentY;
+                        doc.addPage(); currentY = pageTopMargin; currentY = drawTableHeader(currentY);
+                        doc.font(fontNormal).fontSize(fontSizeTableContent).lineGap(-0.5); doc.y = currentY;
                     } else if (doc.y + tableRowHeight > doc.page.height - pageBottomMargin) {
-                        doc.addPage();
-                        currentY = pageTopMargin;
-                        currentY = drawTableHeader(currentY);
-                        doc.font(fontNormal).fontSize(fontSizeTableContent).lineGap(-0.5); // LineGap hier auch setzen
-                        doc.y = currentY;
+                        doc.addPage(); currentY = pageTopMargin; currentY = drawTableHeader(currentY);
+                        doc.font(fontNormal).fontSize(fontSizeTableContent).lineGap(-0.5); doc.y = currentY;
                     }
-
                     let dateFormatted = "Ungült. Datum";
-                    if (entry.date) {
-                        try {
-                            const dateStr = (entry.date instanceof Date) ? entry.date.toISOString().split('T')[0] : String(entry.date).split('T')[0];
-                            const dateObj = new Date(dateStr + "T00:00:00Z");
-                            if (!isNaN(dateObj.getTime())) {
-                                dateFormatted = dateObj.toLocaleDateString('de-DE', {
-                                    weekday: 'short', day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'UTC'
-                                });
-                                if (dateFormatted.includes(',') && !dateFormatted.includes('.,')) {
-                                    dateFormatted = dateFormatted.replace(',', '.,');
-                                }
-                            }
-                        } catch (e) {
-                            console.error("Fehler beim Formatieren des Datums für PDF:", entry.date, e);
-                            dateFormatted = String(entry.date);
-                        }
-                    }
-
-                    const startDisplay = entry.startTime || "--:--";
-                    const endDisplay = entry.endTime || "--:--";
-                    const expected = parseFloat(entry.expectedHours) || 0;
-                    const worked = parseFloat(entry.hours) || 0;
-                    const diff = worked - expected;
-
-                    const expectedStr = decimalHoursToHHMM(expected);
-                    const workedStr = decimalHoursToHHMM(worked);
-                    const diffStr = decimalHoursToHHMM(diff);
-
-                    const currentRowY = doc.y;
-                    // Text mit Optionen zeichnen, um Überlappung zu vermeiden, falls rowHeight zu klein
-                    const textOptions = { width: colWidths.date, align: 'left', lineBreak: false };
+                    if (entry.date) { try { const dateStr = (entry.date instanceof Date) ? entry.date.toISOString().split('T')[0] : String(entry.date).split('T')[0]; const dateObj = new Date(dateStr + "T00:00:00Z"); if (!isNaN(dateObj.getTime())) { dateFormatted = dateObj.toLocaleDateString('de-DE', { weekday: 'short', day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'UTC' }); if (dateFormatted.includes(',') && !dateFormatted.includes('.,')) { dateFormatted = dateFormatted.replace(',', '.,'); } } } catch (e) { console.error("Fehler Datum:", entry.date, e); dateFormatted = String(entry.date); } }
+                    const startDisplay = entry.startTime || "--:--"; const endDisplay = entry.endTime || "--:--";
+                    const expected = parseFloat(entry.expectedHours) || 0; const worked = parseFloat(entry.hours) || 0; const diff = worked - expected;
+                    const expectedStr = decimalHoursToHHMM(expected); const workedStr = decimalHoursToHHMM(worked); const diffStr = decimalHoursToHHMM(diff);
+                    const currentRowY = doc.y; const textOptions = { width: colWidths.date, align: 'left', lineBreak: false };
                     doc.text(dateFormatted, colPositions.date, currentRowY, textOptions);
                     doc.text(startDisplay, colPositions.start, currentRowY, { ...textOptions, width: colWidths.start, align: 'center' });
                     doc.text(endDisplay, colPositions.end, currentRowY, { ...textOptions, width: colWidths.end, align: 'center' });
                     doc.text(expectedStr, colPositions.expected, currentRowY, { ...textOptions, width: colWidths.expected, align: 'center' });
                     doc.text(workedStr, colPositions.actual, currentRowY, { ...textOptions, width: colWidths.actual, align: 'center' });
                     doc.text(diffStr, colPositions.diff, currentRowY, { ...textOptions, width: colWidths.diff, align: 'center' });
-
-                    doc.y += tableRowHeight; // Y-Position erhöhen (kleinster Sprung)
+                    doc.y += tableRowHeight;
                 }
             }
             currentY = doc.y;
             currentY += vSpaceLarge;
 
             //-------------------------------
-            // Zusammenfassung
+            // Zusammenfassung (unverändert)
             //-------------------------------
             if (currentY + summaryHeight + footerHeight > doc.page.height - pageBottomMargin) {
-                doc.addPage();
-                currentY = pageTopMargin;
+                doc.addPage(); currentY = pageTopMargin;
             }
             doc.y = currentY;
-
-            doc.font(fontBold).fontSize(fontSizeSummary); // fontSizeSummary = 8
+            doc.font(fontBold).fontSize(fontSizeSummary);
             const summaryLabelWidth = colWidths.date + colWidths.start + colWidths.end + colWidths.expected - vSpaceSmall;
             const summaryValueWidth = colWidths.actual + colWidths.diff;
-            const summaryLabelX = pageLeftMargin;
-            const summaryValueX = colPositions.actual;
-
-            const summaryLineSpacing = 0.2; // Noch kleinerer Zeilenabstand
+            const summaryLabelX = pageLeftMargin; const summaryValueX = colPositions.actual;
+            const summaryLineSpacing = 0.25;
             doc.text("Übertrag Vormonat (+/-):", summaryLabelX, doc.y, { width: summaryLabelWidth, align: 'left' });
-            doc.text(decimalHoursToHHMM(previousCarryOver || 0), summaryValueX, doc.y, { width: summaryValueWidth, align: 'right' });
-            doc.moveDown(summaryLineSpacing);
-
+            doc.text(decimalHoursToHHMM(previousCarryOver || 0), summaryValueX, doc.y, { width: summaryValueWidth, align: 'right' }); doc.moveDown(summaryLineSpacing);
             doc.text("Gesamt Soll-Zeit:", summaryLabelX, doc.y, { width: summaryLabelWidth, align: 'left' });
-            doc.text(decimalHoursToHHMM(totalExpected || 0), summaryValueX, doc.y, { width: summaryValueWidth, align: 'right' });
-            doc.moveDown(summaryLineSpacing);
-
+            doc.text(decimalHoursToHHMM(totalExpected || 0), summaryValueX, doc.y, { width: summaryValueWidth, align: 'right' }); doc.moveDown(summaryLineSpacing);
             doc.text("Gesamt Ist-Zeit:", summaryLabelX, doc.y, { width: summaryLabelWidth, align: 'left' });
-            doc.text(decimalHoursToHHMM(totalActual || 0), summaryValueX, doc.y, { width: summaryValueWidth, align: 'right' });
-            doc.moveDown(summaryLineSpacing);
-
+            doc.text(decimalHoursToHHMM(totalActual || 0), summaryValueX, doc.y, { width: summaryValueWidth, align: 'right' }); doc.moveDown(summaryLineSpacing);
             const totalDiff = (totalActual || 0) - (totalExpected || 0);
             doc.text("Gesamt Mehr/Minderstunden:", summaryLabelX, doc.y, { width: summaryLabelWidth, align: 'left' });
-            doc.text(decimalHoursToHHMM(totalDiff), summaryValueX, doc.y, { width: summaryValueWidth, align: 'right' });
-            doc.moveDown(summaryLineSpacing);
-
+            doc.text(decimalHoursToHHMM(totalDiff), summaryValueX, doc.y, { width: summaryValueWidth, align: 'right' }); doc.moveDown(summaryLineSpacing);
             doc.font(fontBold);
             doc.text("Neuer Übertrag (Saldo Ende):", summaryLabelX, doc.y, { width: summaryLabelWidth, align: 'left' });
             doc.text(decimalHoursToHHMM(newCarryOver || 0), summaryValueX, doc.y, { width: summaryValueWidth, align: 'right' });
-
-            currentY = doc.y + vSpaceLarge;
+            currentY = doc.y + vSpaceLarge; // Beachte: doc.y wurde durch moveDown verändert
 
             //-------------------------------
-            // Fußzeile
+            // Fußzeile - *** ANGEPASST ***
             //-------------------------------
             if (currentY + footerHeight > doc.page.height - pageBottomMargin) {
-                doc.addPage();
-                currentY = pageTopMargin;
+                 doc.addPage();
+                 currentY = pageTopMargin;
             }
-            doc.y = currentY;
+            doc.y = currentY; // Setze doc.y auf die Startposition des Footers
 
-            doc.font(fontNormal).fontSize(fontSizeFooter); // fontSizeFooter = 8
+            // 1. Bestätigungstext
+            doc.font(fontNormal).fontSize(fontSizeFooter);
             doc.text(
                 "Ich bestätige hiermit, dass die oben genannten Arbeitsstunden erbracht wurden und rechtmäßig in Rechnung gestellt werden.",
                 pageLeftMargin,
-                doc.y,
+                doc.y, // Aktuelle Position
                 { align: 'left', width: usableWidth }
             );
-            doc.y += vSpaceXLarge; // Abstand für Unterschrift
 
-            doc.text("Datum, Unterschrift", pageLeftMargin, doc.y, { align: 'left' });
+            // 2. Abstand vor der Linie (ersetzt den alten großen Abstand)
+            doc.y += vSpaceXLarge; // Abstand nach Bestätigungstext
+
+            // 3. Linie für Unterschrift zeichnen
+            const lineY = doc.y; // Y-Position für die Linie
+            const lineStartX = pageLeftMargin;
+            const lineEndX = pageLeftMargin + 200; // Länge der Linie (ca. 7cm)
+            doc.moveTo(lineStartX, lineY)
+               .lineTo(lineEndX, lineY)
+               .lineWidth(0.5) // Dünne Linie
+               .stroke();
+
+            // 4. Abstand nach der Linie
+            doc.y += vSpaceSmall; // Kleiner Abstand unter die Linie
+
+            // 5. Text "Datum, Unterschrift" unter die Linie
+            doc.text("Datum, Unterschrift", pageLeftMargin, doc.y); // Text unterhalb der Linie platzieren
 
             // PDF abschließen
             doc.end();
