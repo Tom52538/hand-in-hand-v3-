@@ -98,34 +98,47 @@ module.exports = function (db) {
             const vSpaceSmall = 4;
             const vSpaceMedium = 10;
             const vSpaceLarge = 18;
-            const vSpaceXLarge = 30; // Wird ggf. für Abstand vor Linie verwendet
+            const vSpaceSignatureGap = 45; // *** NEU: Expliziter Abstand für Unterschrift ***
             const tableRowHeight = 10.5;
 
             //-------------------------------
-            // Kopfzeile (unverändert)
+            // Kopfzeile
             //-------------------------------
             let currentY = pageTopMargin;
+
             const logoPath = path.join(process.cwd(), 'public', 'icons', 'Hand-in-Hand-Logo-192x192.png');
-            const logoWidth = 80;
-            const logoHeight = 80;
+            const logoWidth = 95; // *** LOGO GRÖßER ***
+            const logoHeight = 95; // *** LOGO GRÖßER ***
             const logoX = doc.page.width - pageRightMargin - logoWidth;
             const logoY = currentY;
-            try { doc.image(logoPath, logoX, logoY, { width: logoWidth, height: logoHeight }); } catch (errLogo) { console.warn("Logo konnte nicht geladen werden:", errLogo); }
+            try {
+                doc.image(logoPath, logoX, logoY, { width: logoWidth, height: logoHeight });
+            } catch (errLogo) {
+                console.warn("Logo konnte nicht geladen werden:", errLogo);
+            }
+
             doc.font(fontBold).fontSize(fontSizeHeader);
-            doc.text("Überstundennachweis", pageLeftMargin, currentY + vSpaceTiny, { align: 'center', width: usableWidth });
+            doc.text("Überstundennachweis", pageLeftMargin, currentY + vSpaceTiny, {
+                align: 'center',
+                width: usableWidth
+            });
+            // Höhe anpassen basierend auf dem größeren Element (Titel oder Logo)
             currentY = Math.max(currentY + fontSizeHeader + vSpaceTiny, logoY + logoHeight);
+            // Kein zusätzlicher Abstand nach Titel/Logo
+
             doc.font(fontNormal).fontSize(fontSizeSubHeader);
             doc.text(`Name: ${employeeName}`, pageLeftMargin, currentY);
             currentY += fontSizeSubHeader + vSpaceSmall;
+
             const firstDay = new Date(Date.UTC(parsedYear, parsedMonth - 1, 1));
             const lastDay = new Date(Date.UTC(parsedYear, parsedMonth, 0));
             const firstDayStr = firstDay.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'UTC' });
             const lastDayStr = lastDay.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'UTC' });
             doc.text(`Zeitraum: ${firstDayStr} - ${lastDayStr}`, pageLeftMargin, currentY);
-            currentY += fontSizeSubHeader + vSpaceLarge;
+            currentY += fontSizeSubHeader + vSpaceLarge; // Abstand zur Tabelle
 
             //-------------------------------
-            // Tabelle (unverändert)
+            // Tabelle
             //-------------------------------
             const tableStartY = currentY;
             const colWidths = { date: 115, start: 75, end: 75, expected: 85, actual: 85, diff: usableWidth - 115 - 75 - 75 - 85 - 85 };
@@ -153,8 +166,8 @@ module.exports = function (db) {
             // --- HÖHE BERECHNEN für Summary und Footer (mit neuer Footer-Struktur) ---
             const summaryLineHeight = fontSizeSummary + vSpaceTiny;
             const summaryHeight = 5 * summaryLineHeight + vSpaceLarge;
-            // *** NEUE Footer-Höhe: Bestätigungstext + Abstand + Linienhöhe(ca. 1) + Abstand + Unterschrift-Text ***
-            const footerHeight = fontSizeFooter + vSpaceXLarge + 1 + vSpaceSmall + fontSizeFooter;
+            // *** NEUE Footer-Höhe: Bestätigungstext + NEUER Abstand + Linienhöhe(ca. 1) + Abstand + Unterschrift-Text ***
+            const footerHeight = fontSizeFooter + vSpaceSignatureGap + 1 + vSpaceSmall + fontSizeFooter;
 
             if (!workEntries || workEntries.length === 0) {
                 doc.text('Keine Arbeitszeitbuchungen in diesem Monat gefunden.', pageLeftMargin, currentY, { width: usableWidth });
@@ -189,7 +202,7 @@ module.exports = function (db) {
             currentY += vSpaceLarge;
 
             //-------------------------------
-            // Zusammenfassung (unverändert)
+            // Zusammenfassung
             //-------------------------------
             if (currentY + summaryHeight + footerHeight > doc.page.height - pageBottomMargin) {
                 doc.addPage(); currentY = pageTopMargin;
@@ -199,7 +212,7 @@ module.exports = function (db) {
             const summaryLabelWidth = colWidths.date + colWidths.start + colWidths.end + colWidths.expected - vSpaceSmall;
             const summaryValueWidth = colWidths.actual + colWidths.diff;
             const summaryLabelX = pageLeftMargin; const summaryValueX = colPositions.actual;
-            const summaryLineSpacing = 0.25;
+            const summaryLineSpacing = 0.2;
             doc.text("Übertrag Vormonat (+/-):", summaryLabelX, doc.y, { width: summaryLabelWidth, align: 'left' });
             doc.text(decimalHoursToHHMM(previousCarryOver || 0), summaryValueX, doc.y, { width: summaryValueWidth, align: 'right' }); doc.moveDown(summaryLineSpacing);
             doc.text("Gesamt Soll-Zeit:", summaryLabelX, doc.y, { width: summaryLabelWidth, align: 'left' });
@@ -212,7 +225,7 @@ module.exports = function (db) {
             doc.font(fontBold);
             doc.text("Neuer Übertrag (Saldo Ende):", summaryLabelX, doc.y, { width: summaryLabelWidth, align: 'left' });
             doc.text(decimalHoursToHHMM(newCarryOver || 0), summaryValueX, doc.y, { width: summaryValueWidth, align: 'right' });
-            currentY = doc.y + vSpaceLarge; // Beachte: doc.y wurde durch moveDown verändert
+            currentY = doc.y + vSpaceLarge;
 
             //-------------------------------
             // Fußzeile - *** ANGEPASST ***
@@ -232,8 +245,8 @@ module.exports = function (db) {
                 { align: 'left', width: usableWidth }
             );
 
-            // 2. Abstand vor der Linie (ersetzt den alten großen Abstand)
-            doc.y += vSpaceXLarge; // Abstand nach Bestätigungstext
+            // 2. Abstand vor der Linie (JETZT GRÖßER)
+            doc.y += vSpaceSignatureGap; // *** VERGRÖßERTER ABSTAND HIER ***
 
             // 3. Linie für Unterschrift zeichnen
             const lineY = doc.y; // Y-Position für die Linie
