@@ -63,10 +63,15 @@ module.exports = function(db) {
       const parsedYear = parseInt(year, 10);
       const parsedMonth = parseInt(month, 10);
 
-      // PDF-Dokument erstellen
+      // PDF-Dokument erstellen - *** SEITENRÄNDER ANGEPASST ***
       const doc = new PDFDocument({
-        margin: 40,
-        size: 'A4'
+        size: 'A4',
+        margins: { // Spezifische Ränder setzen
+            top: 25,     // *** Oben reduziert ***
+            bottom: 30,  // Unten leicht reduziert
+            left: 40,
+            right: 40
+        }
        });
       const safeName = (employeeName || 'Unbekannt').replace(/[^a-z0-9_\-]/gi, '_');
       const filename = `Ueberstundennachweis_${safeName}_${String(parsedMonth).padStart(2, '0')}_${parsedYear}.pdf`;
@@ -75,11 +80,13 @@ module.exports = function(db) {
       doc.pipe(res);
 
       // --- Layout Konstanten ---
-      const pageTopMargin = doc.page.margins.top;
+      // Seitenränder neu lesen nach Initialisierung
+      const pageTopMargin = doc.page.margins.top; // Jetzt 25
       const pageLeftMargin = doc.page.margins.left;
       const pageRightMargin = doc.page.margins.right;
-      const pageBottomMargin = doc.page.margins.bottom;
+      const pageBottomMargin = doc.page.margins.bottom; // Jetzt 30
       const usableWidth = doc.page.width - pageLeftMargin - pageRightMargin;
+      const usableHeight = doc.page.height - pageTopMargin - pageBottomMargin; // Für spätere Prüfungen
 
       const fontNormal = 'Helvetica';
       const fontBold = 'Helvetica-Bold';
@@ -91,23 +98,24 @@ module.exports = function(db) {
       const fontSizeSummary = 10;
       const fontSizeFooter = 9;
 
-      const vSpaceSmall = 5;
-      const vSpaceMedium = 15; // *** NEU: Größerer Abstand nach Kopfzeilenlinie ***
-      const vSpaceLarge = 25;
-      const vSpaceXLarge = 40;
-      const tableRowHeight = 14;
+      // Vertikale Abstände leicht reduziert wo möglich
+      const vSpaceSmall = 4;     // Etwas kleiner
+      const vSpaceMedium = 12;   // Etwas kleiner
+      const vSpaceLarge = 20;    // Etwas kleiner
+      const vSpaceXLarge = 35;   // Etwas kleiner
+      const tableRowHeight = 13; // *** Zeilenhöhe reduziert ***
 
       //-------------------------------
       // Kopfzeile
       //-------------------------------
       let currentY = pageTopMargin;
 
-      // Logo (rechts oben) - *** GRÖßE ANGEPASST ***
+      // Logo (rechts oben)
       const logoPath = path.join(process.cwd(), 'public', 'icons', 'Hand-in-Hand-Logo-192x192.png');
-      const logoWidth = 80; // *** Vergrößert ***
-      const logoHeight = 80; // *** Vergrößert ***
+      const logoWidth = 80;
+      const logoHeight = 80;
       const logoX = doc.page.width - pageRightMargin - logoWidth;
-      const logoY = currentY;
+      const logoY = currentY; // Startet jetzt bei 25
       try {
         doc.image(logoPath, logoX, logoY, { width: logoWidth, height: logoHeight });
       } catch (errLogo) {
@@ -120,9 +128,8 @@ module.exports = function(db) {
         align: 'center',
         width: usableWidth
       });
-      // Höhe anpassen basierend auf dem größeren Element (Titel oder Logo)
       currentY = Math.max(currentY + fontSizeHeader + vSpaceSmall, logoY + logoHeight);
-      currentY += vSpaceMedium;
+      currentY += vSpaceSmall; // *** Abstand HIER reduziert (nach Titel/Logo, vor Name) ***
 
       // Name und Zeitraum
       doc.font(fontNormal).fontSize(fontSizeSubHeader);
@@ -134,7 +141,7 @@ module.exports = function(db) {
       const firstDayStr = firstDay.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'UTC' });
       const lastDayStr = lastDay.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'UTC' });
       doc.text(`Zeitraum: ${firstDayStr} - ${lastDayStr}`, pageLeftMargin, currentY);
-      currentY += fontSizeSubHeader + vSpaceLarge;
+      currentY += fontSizeSubHeader + vSpaceLarge; // Abstand zur Tabelle bleibt etwas größer
 
       //-------------------------------
       // Tabelle
@@ -169,20 +176,25 @@ module.exports = function(db) {
           doc.text("Soll-Zeit\n(HH:MM)", colPositions.expected, headerTextY, { width: colWidths.expected, align: 'center' });
           doc.text("Ist-Zeit\n(HH:MM)", colPositions.actual, headerTextY, { width: colWidths.actual, align: 'center' });
           doc.text("Mehr/Minder\nStd. (HH:MM)", colPositions.diff, headerTextY, { width: colWidths.diff, align: 'center' });
-          const headerBottomY = yPos + (fontSizeTableHeader * 2) + vSpaceSmall;
+          const headerBottomY = yPos + (fontSizeTableHeader * 2) + vSpaceSmall; // Höhe ca. 2 Zeilen
           doc.moveTo(pageLeftMargin, headerBottomY)
              .lineTo(pageLeftMargin + usableWidth, headerBottomY)
              .lineWidth(0.5)
              .stroke();
-          return headerBottomY + vSpaceMedium; // *** ABSTAND HIER ANGEPASST ***
+          return headerBottomY + vSpaceMedium; // Beibehaltung des vergrößerten Abstands nach Kopfzeile
       };
 
       currentY = drawTableHeader(currentY); // Kopf zeichnen und neue Y-Position erhalten
 
       // --- Tabelleninhalt ---
-      doc.font(fontNormal).fontSize(fontSizeTableContent).lineGap(1);
-      let contentStartY = currentY; // Start Y für den Inhalt nach dem Kopf
-      doc.y = contentStartY; // Setze die Startposition für den Inhalt
+      doc.font(fontNormal).fontSize(fontSizeTableContent).lineGap(0); // lineGap auf 0 für Kompaktheit
+      let contentStartY = currentY;
+      doc.y = contentStartY;
+
+      // --- HÖHE BERECHNEN für Summary und Footer ---
+      // Annahme: 5 Zeilen für Summary, 1 Zeile für Footer-Text, 1 Zeile für Signatur
+      const summaryHeight = 5 * (fontSizeSummary + vSpaceSmall) + vSpaceLarge; // Höhe des Summary-Blocks inkl. Abstand danach
+      const footerHeight = fontSizeFooter + vSpaceXLarge + fontSizeFooter; // Höhe des Footer-Blocks
 
       if (!workEntries || workEntries.length === 0) {
         doc.text('Keine Arbeitszeitbuchungen in diesem Monat gefunden.', pageLeftMargin, currentY, {width: usableWidth});
@@ -191,15 +203,23 @@ module.exports = function(db) {
         for (let i = 0; i < workEntries.length; i++) {
           const entry = workEntries[i];
 
-           // Seitenumbruch prüfen VOR dem Zeichnen der Zeile
-           // Prüfe, ob die *aktuelle* Zeile noch auf die Seite passt
-           if (doc.y + tableRowHeight > doc.page.height - pageBottomMargin) {
+          // --- Seitenumbruch prüfen VOR dem Zeichnen der Zeile ---
+          // Prüfe, ob die *aktuelle* Zeile UND der gesamte Summary/Footer Block noch auf die Seite passen würden
+          const spaceNeededForRest = tableRowHeight + summaryHeight + footerHeight;
+          if (doc.y + spaceNeededForRest > doc.page.height - pageBottomMargin && i > 0) { // Nur umbrechen, wenn nicht erste Zeile
              doc.addPage();
-             currentY = pageTopMargin; // Y-Position für die neue Seite zurücksetzen
-             currentY = drawTableHeader(currentY); // Kopf auf neuer Seite wiederholen
-             doc.font(fontNormal).fontSize(fontSizeTableContent).lineGap(1); // Font wiederherstellen
-             doc.y = currentY; // Startposition für Inhalt auf neuer Seite setzen
-           }
+             currentY = pageTopMargin;
+             currentY = drawTableHeader(currentY); // Kopf wiederholen
+             doc.font(fontNormal).fontSize(fontSizeTableContent).lineGap(0); // Font wiederherstellen
+             doc.y = currentY; // Startposition für Inhalt auf neuer Seite
+          } else if (doc.y + tableRowHeight > doc.page.height - pageBottomMargin) {
+              // Falls nur die Zeile nicht mehr passt (aber Rest evtl. schon), trotzdem umbrechen
+              doc.addPage();
+              currentY = pageTopMargin;
+              currentY = drawTableHeader(currentY);
+              doc.font(fontNormal).fontSize(fontSizeTableContent).lineGap(0);
+              doc.y = currentY;
+          }
 
           // --- Daten für die Zeile ---
           let dateFormatted = "Ungült. Datum";
@@ -231,7 +251,7 @@ module.exports = function(db) {
           const workedStr = decimalHoursToHHMM(worked);
           const diffStr = decimalHoursToHHMM(diff);
 
-          // --- Zeile zeichnen (verwende doc.y) ---
+          // --- Zeile zeichnen ---
           const currentRowY = doc.y;
           doc.text(dateFormatted, colPositions.date, currentRowY, { width: colWidths.date, align: 'left', lineBreak: false });
           doc.text(startDisplay, colPositions.start, currentRowY, { width: colWidths.start, align: 'center', lineBreak: false });
@@ -240,20 +260,20 @@ module.exports = function(db) {
           doc.text(workedStr, colPositions.actual, currentRowY, { width: colWidths.actual, align: 'center', lineBreak: false });
           doc.text(diffStr, colPositions.diff, currentRowY, { width: colWidths.diff, align: 'center', lineBreak: false });
 
-          // Y-Position für die nächste Zeile erhöhen
-          doc.y += tableRowHeight;
+          doc.y += tableRowHeight; // Y-Position für die nächste Zeile erhöhen
         }
       }
-      // Finale Y-Position nach der Tabelle merken
-      currentY = doc.y;
-      currentY += vSpaceLarge;
+      currentY = doc.y; // Finale Y-Position nach der Tabelle
+      currentY += vSpaceLarge; // Abstand nach der Tabelle (etwas reduziert)
 
       //-------------------------------
       // Zusammenfassung
       //-------------------------------
-       if (currentY + (5 * (fontSizeSummary + vSpaceSmall)) > doc.page.height - pageBottomMargin - (fontSizeFooter + vSpaceXLarge)) { // Höhe angepasst (5 Zeilen)
+       // Erneute Prüfung für Seitenumbruch direkt VOR der Zusammenfassung
+       if (currentY + summaryHeight + footerHeight > doc.page.height - pageBottomMargin) {
            doc.addPage();
            currentY = pageTopMargin;
+           // KEIN Header hier wiederholen, nur Inhalt geht weiter
        }
        doc.y = currentY;
 
@@ -263,35 +283,38 @@ module.exports = function(db) {
        const summaryLabelX = pageLeftMargin;
        const summaryValueX = colPositions.actual;
 
+       // Summary Zeilen etwas kompakter
+       const summaryLineSpacing = 0.4;
        doc.text("Übertrag Vormonat (+/-):", summaryLabelX, doc.y, { width: summaryLabelWidth, align: 'left' });
        doc.text(decimalHoursToHHMM(previousCarryOver || 0), summaryValueX, doc.y, { width: summaryValueWidth, align: 'right' });
-       doc.moveDown(0.5);
+       doc.moveDown(summaryLineSpacing);
 
        doc.text("Gesamt Soll-Zeit:", summaryLabelX, doc.y, { width: summaryLabelWidth, align: 'left' });
        doc.text(decimalHoursToHHMM(totalExpected || 0), summaryValueX, doc.y, { width: summaryValueWidth, align: 'right' });
-       doc.moveDown(0.5);
+       doc.moveDown(summaryLineSpacing);
 
        doc.text("Gesamt Ist-Zeit:", summaryLabelX, doc.y, { width: summaryLabelWidth, align: 'left' });
        doc.text(decimalHoursToHHMM(totalActual || 0), summaryValueX, doc.y, { width: summaryValueWidth, align: 'right' });
-       doc.moveDown(0.5);
+       doc.moveDown(summaryLineSpacing);
 
        const totalDiff = (totalActual || 0) - (totalExpected || 0);
        doc.text("Gesamt Mehr/Minderstunden:", summaryLabelX, doc.y, { width: summaryLabelWidth, align: 'left' });
        doc.text(decimalHoursToHHMM(totalDiff), summaryValueX, doc.y, { width: summaryValueWidth, align: 'right' });
-       doc.moveDown(0.5);
+       doc.moveDown(summaryLineSpacing);
 
        doc.font(fontBold);
        doc.text("Neuer Übertrag (Saldo Ende):", summaryLabelX, doc.y, { width: summaryLabelWidth, align: 'left' });
        doc.text(decimalHoursToHHMM(newCarryOver || 0), summaryValueX, doc.y, { width: summaryValueWidth, align: 'right' });
 
-       currentY = doc.y + vSpaceLarge; // Abstand verwenden
+       currentY = doc.y + vSpaceLarge; // Abstand nach der Zusammenfassung
 
       //-------------------------------
       // Fußzeile
       //-------------------------------
-       if (currentY + fontSizeFooter + vSpaceSmall + vSpaceXLarge > doc.page.height - pageBottomMargin) {
-           doc.addPage();
-           currentY = pageTopMargin;
+       // Erneute Prüfung vor Footer
+       if (currentY + footerHeight > doc.page.height - pageBottomMargin) {
+            doc.addPage();
+            currentY = pageTopMargin;
        }
        doc.y = currentY;
 
@@ -302,7 +325,7 @@ module.exports = function(db) {
         doc.y,
         { align: 'left', width: usableWidth }
       );
-      doc.y += vSpaceXLarge;
+      doc.y += vSpaceXLarge; // Abstand für Unterschrift (etwas reduziert)
 
       doc.text("Datum, Unterschrift", pageLeftMargin, doc.y, { align: 'left' });
 
