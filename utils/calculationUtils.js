@@ -187,3 +187,146 @@ async function calculateMonthlyData(db, name, year, month) {
      absenceEntries: absenceDetails // Liste der Abwesenheiten im Monat
    };
 }
+/**
+ * Berechnet für einen Mitarbeiter die Daten für ein Quartal oder Jahr unter Berücksichtigung von Abwesenheiten.
+ * @param {Object} db - Die PostgreSQL-Datenbankverbindung (Pool).
+ * @param {string} name - Name des Mitarbeiters.
+ * @param {string|number} year - Jahr.
+ * @param {'QUARTER'|'YEAR'} periodType - Art des Zeitraums.
+ * @param {number} [periodValue] - Wert des Zeitraums (1-4 für Quartal).
+ * @returns {Object} - Ein Objekt mit den ermittelten Periodendaten inkl. Abwesenheitsinfos.
+ */
+async function calculatePeriodData(db, name, year, periodType, periodValue) {
+    const parsedYear = parseInt(year);
+    if (!name || !year || isNaN(parsedYear) || !['QUARTER', 'YEAR'].includes(periodType)) {
+        throw new Error("Ungültiger Name, Jahr oder Periodentyp angegeben.");
+    }
+
+    let startMonth, endMonth;
+    let periodIdentifier = '';
+
+    if (periodType === 'QUARTER') {
+        const quarter = parseInt(periodValue);
+        if (isNaN(quarter) || quarter < 1 || quarter > 4) {
+            throw new Error("Ungültiges Quartal angegeben (1-4 erforderlich).");
+        }
+        startMonth = (quarter - 1) * 3 + 1;
+        endMonth = quarter * 3;
+        periodIdentifier = `Q${quarter}`;
+    } else { // YEAR
+        startMonth = 1;
+        endMonth = 12;
+        periodIdentifier = 'Gesamtjahr';
+    }
+
+    // Mitarbeiter-Daten abrufen
+    const empResult = await db.query( `SELECT * FROM employees WHERE LOWER(name) = LOWER($1)`, [name.toLowerCase()]);
+    if (empResult.rows.length === 0) throw new Error("Mitarbeiter nicht gefunden.");
+    const employee = empResult.rows[0];
+
+    // Datumsbereich für den gesamten Zeitraum (UTC)
+    const periodStartDate = new Date(Date.UTC(parsedYear, startMonth - 1, 1));
+    const periodEndDate = new Date(Date.UTC(parsedYear, endMonth, 1)); // Exklusiv
+    const periodStartDateStr = periodStartDate.toISOString().split('T')[0];
+    const periodEndDateStr = periodEndDate.toISOString().split('T')[0];
+
+    // --- Startsaldo ermitteln ---
+    const balanceStartDate = new Date(Date.UTC(parsedYear, startMonth - 2, 1));
+    const balanceStartDateStr = balanceStartDate.toISOString().split('T')[0];
+    const prevResult = await db.query(
+        `SELECT carry_over FROM monthly_balance WHERE employee_id = $1 AND year_month = $2`,
+        [employee.id, balanceStartDateStr]
+    );
+    const startingBalance = prevResult.rows.length > 0 ? (parseFloat(prevResult.rows[0].carry_over) || 0) : 0;
+
+    // --- Daten für den Zeitraum abrufen ---
+    // Arbeitszeiten im Zeitraum
+    const workResult = await db.query(
+        `SELECT id, date, hours, comment, TO_CHAR(starttime, 'HH24:MI') AS "startTime", TO_CHAR(endtime, 'HH24:MI') AS "endTime"
+         FROM work_hours
+         WHERE employee_id = $1 AND date >= $2 AND date < $3
+         ORDER BY date ASC`,
+        [employee.id, periodStartDateStr, periodEndDateStr] // Verwende employee.id
+    );
+    const workEntriesPeriod = workResult.rows;
+
+    // *** NEU: Abwesenheiten für den Zeitraum abrufen ***
+    const absenceResult = await db.query(
+        `SELECT date, absence_type, credited_hours
+         FROM absences
+         WHERE employee_id = $1 AND date >= $2 AND date < $3`,
+        [employee.id, periodStartDateStr, periodEndDateStr]
+    );
+    const absenceMap = new Map();
+    absenceResult.rows.forEach(a => {
+        const dateKey = (a.date instanceof Date) ? a.date.toISOString().split('T')[0] : String(a.date);
+        absenceMap.set(dateKey, { type: a.absence_type, hours: parseFloat(a.credited_hours) || 0 });
+    });
+    // *** ENDE NEU ***
+
+    // --- Berechnungen für den Zeitraum ---
+    let totalExpectedPeriod = 0;
+    let totalActualPeriod = 0;
+    let absenceHoursTotalPeriod = 0;
+    let workedHoursTotalPeriod = 0;
+
+    // *** GEÄNDERT: Berechnung totalActualPeriod ***
+    // 1. Gearbeitete Stunden summieren
+    workEntriesPeriod.forEach(entry => {
+        workedHoursTotalPeriod += parseFloat(entry.hours) || 0;
+    });
+    // 2. Gutgeschriebene Stunden aus Abwesenheiten summieren (nur an Standard-Arbeitstagen Mo-Fr)
+    forEachDayBetween(periodStartDate, periodEndDate, (dateStr, dayOfWeek) => {
+        if (absenceMap.has(dateStr) && isStandardWorkday(dayOfWeek)) {
+            absenceHoursTotalPeriod += absenceMap.get(dateStr).hours;
+        }
+    });
+    totalActualPeriod = workedHoursTotalPeriod + absenceHoursTotalPeriod;
+    // *** ENDE ÄNDERUNG totalActualPeriod ***
+
+
+    // *** GEÄNDERT: Berechnung totalExpectedPeriod ***
+    forEachDayBetween(periodStartDate, periodEndDate, (dateStr, dayOfWeek) => {
+        if (isStandardWorkday(dayOfWeek)) {
+            if (absenceMap.has(dateStr)) {
+                totalExpectedPeriod += 0; // Keine Anwesenheit erwartet
+            } else {
+                totalExpectedPeriod += getExpectedHours(employee, dateStr); // Normale Soll-Stunden
+            }
+        } else {
+            totalExpectedPeriod += 0; // Wochenende
+        }
+    });
+    // *** ENDE ÄNDERUNG totalExpectedPeriod ***
+
+    const periodDifference = totalActualPeriod - totalExpectedPeriod;
+    const endingBalancePeriod = startingBalance + periodDifference;
+
+    // Optional: Detail-Infos zu Abwesenheiten hinzufügen
+    const absenceDetailsPeriod = Array.from(absenceMap.entries()).map(([date, info]) => ({ date, ...info }));
+
+
+    return {
+        employeeName: employee.name,
+        year: parsedYear,
+        periodType: periodType,
+        periodValue: periodType === 'QUARTER' ? parseInt(periodValue) : null,
+        periodIdentifier: periodIdentifier,
+        periodStartDate: periodStartDateStr,
+        periodEndDate: new Date(periodEndDate.getTime() - 86400000).toISOString().split('T')[0], // Letzter Tag des Endmonats
+        startingBalance: parseFloat(startingBalance.toFixed(2)),
+        totalExpectedPeriod: parseFloat(totalExpectedPeriod.toFixed(2)), // Angepasste Soll-Summe
+        totalActualPeriod: parseFloat(totalActualPeriod.toFixed(2)),    // Angepasste Ist-Summe (Arbeit + Abw.)
+        workedHoursPeriod: parseFloat(workedHoursTotalPeriod.toFixed(2)), // Nur gearbeitete Stunden im Zeitraum
+        absenceHoursPeriod: parseFloat(absenceHoursTotalPeriod.toFixed(2)), // Nur Abwesenheitsstunden im Zeitraum
+        periodDifference: parseFloat(periodDifference.toFixed(2)),
+        endingBalancePeriod: parseFloat(endingBalancePeriod.toFixed(2)),
+        workEntriesPeriod: workEntriesPeriod, // Nur tatsächliche Arbeitsbuchungen im Zeitraum
+        absenceEntriesPeriod: absenceDetailsPeriod // Liste der Abwesenheiten im Zeitraum
+    };
+}
+module.exports = {
+  getExpectedHours,
+  calculateMonthlyData, // Jetzt mit Abwesenheitslogik
+  calculatePeriodData   // Jetzt mit Abwesenheitslogik
+};
