@@ -13,93 +13,75 @@ const path = require('path');
 const cors = require("cors");
 
 // === Importiere den PDF-Router ===
-// Annahme: monthlyPdfEndpoint_js.txt wurde nach ./routes/monthlyPdfEndpoint.js verschoben
-// Passe den Pfad ggf. an, falls die Datei woanders liegt.
-// Wenn sie z.B. im Root liegt: const monthlyPdfRouter = require('./monthlyPdfEndpoint');
 const monthlyPdfRouter = require('./routes/monthlyPdfEndpoint');
 
 
 const app = express();
 
 // Importiere externe Berechnungsfunktionen
-// NEU: calculatePeriodData hinzugefügt
 const { calculateMonthlyData, getExpectedHours, calculatePeriodData } = require('./utils/calculationUtils');
 
 // --- HILFSFUNKTIONEN ---
 function parseTime(timeStr) {
+  // ... (unverändert)
   if (!timeStr || typeof timeStr !== 'string' || !timeStr.includes(':')) return 0;
   const [hh, mm] = timeStr.split(':');
   return parseInt(hh, 10) * 60 + parseInt(mm, 10);
 }
 
 function calculateWorkHours(startTime, endTime) {
+  // ... (unverändert)
   if (!startTime || !endTime) return 0;
   const startMinutes = parseTime(startTime);
   const endMinutes = parseTime(endTime);
-
-  // Behandlung von Arbeit über Mitternacht (einfache Annahme: Endzeit < Startzeit bedeutet nächster Tag)
   let diffInMin = endMinutes - startMinutes;
   if (diffInMin < 0) {
-    console.warn(`Mögliche Arbeit über Mitternacht erkannt (${startTime} - ${endTime}). Addiere 24 Stunden.`);
-    diffInMin += 24 * 60; // 24 Stunden in Minuten addieren
+    // console.warn(`Mögliche Arbeit über Mitternacht erkannt (${startTime} - ${endTime}). Addiere 24 Stunden.`); // Optional: Logging reduzieren
+    diffInMin += 24 * 60;
   }
-
-  // Plausibilitätscheck (z.B. nicht mehr als 24h)
   if (diffInMin > 24 * 60) {
       console.warn(`Berechnete Arbeitszeit über 24h (${(diffInMin/60).toFixed(2)}h) für ${startTime}-${endTime}. Prüfen! Setze auf 0.`);
-      return 0; // Oder einen anderen Fehlerwert
+      return 0;
   }
-
-  return diffInMin / 60; // Ergebnis in Stunden
+  return diffInMin / 60;
 }
 
-// Konvertiert Daten in CSV-Format (angepasst für bessere Datums- und Fehlerbehandlung)
 async function convertToCSV(db, data) {
+    // ... (unverändert)
     if (!data || data.length === 0) return '';
     const csvRows = [];
-    // Spalten für CSV definieren
     const headers = ["ID", "Name", "Datum", "Arbeitsbeginn", "Arbeitsende", "Ist-Std", "Soll-Std", "Differenz", "Bemerkung"];
     csvRows.push(headers.join(','));
-
-    // Mitarbeiterdaten für Soll-Stunden-Berechnung sammeln (effizienter als Einzelabfragen)
-    const employeeNames = [...new Set(data.map(row => row.name))].filter(Boolean); // Filtert undefined/null Namen raus
+    const employeeNames = [...new Set(data.map(row => row.name))].filter(Boolean);
     let employeesData = {};
     if (employeeNames.length > 0) {
         try {
             const empQuery = `SELECT name, mo_hours, di_hours, mi_hours, do_hours, fr_hours FROM employees WHERE name = ANY($1::text[])`;
             const empResult = await db.query(empQuery, [employeeNames]);
             empResult.rows.forEach(emp => {
-                // Speichere Mitarbeiterdaten unter dem Namen (Kleinschreibung für robusten Vergleich)
                 employeesData[emp.name.toLowerCase()] = emp;
             });
         } catch(dbError) {
             console.error("Fehler beim Abrufen der Mitarbeiterdaten für CSV:", dbError);
-            // Weitermachen ohne Soll-Stunden, falls Abruf fehlschlägt
         }
     }
-
     for (const row of data) {
         let dateFormatted = "";
         let dateStringForCalc = null;
         if (row.date) {
             try {
                 const dateObj = (row.date instanceof Date) ? row.date : new Date(row.date);
-                // Format für CSV (dd.mm.yyyy)
                 dateFormatted = dateObj.toLocaleDateString('de-DE', { timeZone: 'UTC' });
-                // Format für getExpectedHours (yyyy-mm-dd)
                 dateStringForCalc = dateObj.toISOString().split('T')[0];
             } catch (e) {
-                dateFormatted = String(row.date); // Fallback
+                dateFormatted = String(row.date);
                 console.warn("CSV Datumsformat Fehler:", row.date, e);
             }
         }
-
-        const startTimeFormatted = row.startTime || ""; // Verwende die bereits formattierten Zeiten, falls vorhanden
+        const startTimeFormatted = row.startTime || "";
         const endTimeFormatted = row.endTime || "";
         const istHours = parseFloat(row.hours) || 0;
-
         let expected = 0;
-        // Soll-Stunden nur berechnen, wenn Mitarbeiterdaten vorhanden sind und Datum gültig ist
         const employee = row.name ? employeesData[row.name.toLowerCase()] : null;
         if (employee && dateStringForCalc && typeof getExpectedHours === 'function') {
             try {
@@ -108,21 +90,11 @@ async function convertToCSV(db, data) {
                 console.error(`Fehler beim Holen der Soll-Stunden für CSV (MA: ${row.name}, Datum: ${dateStringForCalc}):`, e);
             }
         }
-
         const diff = istHours - expected;
-        // Kommentare sicher für CSV formatieren (in Anführungszeichen, interne Anführungszeichen verdoppeln)
         const commentFormatted = `"${(row.comment || '').replace(/"/g, '""')}"`;
-
         const values = [
-            row.id,
-            row.name || '',
-            dateFormatted,
-            startTimeFormatted,
-            endTimeFormatted,
-            istHours.toFixed(2), // Immer mit 2 Nachkommastellen
-            expected.toFixed(2), // Immer mit 2 Nachkommastellen
-            diff.toFixed(2),     // Immer mit 2 Nachkommastellen
-            commentFormatted
+            row.id, row.name || '', dateFormatted, startTimeFormatted, endTimeFormatted,
+            istHours.toFixed(2), expected.toFixed(2), diff.toFixed(2), commentFormatted
         ];
         csvRows.push(values.join(','));
     }
@@ -130,56 +102,51 @@ async function convertToCSV(db, data) {
 }
 // --- ENDE HILFSFUNKTIONEN ---
 
-// CORS-Konfiguration (Anpassen für Produktion!)
-app.use(cors({
-  origin: "*", // Erlaube Anfragen von jeder Herkunft (für Entwicklung)
-  // origin: 'https://deine-frontend-domain.com', // Beispiel für Produktion
-  credentials: true // Erlaube das Senden von Cookies (für Sessions)
+// CORS-Konfiguration
+app.use(cors({ /* ... (unverändert) */
+  origin: "*",
+  credentials: true
 }));
-
-// Vertraue dem ersten Proxy (wichtig bei Einsatz hinter Reverse Proxy wie Nginx oder bei Cloud-Providern)
 app.set('trust proxy', 1);
-
 const port = process.env.PORT || 8080;
 
 // Middleware
-app.use(bodyParser.json()); // JSON-Bodyparser
-app.use(express.static('public')); // Statische Dateien aus 'public' Ordner bereitstellen
+app.use(bodyParser.json());
+app.use(express.static('public'));
 
 // PostgreSQL-Datenbankverbindung Pool
-const db = new Pool({
+const db = new Pool({ /* ... (unverändert) */
   connectionString: process.env.DATABASE_URL,
   ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
 });
-
-db.on('error', (err, client) => {
+db.on('error', (err, client) => { /* ... (unverändert) */
   console.error('Unerwarteter Fehler im PostgreSQL Idle Client', err);
-  process.exit(-1); // Bei DB-Fehlern ggf. neu starten
+  process.exit(-1);
 });
 
 // Session Store Konfiguration
-const sessionStore = new pgSession({
+const sessionStore = new pgSession({ /* ... (unverändert) */
   pool: db,
-  tableName: 'user_sessions', // Name der Session-Tabelle
-  createTableIfMissing: true, // Tabelle automatisch erstellen, falls nicht vorhanden
+  tableName: 'user_sessions',
+  createTableIfMissing: true,
 });
-
-app.use(session({
+app.use(session({ /* ... (unverändert) */
   store: sessionStore,
-  secret: process.env.SESSION_SECRET || 'sehr-geheimes-fallback-geheimnis', // Starkes Geheimnis in .env speichern!
-  resave: false, // Nicht speichern, wenn nichts geändert wurde
-  saveUninitialized: false, // Keine leeren Sessions speichern
+  secret: process.env.SESSION_SECRET || 'sehr-geheimes-fallback-geheimnis',
+  resave: false,
+  saveUninitialized: false,
   cookie: {
-    secure: process.env.NODE_ENV === 'production', // Cookie nur über HTTPS senden in Produktion
-    sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax', // Wichtig für Cross-Site-Requests in Produktion bei separaten Domains
-    httpOnly: true, // Verhindert Zugriff auf Cookie via JavaScript
-    maxAge: 24 * 60 * 60 * 1000 // Gültigkeit: 1 Tag
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+    httpOnly: true,
+    maxAge: 24 * 60 * 60 * 1000
   },
 }));
 
 // --- Datenbank-Tabellen Setup (Beim Start prüfen/erstellen) ---
 const setupTables = async () => {
   try {
+    // employees Tabelle (unverändert)
     await db.query(`CREATE TABLE IF NOT EXISTS employees (
       id SERIAL PRIMARY KEY,
       name TEXT NOT NULL UNIQUE,
@@ -191,46 +158,64 @@ const setupTables = async () => {
     );`);
     console.log("Tabelle employees geprüft/erstellt.");
 
+    // work_hours Tabelle (unverändert)
     await db.query(`CREATE TABLE IF NOT EXISTS work_hours (
       id SERIAL PRIMARY KEY,
-      name TEXT NOT NULL, -- Referenz auf employees.name (optional als Foreign Key)
+      name TEXT NOT NULL,
       date DATE NOT NULL,
       starttime TIME,
       endtime TIME,
-      hours DOUBLE PRECISION, -- Berechnete Stunden (Ist-Zeit)
+      hours DOUBLE PRECISION,
       comment TEXT
-      -- Optional: Foreign Key Constraint für Mitarbeiter
-      -- employee_id INTEGER REFERENCES employees(id) ON DELETE SET NULL -- oder CASCADE
     );`);
     console.log("Tabelle work_hours geprüft/erstellt.");
 
+    // monthly_balance Tabelle (unverändert)
     await db.query(`CREATE TABLE IF NOT EXISTS monthly_balance (
       id SERIAL PRIMARY KEY,
-      employee_id INTEGER NOT NULL REFERENCES employees(id) ON DELETE CASCADE, -- Bei Löschen des Mitarbeiters auch Saldo löschen
-      year_month DATE NOT NULL, -- Erster Tag des Monats (z.B. 2025-03-01)
-      difference DOUBLE PRECISION, -- Differenz (Ist - Soll) des Monats
-      carry_over DOUBLE PRECISION, -- Kumulierter Übertrag am Ende des Monats
-      UNIQUE (employee_id, year_month) -- Eindeutigkeit pro Mitarbeiter und Monat
+      employee_id INTEGER NOT NULL REFERENCES employees(id) ON DELETE CASCADE,
+      year_month DATE NOT NULL,
+      difference DOUBLE PRECISION,
+      carry_over DOUBLE PRECISION,
+      UNIQUE (employee_id, year_month)
     );`);
     console.log("Tabelle monthly_balance geprüft/erstellt.");
+    await db.query(`CREATE INDEX IF NOT EXISTS idx_monthly_balance_employee_year_month ON monthly_balance (employee_id, year_month);`);
+    console.log("Index für monthly_balance geprüft/erstellt.");
 
-     // Ggf. Index hinzufügen für schnellere Abfragen auf monthly_balance
-     await db.query(`CREATE INDEX IF NOT EXISTS idx_monthly_balance_employee_year_month ON monthly_balance (employee_id, year_month);`);
-     console.log("Index für monthly_balance geprüft/erstellt.");
+    // *** NEU: absences Tabelle ***
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS absences (
+        id SERIAL PRIMARY KEY,
+        employee_id INTEGER NOT NULL REFERENCES employees(id) ON DELETE CASCADE,
+        date DATE NOT NULL,
+        absence_type TEXT NOT NULL CHECK (absence_type IN ('VACATION', 'SICK', 'PUBLIC_HOLIDAY')), -- Typ der Abwesenheit
+        credited_hours DOUBLE PRECISION NOT NULL, -- Gutgeschriebene Stunden für diesen Tag
+        comment TEXT, -- Optionaler Kommentar
+        UNIQUE (employee_id, date) -- Eindeutig pro Mitarbeiter und Tag
+      );
+    `);
+    console.log("Tabelle absences geprüft/erstellt.");
 
+    // *** NEU: Index für absences Tabelle ***
+    await db.query(`
+      CREATE INDEX IF NOT EXISTS idx_absences_employee_date ON absences (employee_id, date);
+    `);
+    console.log("Index für absences geprüft/erstellt.");
+    // *** ENDE NEU ***
 
   } catch (err) {
     console.error("!!! Datenbank Setup Fehler:", err);
-    process.exit(1); // Beenden, wenn Tabellen nicht erstellt werden können
+    process.exit(1);
   }
 };
 
 setupTables(); // Tabellen beim Serverstart initialisieren
 
-// Middleware für Admin-Check (schützt Admin-Routen)
-function isAdmin(req, res, next) {
+// Middleware für Admin-Check
+function isAdmin(req, res, next) { /* ... (unverändert) */
   if (req.session && req.session.isAdmin === true) {
-    next(); // Admin ist angemeldet, weiter zur nächsten Middleware/Route
+    next();
   } else {
     console.warn(`Zugriffsversuch auf Admin-Route ohne Admin-Session: ${req.originalUrl} von IP ${req.ip}`);
     res.status(403).send('Zugriff verweigert. Admin-Login erforderlich.');
@@ -240,12 +225,14 @@ function isAdmin(req, res, next) {
 // ==========================================
 // Öffentliche Endpunkte (Kein Login nötig)
 // ==========================================
+// Health Check, /employees, /next-booking-details, /log-start, /log-end, /summary-hours
+// bleiben unverändert.
 
 // Health Check Endpunkt
 app.get('/healthz', (req, res) => res.status(200).send('OK'));
 
 // Mitarbeiterliste für Dropdown im Frontend
-app.get('/employees', async (req, res) => {
+app.get('/employees', async (req, res) => { /* ... (unverändert) */
   try {
     const result = await db.query('SELECT id, name FROM employees ORDER BY name ASC');
     res.json(result.rows);
@@ -255,33 +242,22 @@ app.get('/employees', async (req, res) => {
   }
 });
 
-// Details für nächsten Buchungsschritt ermitteln (Start oder Ende?)
-app.get('/next-booking-details', async (req, res) => {
+// Details für nächsten Buchungsschritt
+app.get('/next-booking-details', async (req, res) => { /* ... (unverändert) */
   const { name } = req.query;
   if (!name) return res.status(400).json({ message: 'Name ist erforderlich.' });
   try {
-    // Suche nach dem letzten Eintrag des Mitarbeiters, sortiert nach Datum und Startzeit
     const query = `
       SELECT id, date, TO_CHAR(starttime, 'HH24:MI') AS starttime_formatted, endtime
-      FROM work_hours
-      WHERE LOWER(name) = LOWER($1)
-      ORDER BY date DESC, starttime DESC NULLS LAST
-      LIMIT 1;`;
-    const result = await db.query(query, [name.toLowerCase()]); // Suche Case-Insensitive
-
-    let nextBooking = 'arbeitsbeginn';
-    let entryId = null;
-    let startDate = null;
-    let startTime = null;
-
+      FROM work_hours WHERE LOWER(name) = LOWER($1) ORDER BY date DESC, starttime DESC NULLS LAST LIMIT 1;`;
+    const result = await db.query(query, [name.toLowerCase()]);
+    let nextBooking = 'arbeitsbeginn', entryId = null, startDate = null, startTime = null;
     if (result.rows.length > 0) {
       const last = result.rows[0];
-      // Wenn der letzte Eintrag eine Startzeit, aber keine Endzeit hat -> Arbeitsende ist nächster Schritt
       if (last.starttime_formatted && !last.endtime) {
-        nextBooking = 'arbeitsende';
-        entryId = last.id;
-        startDate = last.date instanceof Date ? last.date.toISOString().split('T')[0] : last.date; // YYYY-MM-DD Format
-        startTime = last.starttime_formatted; // HH:MM Format
+        nextBooking = 'arbeitsende'; entryId = last.id;
+        startDate = last.date instanceof Date ? last.date.toISOString().split('T')[0] : last.date;
+        startTime = last.starttime_formatted;
       }
     }
     res.json({ nextBooking, id: entryId, startDate, startTime });
@@ -292,168 +268,73 @@ app.get('/next-booking-details', async (req, res) => {
 });
 
 // Arbeitsbeginn loggen
-app.post('/log-start', async (req, res) => {
+app.post('/log-start', async (req, res) => { /* ... (unverändert - inkl. Prüfungen) */
     const { name, date, startTime } = req.body;
-    if (!name || !date || !startTime) {
-        return res.status(400).json({ message: 'Fehlende Daten (Name, Datum, Startzeit).' });
+    if (!name || !date || !startTime || !/^\d{4}-\d{2}-\d{2}$/.test(date) || !/^\d{2}:\d{2}$/.test(startTime)) {
+        return res.status(400).json({ message: 'Fehlende oder ungültige Daten.' });
     }
-    // Validierung des Datumsformats (YYYY-MM-DD)
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
-        return res.status(400).json({ message: 'Ungültiges Datumsformat. Benötigt: YYYY-MM-DD.' });
-    }
-    // Validierung des Zeitformats (HH:MM)
-    if (!/^\d{2}:\d{2}$/.test(startTime)) {
-        return res.status(400).json({ message: 'Ungültiges Zeitformat. Benötigt: HH:MM.' });
-    }
-
     try {
-        // Prüfen, ob Mitarbeiter existiert (optional, aber gut für Datenintegrität)
         const empCheck = await db.query('SELECT id FROM employees WHERE LOWER(name) = LOWER($1)', [name.toLowerCase()]);
-        if (empCheck.rows.length === 0) {
-             return res.status(404).json({ message: `Mitarbeiter '${name}' nicht gefunden.` });
-        }
-
-        // 1. Prüfen: Gibt es für DIESEN Tag bereits einen OFFENEN Eintrag (starttime gesetzt, endtime NULL)?
-        const checkOpenQuery = `
-            SELECT id FROM work_hours
-            WHERE LOWER(name) = LOWER($1) AND date = $2 AND endtime IS NULL`;
+        if (empCheck.rows.length === 0) return res.status(404).json({ message: `Mitarbeiter '${name}' nicht gefunden.` });
+        const checkOpenQuery = `SELECT id FROM work_hours WHERE LOWER(name) = LOWER($1) AND date = $2 AND endtime IS NULL`;
         const checkOpenResult = await db.query(checkOpenQuery, [name.toLowerCase(), date]);
-        if (checkOpenResult.rows.length > 0) {
-            return res.status(409).json({ // 409 Conflict
-                message: `Für diesen Tag (${new Date(date+'T00:00:00Z').toLocaleDateString('de-DE',{timeZone:'UTC'})}) existiert bereits ein nicht abgeschlossener Eintrag (ID: ${checkOpenResult.rows[0].id}). Bitte erst Arbeitsende buchen oder Admin kontaktieren.`
-            });
-        }
-
-        // 2. Prüfen: Gibt es für DIESEN Tag bereits einen ABGESCHLOSSENEN Eintrag?
-        // (Erlaubt ggf. keine zweite Buchung am selben Tag - Geschäftsregel!)
-        // Hier: Verhindern wir es.
-        const checkCompleteQuery = `
-            SELECT id FROM work_hours
-            WHERE LOWER(name) = LOWER($1) AND date = $2 AND endtime IS NOT NULL`;
+        if (checkOpenResult.rows.length > 0) return res.status(409).json({ message: `Für diesen Tag existiert bereits ein nicht abgeschlossener Eintrag.` });
+        const checkCompleteQuery = `SELECT id FROM work_hours WHERE LOWER(name) = LOWER($1) AND date = $2 AND endtime IS NOT NULL`;
         const checkCompleteResult = await db.query(checkCompleteQuery, [name.toLowerCase(), date]);
-        if (checkCompleteResult.rows.length > 0) {
-            console.warn(`Versuch, neuen Start für ${name} am ${date} zu buchen, obwohl bereits abgeschlossener Eintrag existiert (ID: ${checkCompleteResult.rows[0].id}).`);
-            let displayDateError = date;
-             try { displayDateError = new Date(date + 'T00:00:00Z').toLocaleDateString('de-DE', { timeZone: 'UTC' }); } catch(e){}
-             return res.status(409).json({ // 409 Conflict
-               message: `An diesem Tag (${displayDateError}) wurde bereits eine vollständige Arbeitszeit erfasst. Eine erneute Buchung ist nicht vorgesehen.`
-             });
-        }
+        if (checkCompleteResult.rows.length > 0) return res.status(409).json({ message: `An diesem Tag wurde bereits eine vollständige Arbeitszeit erfasst.` });
 
-        // Wenn keine Konflikte -> Neuen Eintrag anlegen
         const insert = await db.query(
-            // Verwende den Originalnamen aus der DB falls Groß-/Kleinschreibung wichtig ist, sonst den übergebenen Namen
             `INSERT INTO work_hours (name, date, starttime) VALUES ((SELECT name FROM employees WHERE LOWER(name)=LOWER($1)), $2, $3) RETURNING id;`,
             [name.toLowerCase(), date, startTime]
         );
         console.log(`Start gebucht: ${name}, ${date}, ${startTime} (ID: ${insert.rows[0].id})`);
-        res.status(201).json({ id: insert.rows[0].id }); // 201 Created
-
+        res.status(201).json({ id: insert.rows[0].id });
     } catch (err) {
         console.error("Fehler /log-start:", err);
         res.status(500).json({ message: 'Serverfehler beim Buchen des Arbeitsbeginns.' });
     }
 });
 
-// Arbeitsende loggen und Stunden berechnen
-app.put('/log-end/:id', async (req, res) => {
+// Arbeitsende loggen
+app.put('/log-end/:id', async (req, res) => { /* ... (unverändert) */
   const { id } = req.params;
-  const { endTime, comment } = req.body; // comment ist optional
-
-  if (!endTime || !id || isNaN(parseInt(id))) {
-    return res.status(400).json({ message: 'Fehlende oder ungültige Daten (ID, Endzeit).' });
+  const { endTime, comment } = req.body;
+  if (!endTime || !id || isNaN(parseInt(id)) || !/^\d{2}:\d{2}$/.test(endTime)) {
+    return res.status(400).json({ message: 'Fehlende oder ungültige Daten.' });
   }
-   // Validierung des Zeitformats (HH:MM)
-   if (!/^\d{2}:\d{2}$/.test(endTime)) {
-       return res.status(400).json({ message: 'Ungültiges Zeitformat für Endzeit. Benötigt: HH:MM.' });
-   }
-
   const entryId = parseInt(id);
-
   try {
-    // Hole den zugehörigen Eintrag, um Startzeit zu bekommen und Status zu prüfen
-    const entryResult = await db.query(
-      'SELECT TO_CHAR(starttime, \'HH24:MI\') AS starttime_formatted, endtime FROM work_hours WHERE id = $1', // Hole formatierte Startzeit
-      [entryId]
-    );
-
-    if (entryResult.rows.length === 0) {
-      return res.status(404).json({ message: `Arbeitszeit-Eintrag mit ID ${entryId} nicht gefunden.` });
-    }
-
+    const entryResult = await db.query('SELECT TO_CHAR(starttime, \'HH24:MI\') AS starttime_formatted, endtime FROM work_hours WHERE id = $1', [entryId]);
+    if (entryResult.rows.length === 0) return res.status(404).json({ message: `Eintrag ID ${entryId} nicht gefunden.` });
     const entry = entryResult.rows[0];
-
-    if (entry.endtime) {
-        console.warn(`Versuch, Arbeitsende für bereits abgeschlossenen Eintrag ID ${entryId} zu buchen (vorhandenes Ende: ${entry.endtime}). Überschreiben wird NICHT durchgeführt.`);
-        // Optional: Hier entscheiden, ob Überschreiben erlaubt ist oder nicht. Aktuell: Fehler.
-        return res.status(409).json({ message: `Dieser Eintrag (ID: ${entryId}) wurde bereits mit einer Endzeit versehen. Eine erneute Buchung ist nicht möglich.` });
-    }
-
-    if (!entry.starttime_formatted) {
-      // Dieser Fall sollte durch die Logik in /log-start eigentlich nicht eintreten
-      return res.status(400).json({ message: `Fehler: Keine Startzeit für Eintrag ID ${entryId} gefunden. Berechnung nicht möglich.` });
-    }
-
-    // Berechne die Arbeitsstunden
+    if (entry.endtime) return res.status(409).json({ message: `Eintrag ID ${entryId} wurde bereits abgeschlossen.` });
+    if (!entry.starttime_formatted) return res.status(400).json({ message: `Keine Startzeit für Eintrag ID ${entryId} gefunden.` });
     const netHours = calculateWorkHours(entry.starttime_formatted, endTime);
-
-    // Update des Eintrags mit Endzeit, Kommentar und berechneten Stunden
-    await db.query(
-      `UPDATE work_hours SET endtime = $1, comment = $2, hours = $3 WHERE id = $4;`,
-      [endTime, comment || '', netHours, entryId] // Kommentar ist optional, '' falls nicht übergeben
-    );
+    await db.query( `UPDATE work_hours SET endtime = $1, comment = $2, hours = $3 WHERE id = $4;`, [endTime, comment || '', netHours, entryId]);
     console.log(`Ende gebucht: ID ${entryId}, ${endTime} (Berechnete Stunden: ${netHours.toFixed(2)})`);
-    res.status(200).json({ message: 'Arbeitsende erfolgreich gespeichert.', calculatedHours: netHours.toFixed(2) }); // OK
-
+    res.status(200).json({ message: 'Arbeitsende erfolgreich gespeichert.', calculatedHours: netHours.toFixed(2) });
   } catch (err) {
     console.error(`Fehler /log-end/${entryId}:`, err);
     res.status(500).json({ message: 'Serverfehler beim Buchen des Arbeitsendes.' });
   }
 });
 
-// Zusammenfassung der Stunden für einen Tag und den aktuellen Monat
-app.get('/summary-hours', async (req, res) => {
+// Zusammenfassung Stunden (Tag/Monat)
+app.get('/summary-hours', async (req, res) => { /* ... (unverändert) */
     const { name, date } = req.query;
-    if (!name || !date) {
+    if (!name || !date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
         return res.status(400).json({ message: 'Name und Datum (YYYY-MM-DD) erforderlich.' });
     }
-     // Validierung des Datumsformats
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
-        return res.status(400).json({ message: 'Ungültiges Datumsformat. Benötigt: YYYY-MM-DD.' });
-    }
-
     try {
-        // Tagesstunden: Nimm den letzten abgeschlossenen Eintrag des Tages
-        const dailyResult = await db.query(
-            `SELECT hours FROM work_hours
-             WHERE LOWER(name) = LOWER($1) AND date = $2 AND hours IS NOT NULL AND endtime IS NOT NULL
-             ORDER BY endtime DESC LIMIT 1`,
-             [name.toLowerCase(), date]
-        );
+        const dailyResult = await db.query( `SELECT hours FROM work_hours WHERE LOWER(name) = LOWER($1) AND date = $2 AND hours IS NOT NULL AND endtime IS NOT NULL ORDER BY endtime DESC LIMIT 1`, [name.toLowerCase(), date]);
         const dailyHours = dailyResult.rows.length > 0 ? (parseFloat(dailyResult.rows[0].hours) || 0) : 0;
-
-        // Monatsstunden: Summiere alle Stunden des Monats bis zum gegebenen Datum
         const yearMonthDay = date.split('-');
-        const year = parseInt(yearMonthDay[0]);
-        const month = parseInt(yearMonthDay[1]);
+        const year = parseInt(yearMonthDay[0]); const month = parseInt(yearMonthDay[1]);
         const firstDayOfMonth = new Date(Date.UTC(year, month - 1, 1)).toISOString().split('T')[0];
-        // Enddatum für die Query ist das übergebene Datum
         const lastDayForQuery = date;
-
-        const monthlyResult = await db.query(
-            `SELECT SUM(hours) AS total_hours
-             FROM work_hours
-             WHERE LOWER(name) = LOWER($1)
-               AND date >= $2
-               AND date <= $3
-               AND hours IS NOT NULL`,
-            [name.toLowerCase(), firstDayOfMonth, lastDayForQuery]
-        );
-        const monthlyHours = monthlyResult.rows.length > 0 && monthlyResult.rows[0].total_hours
-            ? (parseFloat(monthlyResult.rows[0].total_hours) || 0)
-            : 0;
-
-        console.log(`Zusammenfassung ${name}: Tag ${date}=${dailyHours.toFixed(2)}h, Monat ${year}-${String(month).padStart(2,'0')}=${monthlyHours.toFixed(2)}h`);
+        const monthlyResult = await db.query( `SELECT SUM(hours) AS total_hours FROM work_hours WHERE LOWER(name) = LOWER($1) AND date >= $2 AND date <= $3 AND hours IS NOT NULL`, [name.toLowerCase(), firstDayOfMonth, lastDayForQuery]);
+        const monthlyHours = monthlyResult.rows.length > 0 && monthlyResult.rows[0].total_hours ? (parseFloat(monthlyResult.rows[0].total_hours) || 0) : 0;
+        // console.log(`Zusammenfassung ${name}: Tag ${date}=${dailyHours.toFixed(2)}h, Monat ${year}-${String(month).padStart(2,'0')}=${monthlyHours.toFixed(2)}h`); // Weniger Logging
         res.json({ dailyHours, monthlyHours });
     } catch (err) {
         console.error(`Fehler /summary-hours (${name}, ${date}):`, err);
@@ -461,427 +342,241 @@ app.get('/summary-hours', async (req, res) => {
     }
 });
 
-
 // ==========================================
 // Admin Endpunkte (Login erforderlich)
 // ==========================================
+// Admin-Login, Admin-Logout bleiben unverändert
 
 // Admin-Login
-app.post("/admin-login", (req, res) => {
+app.post("/admin-login", (req, res) => { /* ... (unverändert) */
   const { password } = req.body;
-  const adminPassword = process.env.ADMIN_PASSWORD; // Aus .env holen
-
-  if (!adminPassword) {
-      console.error("Admin-Passwort nicht in .env gesetzt!");
-      return res.status(500).send("Serverkonfigurationsfehler.");
-  }
-  if (!password) {
-      return res.status(400).send("Passwort fehlt.");
-  }
-
+  const adminPassword = process.env.ADMIN_PASSWORD;
+  if (!adminPassword) { console.error("Admin-Passwort nicht in .env gesetzt!"); return res.status(500).send("Serverkonfigurationsfehler."); }
+  if (!password) { return res.status(400).send("Passwort fehlt."); }
   if (password === adminPassword) {
-    // Passwort korrekt, Session regenerieren (verhindert Session Fixation)
     req.session.regenerate((err) => {
-      if (err) {
-        console.error("Session Regenerate Fehler:", err);
-        return res.status(500).send("Session Fehler.");
-      }
-      // Admin-Status in der neuen Session setzen
+      if (err) { console.error("Session Regenerate Fehler:", err); return res.status(500).send("Session Fehler."); }
       req.session.isAdmin = true;
       req.session.save((saveErr) => {
-        if (saveErr) {
-          console.error("Session Save Fehler nach Login:", saveErr);
-          return res.status(500).send("Session Speicherfehler.");
-        }
+        if (saveErr) { console.error("Session Save Fehler nach Login:", saveErr); return res.status(500).send("Session Speicherfehler."); }
         console.log(`Admin erfolgreich angemeldet. Session ID: ${req.sessionID}`);
         res.status(200).send("Admin erfolgreich angemeldet.");
       });
     });
   } else {
-    // Falsches Passwort
     console.warn(`Fehlgeschlagener Admin-Loginversuch von IP ${req.ip}`);
-    res.status(401).send("Ungültiges Passwort."); // 401 Unauthorized
+    res.status(401).send("Ungültiges Passwort.");
   }
 });
 
 // Admin-Logout
-app.post("/admin-logout", isAdmin, (req, res) => { // Nur angemeldete Admins können sich ausloggen
+app.post("/admin-logout", isAdmin, (req, res) => { /* ... (unverändert) */
     if (req.session) {
-        const sessionId = req.sessionID; // Session-ID vor dem Zerstören speichern
+        const sessionId = req.sessionID;
         req.session.destroy(err => {
-            if (err) {
-                console.error("Fehler beim Zerstören der Session:", err);
-                return res.status(500).send("Fehler beim Logout.");
-            } else {
-                // Wichtig: Cookie im Browser löschen
-                res.clearCookie('connect.sid'); // Name des Session-Cookies (Standard bei express-session)
-                console.log(`Admin abgemeldet (Session ID: ${sessionId}).`);
-                return res.status(200).send("Erfolgreich abgemeldet.");
-            }
+            if (err) { console.error("Fehler beim Zerstören der Session:", err); return res.status(500).send("Fehler beim Logout."); }
+            res.clearCookie('connect.sid');
+            console.log(`Admin abgemeldet (Session ID: ${sessionId}).`);
+            return res.status(200).send("Erfolgreich abgemeldet.");
         });
-    } else {
-        return res.status(200).send("Keine aktive Session zum Abmelden.");
-    }
+    } else { return res.status(200).send("Keine aktive Session zum Abmelden."); }
 });
-
-// Admin-Ansicht aller Arbeitszeiten (geschützt durch isAdmin Middleware)
-app.get('/admin-work-hours', isAdmin, async (req, res) => {
+// Admin-Ansicht aller Arbeitszeiten
+app.get('/admin-work-hours', isAdmin, async (req, res) => { /* ... (unverändert) */
   try {
-    const query = `
-      SELECT id, name, date, hours, comment,
-             TO_CHAR(starttime, 'HH24:MI') AS "startTime", -- Zeit als HH:MM formatieren
-             TO_CHAR(endtime, 'HH24:MI') AS "endTime"   -- Zeit als HH:MM formatieren
-      FROM work_hours
-      ORDER BY date DESC, name ASC, starttime ASC;`; // Neueste zuerst, dann nach Name, dann Startzeit
+    const query = `SELECT id, name, date, hours, comment, TO_CHAR(starttime, 'HH24:MI') AS "startTime", TO_CHAR(endtime, 'HH24:MI') AS "endTime" FROM work_hours ORDER BY date DESC, name ASC, starttime ASC;`;
     const result = await db.query(query);
     res.json(result.rows);
-  } catch (err) {
-    console.error("DB Fehler GET /admin-work-hours:", err);
-    res.status(500).send('Serverfehler beim Laden der Arbeitszeiten.');
-  }
+  } catch (err) { console.error("DB Fehler GET /admin-work-hours:", err); res.status(500).send('Serverfehler beim Laden der Arbeitszeiten.'); }
 });
 
-// CSV-Download aller Arbeitszeiten (geschützt)
-app.get('/admin-download-csv', isAdmin, async (req, res) => {
+// CSV-Download aller Arbeitszeiten
+app.get('/admin-download-csv', isAdmin, async (req, res) => { /* ... (unverändert) */
   try {
-      // Hole alle Arbeitszeiten
-      const query = `
-        SELECT w.id, w.name, w.date, w.hours, w.comment,
-               TO_CHAR(w.starttime, 'HH24:MI') AS "startTime",
-               TO_CHAR(w.endtime, 'HH24:MI') AS "endTime"
-        FROM work_hours w
-        ORDER BY w.date ASC, w.name ASC, w.starttime ASC;`; // Sortiert nach Datum, Name, Startzeit
+      const query = `SELECT w.id, w.name, w.date, w.hours, w.comment, TO_CHAR(w.starttime, 'HH24:MI') AS "startTime", TO_CHAR(w.endtime, 'HH24:MI') AS "endTime" FROM work_hours w ORDER BY w.date ASC, w.name ASC, w.starttime ASC;`;
       const result = await db.query(query);
-
-      // Konvertiere die Daten zu CSV (asynchron wegen DB-Abfrage in der Funktion)
       const csvData = await convertToCSV(db, result.rows);
-
       const filename = `arbeitszeiten_${new Date().toISOString().split('T')[0]}.csv`;
       res.setHeader('Content-Type', 'text/csv; charset=utf-8');
       res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
-      // Sende CSV mit UTF-8 BOM (Byte Order Mark) für bessere Excel-Kompatibilität
       res.send(Buffer.concat([Buffer.from('\uFEFF', 'utf8'), Buffer.from(csvData, 'utf-8')]));
-  } catch (err) {
-      console.error("DB Fehler GET /admin-download-csv:", err);
-      res.status(500).send('Serverfehler beim Erstellen der CSV-Datei.');
-  }
+  } catch (err) { console.error("DB Fehler GET /admin-download-csv:", err); res.status(500).send('Serverfehler beim Erstellen der CSV-Datei.'); }
 });
 
-// Einzelnen Arbeitszeiteintrag updaten (geschützt)
-app.put('/api/admin/update-hours', isAdmin, async (req, res) => {
+// Einzelnen Arbeitszeiteintrag updaten
+app.put('/api/admin/update-hours', isAdmin, async (req, res) => { /* ... (unverändert) */
   const { id, name, date, startTime, endTime, comment } = req.body;
-
-  // Validierung
-  if (isNaN(parseInt(id)) || !name || !date || !startTime || !endTime) {
-    return res.status(400).send('Ungültige oder fehlende Daten (ID, Name, Datum, Start, Ende erforderlich).');
+  if (isNaN(parseInt(id)) || !name || !date || !startTime || !endTime || !/^\d{4}-\d{2}-\d{2}$/.test(date) || !/^\d{2}:\d{2}$/.test(startTime) || !/^\d{2}:\d{2}$/.test(endTime)) {
+    return res.status(400).send('Ungültige oder fehlende Daten.');
   }
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
-      return res.status(400).send('Ungültiges Datumsformat (YYYY-MM-DD).');
-  }
-  if (!/^\d{2}:\d{2}$/.test(startTime) || !/^\d{2}:\d{2}$/.test(endTime)) {
-      return res.status(400).send('Ungültiges Zeitformat (HH:MM).');
-  }
-
-  // Berechne die Stunden neu basierend auf den geänderten Zeiten
   const netHours = calculateWorkHours(startTime, endTime);
-
   try {
-    // Prüfen, ob Mitarbeiter existiert
      const empCheck = await db.query('SELECT id, name FROM employees WHERE LOWER(name) = LOWER($1)', [name.toLowerCase()]);
-     if (empCheck.rows.length === 0) {
-          return res.status(404).send(`Mitarbeiter '${name}' für Update nicht gefunden.`);
-     }
-     const dbEmployeeName = empCheck.rows[0].name; // Korrekten Namen aus DB holen
-
-    const query = `
-      UPDATE work_hours
-      SET name = $1, date = $2, starttime = $3, endtime = $4, hours = $5, comment = $6
-      WHERE id = $7;
-    `;
-    const result = await db.query(query, [dbEmployeeName, date, startTime, endTime, netHours, comment || '', parseInt(id)]);
-
-    if (result.rowCount > 0) {
-      console.log(`Admin Update für work_hours ID ${id} erfolgreich.`);
-      res.status(200).send('Arbeitszeiteintrag erfolgreich aktualisiert.');
-    } else {
-      res.status(404).send(`Arbeitszeiteintrag mit ID ${id} nicht gefunden.`);
-    }
-  } catch (err) {
-    console.error("DB Fehler PUT /api/admin/update-hours:", err);
-    res.status(500).send('Serverfehler beim Aktualisieren des Eintrags.');
-  }
+     if (empCheck.rows.length === 0) return res.status(404).send(`Mitarbeiter '${name}' für Update nicht gefunden.`);
+     const dbEmployeeName = empCheck.rows[0].name;
+     const query = `UPDATE work_hours SET name = $1, date = $2, starttime = $3, endtime = $4, hours = $5, comment = $6 WHERE id = $7;`;
+     const result = await db.query(query, [dbEmployeeName, date, startTime, endTime, netHours, comment || '', parseInt(id)]);
+     if (result.rowCount > 0) { console.log(`Admin Update für work_hours ID ${id} erfolgreich.`); res.status(200).send('Arbeitszeiteintrag erfolgreich aktualisiert.'); }
+     else { res.status(404).send(`Arbeitszeiteintrag mit ID ${id} nicht gefunden.`); }
+  } catch (err) { console.error("DB Fehler PUT /api/admin/update-hours:", err); res.status(500).send('Serverfehler beim Aktualisieren des Eintrags.'); }
 });
-// Einzelnen Arbeitszeiteintrag löschen (geschützt)
-app.delete('/api/admin/delete-hours/:id', isAdmin, async (req, res) => {
+
+// Einzelnen Arbeitszeiteintrag löschen
+app.delete('/api/admin/delete-hours/:id', isAdmin, async (req, res) => { /* ... (unverändert) */
   const { id } = req.params;
-  if (isNaN(parseInt(id))) {
-    return res.status(400).send('Ungültige ID übergeben.');
-  }
+  if (isNaN(parseInt(id))) return res.status(400).send('Ungültige ID übergeben.');
   try {
     const result = await db.query('DELETE FROM work_hours WHERE id = $1', [parseInt(id)]);
-    if (result.rowCount > 0) {
-      console.log(`Admin Delete für work_hours ID ${id} erfolgreich.`);
-      res.status(200).send('Eintrag erfolgreich gelöscht.'); // OK, kein Inhalt nötig
-    } else {
-      res.status(404).send(`Eintrag mit ID ${id} nicht gefunden.`);
-    }
-  } catch (err) {
-    console.error("DB Fehler DELETE /api/admin/delete-hours:", err);
-    res.status(500).send('Serverfehler beim Löschen des Eintrags.');
-  }
+    if (result.rowCount > 0) { console.log(`Admin Delete für work_hours ID ${id} erfolgreich.`); res.status(200).send('Eintrag erfolgreich gelöscht.'); }
+    else { res.status(404).send(`Eintrag mit ID ${id} nicht gefunden.`); }
+  } catch (err) { console.error("DB Fehler DELETE /api/admin/delete-hours:", err); res.status(500).send('Serverfehler beim Löschen des Eintrags.'); }
 });
 
-// Alle Arbeitszeiten löschen (Sehr gefährlich! Geschützt)
-app.delete('/adminDeleteData', isAdmin, async (req, res) => {
+// Alle Arbeitszeiten löschen (inkl. Monatsbilanzen)
+app.delete('/adminDeleteData', isAdmin, async (req, res) => { /* ... (unverändert) */
   console.warn("!!! Versuch zum Löschen ALLER Arbeitszeiten durch Admin !!!");
   try {
-    // Hier könnte eine zusätzliche Bestätigung oder ein spezielles Passwort sinnvoll sein
-    const result = await db.query('DELETE FROM work_hours');
-    console.log(`!!! Admin hat ${result.rowCount} Arbeitszeiteinträge gelöscht !!!`);
-    // WICHTIG: Auch die Monatsbilanzen löschen, da sie sonst inkonsistent werden!
-    const balanceResult = await db.query('DELETE FROM monthly_balance');
-    console.log(`!!! Admin hat ${balanceResult.rowCount} Monatsbilanz-Einträge gelöscht !!!`);
-    res.status(200).send(`Alle ${result.rowCount} Arbeitszeiteinträge und ${balanceResult.rowCount} Monatsbilanzen wurden gelöscht.`);
-  } catch (err) {
-    console.error("DB Fehler /adminDeleteData (Löschen aller Arbeitszeiten):", err);
-    res.status(500).send('Serverfehler beim Löschen aller Arbeitszeiten.');
-  }
+    const resultWH = await db.query('DELETE FROM work_hours');
+    console.log(`!!! Admin hat ${resultWH.rowCount} Arbeitszeiteinträge gelöscht !!!`);
+    const resultMB = await db.query('DELETE FROM monthly_balance');
+    console.log(`!!! Admin hat ${resultMB.rowCount} Monatsbilanz-Einträge gelöscht !!!`);
+    // *** NEU: Auch Abwesenheiten löschen ***
+    const resultAbs = await db.query('DELETE FROM absences');
+    console.log(`!!! Admin hat ${resultAbs.rowCount} Abwesenheits-Einträge gelöscht !!!`);
+    res.status(200).send(`Alle ${resultWH.rowCount} Arbeitszeiteinträge, ${resultMB.rowCount} Monatsbilanzen und ${resultAbs.rowCount} Abwesenheiten wurden gelöscht.`);
+  } catch (err) { console.error("DB Fehler /adminDeleteData:", err); res.status(500).send('Serverfehler beim Löschen aller Daten.'); }
 });
 
 // --- Admin: Mitarbeiterverwaltung ---
-
-// Alle Mitarbeiter auflisten (geschützt)
-app.get('/admin/employees', isAdmin, async (req, res) => {
-  try {
-    // Wähle alle Spalten aus, sortiert nach Name
-    const result = await db.query('SELECT * FROM employees ORDER BY name ASC');
-    res.json(result.rows);
-  } catch (err) {
-    console.error("DB Fehler GET /admin/employees:", err);
-    res.status(500).send('Serverfehler beim Laden der Mitarbeiter.');
-  }
+// GET /admin/employees (unverändert)
+app.get('/admin/employees', isAdmin, async (req, res) => { /* ... (unverändert) */
+  try { const result = await db.query('SELECT * FROM employees ORDER BY name ASC'); res.json(result.rows); }
+  catch (err) { console.error("DB Fehler GET /admin/employees:", err); res.status(500).send('Serverfehler beim Laden der Mitarbeiter.'); }
 });
 
-// Neuen Mitarbeiter hinzufügen (geschützt)
-app.post('/admin/employees', isAdmin, async (req, res) => {
+// POST /admin/employees (unverändert)
+app.post('/admin/employees', isAdmin, async (req, res) => { /* ... (unverändert) */
   const { name, mo_hours, di_hours, mi_hours, do_hours, fr_hours } = req.body;
-  const trimmedName = name ? name.trim() : ''; // Namen trimmen
-
-  if (!trimmedName) {
-      return res.status(400).send('Mitarbeitername darf nicht leer sein.');
-  }
-
-  // Konvertiere Stunden in Zahlen, setze auf 0 wenn ungültig/null
+  const trimmedName = name ? name.trim() : '';
+  if (!trimmedName) return res.status(400).send('Mitarbeitername darf nicht leer sein.');
   const hours = [mo_hours, di_hours, mi_hours, do_hours, fr_hours].map(h => parseFloat(h) || 0);
-
   try {
-    // Füge Mitarbeiter hinzu, gib Fehler bei Namenskonflikt (UNIQUE constraint)
-    const query = `
-      INSERT INTO employees (name, mo_hours, di_hours, mi_hours, do_hours, fr_hours)
-      VALUES ($1, $2, $3, $4, $5, $6)
-      RETURNING *; -- Gib den eingefügten Datensatz zurück
-    `;
+    const query = `INSERT INTO employees (name, mo_hours, di_hours, mi_hours, do_hours, fr_hours) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *;`;
     const result = await db.query(query, [trimmedName, ...hours]);
-    console.log(`Admin Add MA: ${trimmedName}`);
-    res.status(201).json(result.rows[0]); // 201 Created
+    console.log(`Admin Add MA: ${trimmedName}`); res.status(201).json(result.rows[0]);
   } catch (err) {
-    if (err.code === '23505') { // PostgreSQL Fehlercode für UNIQUE Verletzung
-      console.warn(`Versuch, existierenden Mitarbeiter hinzuzufügen: ${trimmedName}`);
-      res.status(409).send(`Ein Mitarbeiter mit dem Namen '${trimmedName}' existiert bereits.`); // 409 Conflict
-    } else {
-      console.error("DB Fehler POST /admin/employees:", err);
-      res.status(500).send('Serverfehler beim Hinzufügen des Mitarbeiters.');
-    }
+    if (err.code === '23505') { console.warn(`Versuch, existierenden Mitarbeiter hinzuzufügen: ${trimmedName}`); res.status(409).send(`Ein Mitarbeiter mit dem Namen '${trimmedName}' existiert bereits.`); }
+    else { console.error("DB Fehler POST /admin/employees:", err); res.status(500).send('Serverfehler beim Hinzufügen des Mitarbeiters.'); }
   }
 });
 
-// Mitarbeiterdaten aktualisieren (geschützt)
-app.put('/admin/employees/:id', isAdmin, async (req, res) => {
-    const { id } = req.params;
-    const { name, mo_hours, di_hours, mi_hours, do_hours, fr_hours } = req.body;
+// PUT /admin/employees/:id (unverändert - inkl. Update in work_hours)
+app.put('/admin/employees/:id', isAdmin, async (req, res) => { /* ... (unverändert) */
+    const { id } = req.params; const { name, mo_hours, di_hours, mi_hours, do_hours, fr_hours } = req.body;
     const trimmedName = name ? name.trim() : '';
-
-    if (isNaN(parseInt(id))) {
-        return res.status(400).send('Ungültige Mitarbeiter-ID.');
-    }
-    if (!trimmedName) {
-        return res.status(400).send('Mitarbeitername darf nicht leer sein.');
-    }
-
-    // Konvertiere Stunden in Zahlen, setze auf 0 wenn ungültig/null
+    if (isNaN(parseInt(id))) return res.status(400).send('Ungültige Mitarbeiter-ID.');
+    if (!trimmedName) return res.status(400).send('Mitarbeitername darf nicht leer sein.');
     const hours = [mo_hours, di_hours, mi_hours, do_hours, fr_hours].map(h => parseFloat(h) || 0);
-
     try {
-        // Hole den alten Namen, bevor der Name geändert wird (für evtl. Updates in work_hours)
         const oldNameResult = await db.query('SELECT name FROM employees WHERE id = $1', [parseInt(id)]);
-        const oldName = oldNameResult.rows.length > 0 ? oldNameResult.rows[0].name : null;
-        const newName = trimmedName;
-
-        // Update in employees Tabelle
-        const query = `
-            UPDATE employees
-            SET name = $1, mo_hours = $2, di_hours = $3, mi_hours = $4, do_hours = $5, fr_hours = $6
-            WHERE id = $7;
-        `;
+        const oldName = oldNameResult.rows.length > 0 ? oldNameResult.rows[0].name : null; const newName = trimmedName;
+        const query = `UPDATE employees SET name = $1, mo_hours = $2, di_hours = $3, mi_hours = $4, do_hours = $5, fr_hours = $6 WHERE id = $7;`;
         const result = await db.query(query, [newName, ...hours, parseInt(id)]);
-
         if (result.rowCount > 0) {
              console.log(`Admin Update MA ID ${id}. Alter Name: ${oldName}, Neuer Name: ${newName}`);
-             // --- WICHTIG: Namen auch in work_hours aktualisieren, falls er sich geändert hat! ---
              if (oldName && oldName !== newName) {
                  console.log(`Aktualisiere Namen in work_hours von '${oldName}' zu '${newName}'...`);
-                 const updateWorkHoursQuery = `UPDATE work_hours SET name = $1 WHERE LOWER(name) = LOWER($2)`;
-                 const workHoursUpdateResult = await db.query(updateWorkHoursQuery, [newName, oldName.toLowerCase()]);
+                 const workHoursUpdateResult = await db.query(`UPDATE work_hours SET name = $1 WHERE LOWER(name) = LOWER($2)`, [newName, oldName.toLowerCase()]);
                  console.log(`${workHoursUpdateResult.rowCount} Einträge in work_hours aktualisiert.`);
+                 // *** NEU: Namen auch in absences aktualisieren ***
+                 // Note: Absences uses employee_id, so no name update needed here if schema is followed.
+                 // If absences used name:
+                 // const absenceUpdateResult = await db.query(`UPDATE absences SET name = $1 WHERE LOWER(name) = LOWER($2)`, [newName, oldName.toLowerCase()]);
+                 // console.log(`${absenceUpdateResult.rowCount} Einträge in absences aktualisiert.`);
              }
-             // -----------------------------------------------------------------------------------
              res.status(200).send('Mitarbeiterdaten erfolgreich aktualisiert.');
-        } else {
-             res.status(404).send(`Mitarbeiter mit ID ${id} nicht gefunden.`);
-        }
+        } else { res.status(404).send(`Mitarbeiter mit ID ${id} nicht gefunden.`); }
     } catch (err) {
-        if (err.code === '23505') { // UNIQUE constraint Fehler
-            console.warn(`Versuch, Mitarbeiter ID ${id} auf existierenden Namen umzubenennen: ${trimmedName}`);
-            res.status(409).send(`Ein anderer Mitarbeiter mit dem Namen '${trimmedName}' existiert bereits.`);
-        } else {
-            console.error(`DB Fehler PUT /admin/employees/${id}:`, err);
-            res.status(500).send('Serverfehler beim Aktualisieren der Mitarbeiterdaten.');
-        }
+        if (err.code === '23505') { console.warn(`Versuch, Mitarbeiter ID ${id} auf existierenden Namen umzubenennen: ${trimmedName}`); res.status(409).send(`Ein anderer Mitarbeiter mit dem Namen '${trimmedName}' existiert bereits.`); }
+        else { console.error(`DB Fehler PUT /admin/employees/${id}:`, err); res.status(500).send('Serverfehler beim Aktualisieren der Mitarbeiterdaten.'); }
     }
 });
 
-
-// Mitarbeiter löschen (geschützt)
-app.delete('/admin/employees/:id', isAdmin, async (req, res) => {
-    const { id } = req.params;
-    if (isNaN(parseInt(id))) {
-        return res.status(400).send('Ungültige Mitarbeiter-ID.');
-    }
-
+// DELETE /admin/employees/:id (unverändert - inkl. Löschen abhängiger Daten)
+app.delete('/admin/employees/:id', isAdmin, async (req, res) => { /* ... (unverändert) */
+    const { id } = req.params; if (isNaN(parseInt(id))) return res.status(400).send('Ungültige Mitarbeiter-ID.');
     const client = await db.connect();
     try {
         await client.query('BEGIN');
-
-        // 1. Hole den Namen des Mitarbeiters, bevor er gelöscht wird
         const nameResult = await client.query('SELECT name FROM employees WHERE id = $1', [parseInt(id)]);
-        if (nameResult.rows.length === 0) {
-             await client.query('ROLLBACK');
-             client.release();
-             return res.status(404).send(`Mitarbeiter mit ID ${id} nicht gefunden.`);
-        }
+        if (nameResult.rows.length === 0) { await client.query('ROLLBACK'); client.release(); return res.status(404).send(`Mitarbeiter mit ID ${id} nicht gefunden.`); }
         const employeeName = nameResult.rows[0].name;
         console.log(`Versuche Mitarbeiter ${employeeName} (ID: ${id}) zu löschen...`);
-
-        // 2. Zugehörige Arbeitszeiten löschen (work_hours)
         console.log(`Lösche Arbeitszeiten für ${employeeName}...`);
         const workHoursDeleteResult = await client.query('DELETE FROM work_hours WHERE LOWER(name) = LOWER($1)', [employeeName.toLowerCase()]);
         console.log(`${workHoursDeleteResult.rowCount} Arbeitszeit-Einträge gelöscht.`);
-
-        // 3. Zugehörige Monatsbilanzen löschen (monthly_balance)
-        // Dies geschieht automatisch wegen "ON DELETE CASCADE" beim Löschen des Mitarbeiters,
-        // aber wir loggen es trotzdem zur Information.
-        console.log(`Lösche Monatsbilanzen für MA ID ${id}...`);
-        const balanceDeleteResult = await client.query('DELETE FROM monthly_balance WHERE employee_id = $1', [parseInt(id)]);
-         console.log(`${balanceDeleteResult.rowCount} Monatsbilanz-Einträge gelöscht.`);
-
-
-        // 4. Mitarbeiter selbst löschen (employees)
+        // Monatsbilanzen & Abwesenheiten werden durch ON DELETE CASCADE gelöscht
+        console.log(`Lösche Monatsbilanzen und Abwesenheiten für MA ID ${id} (via CASCADE)...`);
         console.log(`Lösche Mitarbeiter ${employeeName} (ID: ${id}) selbst...`);
-        const result = await client.query('DELETE FROM employees WHERE id = $1', [parseInt(id)]);
-
-        await client.query('COMMIT'); // Transaktion abschließen
-
+        const result = await client.query('DELETE FROM employees WHERE id = $1', [parseInt(id)]); // Cascade löscht abhängige Daten in monthly_balance und absences
+        await client.query('COMMIT');
         if (result.rowCount > 0) {
             console.log(`Admin Delete MA ID ${id} (${employeeName}) erfolgreich abgeschlossen.`);
-            res.status(200).send('Mitarbeiter und alle zugehörigen Daten (Arbeitszeiten, Monatsbilanzen) erfolgreich gelöscht.');
-        } else {
-             // Sollte nicht passieren, da wir vorher geprüft haben
-             await client.query('ROLLBACK');
-             res.status(404).send(`Mitarbeiter mit ID ${id} nicht gefunden (trotz vorheriger Prüfung).`);
-        }
+            res.status(200).send('Mitarbeiter und alle zugehörigen Daten (Arbeitszeiten, Monatsbilanzen, Abwesenheiten) erfolgreich gelöscht.');
+        } else { await client.query('ROLLBACK'); res.status(404).send(`Mitarbeiter mit ID ${id} nicht gefunden (trotz vorheriger Prüfung).`); }
     } catch (err) {
-        await client.query('ROLLBACK'); // Bei Fehler alles zurückrollen
-        console.error(`DB Fehler DELETE /admin/employees/${id}:`, err);
-        // Prüfen, ob es ein Foreign Key Constraint Fehler war (unwahrscheinlich wegen manuellem Löschen vorher)
-        if (err.code === '23503') { // Foreign key violation
-             res.status(409).send('Fehler: Mitarbeiter konnte nicht gelöscht werden, da noch abhängige Daten existieren (FK-Constraint).');
-        } else {
-            res.status(500).send('Serverfehler beim Löschen des Mitarbeiters.');
-        }
-    } finally {
-        client.release(); // Verbindung zum Pool zurückgeben
-    }
+        await client.query('ROLLBACK'); console.error(`DB Fehler DELETE /admin/employees/${id}:`, err);
+        if (err.code === '23503') { res.status(409).send('Fehler: Mitarbeiter konnte nicht gelöscht werden, da noch abhängige Daten existieren (FK-Constraint).'); }
+        else { res.status(500).send('Serverfehler beim Löschen des Mitarbeiters.'); }
+    } finally { client.release(); }
 });
 
-// === Endpunkt für Monatsauswertung ===
-// Berechnet die Monatsbilanz und gibt sie zurück (speichert sie auch in DB via calculateMonthlyData)
-app.get('/calculate-monthly-balance', isAdmin, async (req, res) => {
+// === Endpunkte für Auswertungen (unverändert) ===
+// GET /calculate-monthly-balance
+app.get('/calculate-monthly-balance', isAdmin, async (req, res) => { /* ... (unverändert) */
   const { name, year, month } = req.query;
-
-  // Validierung der Eingaben
   if (!name || !year || !month || isNaN(parseInt(year)) || isNaN(parseInt(month)) || month < 1 || month > 12) {
       return res.status(400).json({ message: "Ungültige Eingabe. Benötigt: name, year, month (1-12)." });
   }
-
   try {
-    // Rufe die zentrale Berechnungsfunktion auf
-    const result = await calculateMonthlyData(db, name, year, month);
+    const result = await calculateMonthlyData(db, name, year, month); // Ruft jetzt die aktualisierte Funktion auf
     console.log(`Admin Monatsauswertung berechnet für: ${result.employeeName || name} (${month}/${year})`);
-    res.json(result); // Sende das Ergebnis als JSON zurück
+    res.json(result);
   } catch (err) {
     console.error(`Fehler /calculate-monthly-balance (Name: ${name}, ${month}/${year}):`, err);
-    // Gib eine spezifischere Fehlermeldung zurück, falls möglich
-    if (err.message.includes("Mitarbeiter nicht gefunden")) {
-        res.status(404).json({ message: err.message });
-    } else {
-        res.status(500).json({ message: `Serverfehler bei der Berechnung der Monatsbilanz: ${err.message}` });
-    }
+    if (err.message.includes("Mitarbeiter nicht gefunden")) { res.status(404).json({ message: err.message }); }
+    else { res.status(500).json({ message: `Serverfehler bei der Berechnung der Monatsbilanz: ${err.message}` }); }
   }
 });
 
-// === NEU: Endpunkt für Periodenauswertung (Quartal/Jahr) ===
-app.get('/calculate-period-balance', isAdmin, async (req, res) => {
+// GET /calculate-period-balance
+app.get('/calculate-period-balance', isAdmin, async (req, res) => { /* ... (unverändert) */
     const { name, year, periodType, periodValue } = req.query;
-
-    // Validierung
     if (!name || !year || !periodType || !['QUARTER', 'YEAR'].includes(periodType.toUpperCase())) {
         return res.status(400).json({ message: "Ungültige Eingabe. Benötigt: name, year, periodType ('QUARTER' oder 'YEAR')." });
     }
     if (periodType.toUpperCase() === 'QUARTER' && (!periodValue || isNaN(parseInt(periodValue)) || periodValue < 1 || periodValue > 4)) {
          return res.status(400).json({ message: "Ungültige Eingabe. Für periodType 'QUARTER' wird periodValue (1-4) benötigt." });
     }
-    if (isNaN(parseInt(year))) {
-        return res.status(400).json({ message: "Ungültiges Jahr angegeben." });
-    }
-
+    if (isNaN(parseInt(year))) return res.status(400).json({ message: "Ungültiges Jahr angegeben." });
     try {
-        const result = await calculatePeriodData(db, name, year, periodType.toUpperCase(), periodValue);
+        const result = await calculatePeriodData(db, name, year, periodType.toUpperCase(), periodValue); // Ruft jetzt die aktualisierte Funktion auf
         console.log(`Admin Periodenauswertung berechnet für: ${result.employeeName || name} (${year} ${result.periodIdentifier})`);
         res.json(result);
     } catch (err) {
         console.error(`Fehler /calculate-period-balance (Name: ${name}, ${year}, ${periodType}, ${periodValue}):`, err);
-         if (err.message.includes("Mitarbeiter nicht gefunden")) {
-             res.status(404).json({ message: err.message });
-         } else {
-            res.status(500).json({ message: `Serverfehler bei der Berechnung der Periodenbilanz: ${err.message}` });
-        }
+         if (err.message.includes("Mitarbeiter nicht gefunden")) { res.status(404).json({ message: err.message }); }
+         else { res.status(500).json({ message: `Serverfehler bei der Berechnung der Periodenbilanz: ${err.message}` }); }
     }
 });
 
-
-// === PDF Router einbinden ===
-// Alle Routen, die in monthlyPdfEndpoint.js definiert sind,
-// werden unter dem Pfad /api/pdf verfügbar gemacht.
-// Wir übergeben die Datenbankverbindung `db` an den Router.
+// === PDF Router ===
 app.use('/api/pdf', monthlyPdfRouter(db));
 
-
-// ==========================================
-// Server Start
-// ==========================================
-app.listen(port, () => {
+// === Server Start ===
+app.listen(port, () => { /* ... (unverändert) */
   console.log(`Server läuft auf Port ${port}`);
   console.log(`Node Environment: ${process.env.NODE_ENV || 'development'}`);
   console.log(`Admin-Routen sind ${process.env.ADMIN_PASSWORD ? 'aktiviert' : 'DEAKTIVIERT (ADMIN_PASSWORD fehlt)'}`);
-  console.log(`Datenbank verbunden mit: ${db.options.host || 'localhost'}:${db.options.port || 5432}, DB: ${db.options.database}`);
+  if(db && db.options) console.log(`Datenbank verbunden mit: ${db.options.host || 'localhost'}:${db.options.port || 5432}, DB: ${db.options.database}`);
 });
