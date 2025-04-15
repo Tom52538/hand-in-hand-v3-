@@ -25,7 +25,8 @@
     }
     input[readonly] { background-color: #e9e9e9; cursor: default; }
     .tabs {
-      list-style: none; padding: 0; margin: 0 0 1rem 0; display: flex; flex-wrap: wrap; border-bottom: 1px solid #ccc;
+      list-style: none; padding: 0; margin: 0 0 1rem 0;
+      display: flex; flex-wrap: wrap; border-bottom: 1px solid #ccc;
     }
     .tabs li {
       padding: 10px 20px; cursor: pointer;
@@ -38,8 +39,12 @@
       border-bottom: 1px solid #fff;
     }
     .tab-content {
-      border: 1px solid #ccc; padding: 20px; background: #fff; border-radius: 0 0 4px 4px; border-top: none; margin-bottom: 2rem;
+      border: 1px solid #ccc; padding: 20px; background: #fff;
+      border-radius: 0 0 4px 4px; border-top: none; margin-bottom: 2rem;
     }
+    /* Styles für Radio-Buttons nebeneinander */
+    .period-type-selector label { margin-right: 15px; }
+    .period-type-selector input[type="radio"] { margin-right: 5px; }
   </style>
 </head>
 <body>
@@ -56,6 +61,7 @@
       <div>
         <button type="button" id="workTimeBtn" disabled>Arbeitsbeginn buchen</button>
       </div>
+
 
       <div id="bookingDetails" class="booking-details">
         <div class="booking-row">
@@ -97,8 +103,7 @@
       <ul class="tabs">
         <li data-tab="workhours" class="active">Arbeitszeiten</li>
         <li data-tab="employees">Mitarbeiter</li>
-        <li data-tab="monthly">Monatsauswertung</li>
-      </ul>
+        <li data-tab="reports">Auswertungen</li> </ul>
 
       <div id="tab-workhours" class="tab-content">
         <h2>Arbeitszeiten verwalten</h2>
@@ -222,10 +227,7 @@
         </div>
       </div>
 
-      <div id="tab-monthly" class="tab-content hidden">
-        <h2>Monatsauswertung</h2>
-        <form id="monthlyBalanceForm">
-          <div>
+      <div id="tab-reports" class="tab-content hidden"> <h2>Auswertungen</h2> <form id="balanceForm"> <div>
             <label for="balanceName">Mitarbeitername:</label>
             <select id="balanceName" name="balanceName" required>
               <option value="">Bitte auswählen</option>
@@ -235,20 +237,32 @@
             <label for="balanceYear">Jahr:</label>
             <input type="number" id="balanceYear" name="balanceYear" required>
           </div>
-          <div>
-            <label for="balanceMonth">Monat (1-12):</label>
-            <input type="number" id="balanceMonth" name="balanceMonth" required min="1" max="12">
+          <div class="period-type-selector">
+              <label>Zeitraum:</label>
+              <input type="radio" id="periodTypeMonth" name="periodType" value="MONTH" checked>
+              <label for="periodTypeMonth">Monat</label>
+              <input type="radio" id="periodTypeQuarter" name="periodType" value="QUARTER">
+              <label for="periodTypeQuarter">Quartal</label>
+              <input type="radio" id="periodTypeYear" name="periodType" value="YEAR">
+              <label for="periodTypeYear">Jahr</label>
           </div>
-          <button type="submit">Monatsabschluss berechnen</button>
-        </form>
+          <div id="monthSelectDiv">
+              <label for="balanceMonth">Monat (1-12):</label>
+              <input type="number" id="balanceMonth" name="balanceMonth" required min="1" max="12">
+          </div>
+          <div id="quarterSelectDiv" class="hidden">
+              <label for="balanceQuarter">Quartal:</label>
+              <select id="balanceQuarter" name="balanceQuarter" required>
+                <option value="1">Q1 (Jan-Mrz)</option>
+                <option value="2">Q2 (Apr-Jun)</option>
+                <option value="3">Q3 (Jul-Sep)</option>
+                <option value="4">Q4 (Okt-Dez)</option>
+              </select>
+          </div>
+          <button type="submit">Auswertung berechnen</button> </form>
         <br>
-        <button id="downloadPdfBtn">PDF herunterladen</button>
-        <div id="monthlyBalanceResult" style="margin-top: 1rem;"></div>
-      </div>
-    </div>
-  </div>
-
-  <script>
+        <button id="downloadPdfBtn" disabled>PDF herunterladen</button>
+        <div id="balanceResult" style="margin-top: 1rem;"></div> </div> </div> </div> <script>
     // ==== Globale Variablen ====
     let currentWorkEntryId = null;
     // ==== DOM-Referenzen ====
@@ -260,14 +274,29 @@
     const summaryHoursDiv = document.getElementById('summaryHours');
     const dailyTotalHoursSpan = document.getElementById('dailyTotalHours');
     const monthlyTotalHoursSpan = document.getElementById('monthlyTotalHours');
+    // NEU: DOM Referenzen für Auswertungsformular
+    const balanceForm = document.getElementById('balanceForm');
+    const balanceNameSelect = document.getElementById('balanceName');
+    const balanceYearInput = document.getElementById('balanceYear');
+    const periodTypeRadios = document.querySelectorAll('input[name="periodType"]');
+    const monthSelectDiv = document.getElementById('monthSelectDiv');
+    const balanceMonthInput = document.getElementById('balanceMonth');
+    const quarterSelectDiv = document.getElementById('quarterSelectDiv');
+    const balanceQuarterSelect = document.getElementById('balanceQuarter');
+    const downloadPdfBtn = document.getElementById('downloadPdfBtn');
+    const balanceResultDiv = document.getElementById('balanceResult');
+
 
     // ==== Initialisierung ====
     document.addEventListener('DOMContentLoaded', () => {
       resetWorkTimeForm();
       loadEmployeeOptions();
       setupEventListeners();
-      // Setzt das aktuelle Jahr in das Jahresfeld der Monatsauswertung
-      document.getElementById('balanceYear').value = new Date().getFullYear();
+      // Setzt das aktuelle Jahr und den aktuellen Monat in die Auswertungsfelder
+      const now = new Date();
+      balanceYearInput.value = now.getFullYear();
+      balanceMonthInput.value = now.getMonth() + 1; // Monate sind 0-basiert
+      handlePeriodTypeChange(); // Initialen Zustand (Monat) herstellen
     });
 
     function setupEventListeners() {
@@ -280,11 +309,16 @@
       document.getElementById('adminDownloadCsv').addEventListener('click', downloadAdminCsv);
       document.getElementById('adminDeleteData').addEventListener('click', deleteAllWorkHours);
       document.getElementById('addEmployeeForm').addEventListener('submit', handleAddEmployee);
-      document.getElementById('monthlyBalanceForm').addEventListener('submit', handleCalculateMonthlyBalance);
-      document.getElementById('downloadPdfBtn').addEventListener('click', handleDownloadPdf); // Listener bleibt gleich
+      // NEU: Listener für das geänderte Auswertungsformular
+      balanceForm.addEventListener('submit', handleCalculateBalance);
+      // NEU: Listener für die Auswahl des Zeitraum-Typs
+      periodTypeRadios.forEach(radio => {
+          radio.addEventListener('change', handlePeriodTypeChange);
+      });
+      downloadPdfBtn.addEventListener('click', handleDownloadPdf); // Listener bleibt gleich, Funktion wird angepasst
     }
 
-    // ==== Funktionen Zeiterfassung (Benutzer) ====
+    // ==== Funktionen Zeiterfassung (Benutzer - unverändert) ====
     async function loadEmployeeOptions() {
       try {
         const response = await fetch('/employees');
@@ -292,6 +326,7 @@
           throw new Error(`Mitarbeiterliste konnte nicht geladen werden (Status: ${response.status}).`);
         }
         const employees = await response.json();
+        // Mitarbeiter-Dropdown (Hauptformular) befüllen
         employeeSelect.innerHTML = '<option value="">Bitte auswählen</option>';
         employees.forEach(emp => {
           const option = document.createElement('option');
@@ -299,21 +334,21 @@
           option.textContent = emp.name;
           employeeSelect.appendChild(option);
         });
-
-        // Auch Monatsauswertungs-Dropdown befüllen
-        const monthlySelect = document.getElementById('balanceName');
-        if (monthlySelect) {
-          monthlySelect.innerHTML = '<option value="">Bitte auswählen</option>';
+        // Mitarbeiter-Dropdown (Auswertungsformular) befüllen
+        const balanceSelect = balanceNameSelect; // Verwende Referenz
+        if (balanceSelect) {
+          balanceSelect.innerHTML = '<option value="">Bitte auswählen</option>';
           employees.forEach(emp => {
             const opt = document.createElement('option');
             opt.value = emp.name;
             opt.textContent = emp.name;
-            monthlySelect.appendChild(opt);
+            balanceSelect.appendChild(opt);
           });
         }
       } catch (err) {
         console.error("Fehler beim Laden der Mitarbeiteroptionen:", err);
         employeeSelect.innerHTML = '<option value="">Fehler</option>';
+        if(balanceNameSelect) balanceNameSelect.innerHTML = '<option value="">Fehler</option>';
         alert("❌ Mitarbeiterliste Ladefehler: " + err.message);
       }
     }
@@ -341,7 +376,6 @@
           workTimeBtn.disabled = false;
           if (data.startDate) {
             try {
-              // Stelle sicher, dass das Datum korrekt als UTC interpretiert wird
               const dateObj = new Date(data.startDate + 'T00:00:00Z');
               displayDateInput.value = dateObj.toLocaleDateString('de-DE', { timeZone: 'UTC' });
             } catch(e) {
@@ -387,8 +421,7 @@
             displayEndTimeInput.value = '';
             summaryHoursDiv.classList.add('hidden');
             currentWorkEntryId = result.id;
-            workTimeBtn.textContent = 'Arbeitsende buchen';
-            workTimeBtn.style.backgroundColor = 'orange';
+            // checkNextBookingAction wird im finally aufgerufen
           } else {
             const result = await response.json().catch(() => ({ message: 'Unbekannter Fehler oder keine JSON-Antwort.' }));
             alert("❌ Fehler beim Buchen des Arbeitsbeginns: " + (result.message || response.statusText));
@@ -416,10 +449,9 @@
           if (response.ok) {
             alert("✅ Arbeitsende erfolgreich gebucht.");
             displayEndTimeInput.value = time + " Uhr";
-            workTimeBtn.textContent = 'Arbeitsbeginn buchen';
-            workTimeBtn.style.backgroundColor = '';
             currentWorkEntryId = null; // Reset ID
             displaySummaryHours(name, date); // Zusammenfassung anzeigen
+            // checkNextBookingAction wird im finally aufgerufen
           } else {
             const result = await response.json().catch(() => ({ message: 'Unbekannter Fehler oder keine JSON-Antwort.' }));
             alert("❌ Fehler beim Buchen des Arbeitsendes: " + (result.message || response.statusText));
@@ -443,8 +475,7 @@
         // Datum im YYYY-MM-DD Format für den Request sicherstellen
         let queryDate = dayDate;
         if (!/^\d{4}-\d{2}-\d{2}$/.test(dayDate)) {
-            // Versuch, aus einem lokalen Format zu konvertieren (kann fehleranfällig sein)
-            try {
+            try { // Versuch, aus einem lokalen Format zu konvertieren (DD.MM.YYYY)
                 const dateParts = dayDate.split('.');
                 queryDate = `${dateParts[2]}-${dateParts[1].padStart(2,'0')}-${dateParts[0].padStart(2,'0')}`;
             } catch(e){
@@ -485,7 +516,7 @@
       currentWorkEntryId = null; // Auch hier die ID zurücksetzen
     }
 
-    // ==== Admin-Funktionen ====
+    // ==== Admin-Funktionen (Login, Tab-Switch, Arbeitszeiten, Mitarbeiter - größtenteils unverändert)====
     async function handleAdminLogin(e) {
       e.preventDefault();
       const password = document.getElementById("adminPassword").value;
@@ -501,8 +532,8 @@
           document.getElementById("adminPassword").value = ""; // Passwortfeld leeren
           document.getElementById("adminTabs").classList.remove("hidden");
           document.getElementById("adminLoginForm").classList.add("hidden");
-          loadAdminWorkHours(); // Initiales Laden der Arbeitszeiten
-          loadEmployees(); // Initiales Laden der Mitarbeiter
+          // Initiales Laden für den ersten Tab (Arbeitszeiten)
+          loadAdminWorkHours();
         } else {
           const result = await response.text();
           alert("❌ Login fehlgeschlagen: " + response.status + " – " + result);
@@ -518,29 +549,27 @@
       // Alle Tabs deselektieren und Inhalte verstecken
       document.querySelectorAll(".tabs li").forEach(t => t.classList.remove("active"));
       document.querySelectorAll(".tab-content").forEach(tc => tc.classList.add("hidden"));
-
       // Geklickten Tab aktivieren und zugehörigen Inhalt anzeigen
       clickedTab.classList.add("active");
       const targetContentId = "tab-" + clickedTab.getAttribute("data-tab");
       const targetContent = document.getElementById(targetContentId);
       if (targetContent) {
         targetContent.classList.remove("hidden");
-        // Lade spezifische Daten, wenn Tab gewechselt wird (optional, je nach Bedarf)
+        // Lade spezifische Daten, wenn Tab gewechselt wird
         if (targetContentId === 'tab-workhours') loadAdminWorkHours();
         if (targetContentId === 'tab-employees') loadEmployees();
-        if (targetContentId === 'tab-monthly') loadMonthlyEmployeeOptions(); // Stellt sicher, dass Dropdown aktuell ist
+        if (targetContentId === 'tab-reports') loadEmployeeOptionsForReports(); // Lädt Optionen für Auswertungs-Tab
       }
     }
 
-     function loadMonthlyEmployeeOptions() {
-        // Diese Funktion kann leer bleiben oder zum erneuten Laden der Optionen verwendet werden,
-        // falls sich die Mitarbeiterliste ändern kann, während der Benutzer angemeldet ist.
-        // Da loadEmployeeOptions() bereits die Dropdowns (auch für Monat) befüllt,
-        // ist hier eventuell keine Aktion nötig, es sei denn, ein explizites Neuladen ist gewünscht.
-        // console.log("Monats-Mitarbeiteroptionen geprüft/geladen.");
+     function loadEmployeeOptionsForReports() {
+        // Stellt sicher, dass die Mitarbeiterliste im Auswertungs-Dropdown aktuell ist.
+        // Da loadEmployeeOptions() beide Dropdowns befüllt, reicht evtl. ein Aufruf beim Login.
+        // Diese Funktion kann zur Sicherheit hier aufgerufen werden, falls der Tab gewechselt wird.
+        console.log("Mitarbeiteroptionen für Auswertungen geprüft/geladen.");
+        // Optional: loadEmployeeOptions(); // Erneutes Laden erzwingen, falls nötig
      }
-
-    async function loadAdminWorkHours() {
+          async function loadAdminWorkHours() {
       const tbody = document.querySelector("#workHoursTable tbody");
       tbody.innerHTML = "<tr><td colspan='7'>Lade Daten...</td></tr>"; // Ladeanzeige
       try {
@@ -618,7 +647,6 @@
         endTime: document.getElementById("editEndTime").value,
         comment: document.getElementById("editComment").value
       };
-
       // Einfache Validierung
       if (!data.name || !data.date || !data.startTime || !data.endTime) {
         alert("Bitte füllen Sie alle erforderlichen Felder aus (Name, Datum, Startzeit, Endzeit).");
@@ -648,7 +676,6 @@
 
     async function deleteEntry(id) {
       if (!confirm(`Soll der Arbeitszeiteintrag mit der ID ${id} wirklich gelöscht werden?`)) return;
-
       try {
         const response = await fetch(`/api/admin/delete-hours/${id}`, {
           method: "DELETE",
@@ -673,8 +700,7 @@
     }
 
     async function deleteAllWorkHours() {
-      if (!confirm('WARNUNG!\n\nSind Sie sicher, dass Sie ALLE erfassten Arbeitszeiten unwiderruflich löschen möchten? Diese Aktion kann nicht rückgängig gemacht werden!')) return;
-
+      if (!confirm('WARNUNG!\n\nSind Sie sicher, dass Sie ALLE erfassten Arbeitszeiten unwiderruflich löschen möchten? Diese Aktion kann nicht rückgängig gemacht werden und löscht auch die Monatsbilanzen!')) return;
       try {
         const response = await fetch('/adminDeleteData', {
           method: 'DELETE',
@@ -682,8 +708,9 @@
         });
         const result = await response.text();
         if (response.ok) {
-          alert('✅ Alle Arbeitszeiten wurden erfolgreich gelöscht.');
+          alert('✅ Alle Arbeitszeiten und Monatsbilanzen wurden erfolgreich gelöscht.');
           loadAdminWorkHours(); // Tabelle neu laden (sollte jetzt leer sein)
+          balanceResultDiv.innerHTML = ''; // Auch das Auswertungsergebnis löschen
         } else {
           alert(`❌ Fehler beim Löschen aller Arbeitszeiten (${response.status}): ${result}`);
         }
@@ -693,7 +720,7 @@
       }
     }
 
-    // ==== Mitarbeiterverwaltung ====
+    // ==== Mitarbeiterverwaltung (unverändert) ====
     async function loadEmployees() {
         const list = document.getElementById("employeeList");
         list.innerHTML = "<li>Lade Mitarbeiter...</li>"; // Ladeanzeige
@@ -734,7 +761,6 @@
         do_hours: parseFloat(form.do_hours.value) || 0,
         fr_hours: parseFloat(form.fr_hours.value) || 0
       };
-
       if (!data.name) {
         alert("Bitte geben Sie einen Namen für den Mitarbeiter ein.");
         return;
@@ -754,7 +780,6 @@
           loadEmployees(); // Mitarbeiterliste aktualisieren
           loadEmployeeOptions(); // Dropdowns aktualisieren
         } else {
-          // Versuchen, eine spezifischere Fehlermeldung zu bekommen
           const errorText = await response.text().catch(() => response.statusText);
           alert(`❌ Fehler beim Hinzufügen (${response.status}): ${errorText}`);
         }
@@ -765,33 +790,28 @@
     }
 
     function editEmployee(emp) {
-        // Fülle das Bearbeitungsformular für Mitarbeiter
         document.getElementById("editEmployeeId").value = emp.id;
         document.getElementById("editEmployeeName").value = emp.name;
-        // Setze 0, falls Stunden null sind
         document.getElementById("editMoHours").value = emp.mo_hours || 0;
         document.getElementById("editDiHours").value = emp.di_hours || 0;
         document.getElementById("editMiHours").value = emp.mi_hours || 0;
         document.getElementById("editDoHours").value = emp.do_hours || 0;
         document.getElementById("editFrHours").value = emp.fr_hours || 0;
-        // Zeige Bearbeitungsbereich, verstecke Hinzufügen-Bereich
         document.getElementById("editEmployeeSection").classList.remove("hidden");
         document.getElementById("addEmployeeSection").classList.add("hidden");
         document.getElementById("editEmployeeSection").scrollIntoView({ behavior: "smooth" });
     }
 
     function cancelEditEmployee() {
-        // Verstecke Bearbeitungsbereich, zeige Hinzufügen-Bereich
         document.getElementById("editEmployeeSection").classList.add("hidden");
         document.getElementById("addEmployeeSection").classList.remove("hidden");
-        document.getElementById("editEmployeeForm").reset(); // Formular zurücksetzen
-        document.getElementById("editEmployeeId").value = ""; // ID leeren
+        document.getElementById("editEmployeeForm").reset();
+        document.getElementById("editEmployeeId").value = "";
     }
 
     async function saveEmployeeChanges() {
         const id = document.getElementById("editEmployeeId").value;
         if (!id) return;
-
         const data = {
             id,
             name: document.getElementById("editEmployeeName").value.trim(),
@@ -801,12 +821,10 @@
             do_hours: parseFloat(document.getElementById("editDoHours").value) || 0,
             fr_hours: parseFloat(document.getElementById("editFrHours").value) || 0
         };
-
         if (!data.name) {
             alert("Der Mitarbeitername darf nicht leer sein.");
             return;
         }
-
         try {
             const response = await fetch(`/admin/employees/${id}`, {
                 method: 'PUT',
@@ -814,12 +832,12 @@
                 body: JSON.stringify(data),
                 credentials: 'include'
             });
-            const result = await response.text(); // Oder .json(), falls der Server JSON zurückgibt
+            const result = await response.text();
             if (response.ok) {
                 alert(`✅ Mitarbeiterdaten erfolgreich aktualisiert.`);
-                cancelEditEmployee(); // Formular schließen/zurücksetzen
-                loadEmployees(); // Mitarbeiterliste aktualisieren
-                loadEmployeeOptions(); // Dropdowns aktualisieren
+                cancelEditEmployee();
+                loadEmployees();
+                loadEmployeeOptions(); // WICHTIG: Dropdowns auch aktualisieren
             } else {
                 alert(`❌ Fehler beim Aktualisieren (${response.status}): ${result}`);
             }
@@ -830,8 +848,7 @@
     }
 
    async function deleteEmployee(id, name) {
-        if (!confirm(`Sind Sie sicher, dass Sie den Mitarbeiter "${name}" (ID: ${id}) und alle seine zugehörigen Daten (wie Monatsbilanzen) unwiderruflich löschen möchten?`)) return;
-
+        if (!confirm(`Sind Sie sicher, dass Sie den Mitarbeiter "${name}" (ID: ${id}) und alle seine zugehörigen Daten (Arbeitszeiten, Monatsbilanzen) unwiderruflich löschen möchten?`)) return;
         try {
              const response = await fetch(`/admin/employees/${id}`, {
                  method: 'DELETE',
@@ -839,15 +856,15 @@
              });
              const result = await response.text();
              if (response.ok) {
-                 alert(`✅ Mitarbeiter "${name}" erfolgreich gelöscht.`);
+                 alert(`✅ Mitarbeiter "${name}" und zugehörige Daten erfolgreich gelöscht.`);
                  loadEmployees(); // Liste aktualisieren
                  loadEmployeeOptions(); // Dropdowns aktualisieren (wichtig!)
                  // Ggf. Admin-Arbeitszeit-Tab neu laden, falls dort nach MA gefiltert wird
                  if(document.querySelector('#tab-workhours').classList.contains('active')){
                      loadAdminWorkHours();
                  }
-                 // Ggf. Monatsauswertungs-Ergebnis löschen
-                 document.getElementById('monthlyBalanceResult').innerHTML = '';
+                 // Ggf. Auswertungs-Ergebnis löschen
+                 balanceResultDiv.innerHTML = '';
              } else {
                  alert(`❌ Fehler beim Löschen (${response.status}): ${result}`);
              }
@@ -857,101 +874,170 @@
         }
    }
 
+    // === NEU: Auswertungen (Monat/Quartal/Jahr) ===
 
-    // === Monatsauswertung (wichtig) ===
-    async function handleCalculateMonthlyBalance(e) {
+    // Hilfsfunktion zum Umschalten der Sichtbarkeit der Zeitraum-Eingabefelder
+    function handlePeriodTypeChange() {
+        const selectedType = document.querySelector('input[name="periodType"]:checked').value;
+        const pdfButton = downloadPdfBtn; // Referenz
+
+        if (selectedType === 'MONTH') {
+            monthSelectDiv.classList.remove('hidden');
+            quarterSelectDiv.classList.add('hidden');
+            balanceMonthInput.required = true; // Monat ist erforderlich
+            balanceQuarterSelect.required = false;
+            pdfButton.disabled = false; // PDF-Download für Monat erlauben
+            pdfButton.title = "Monatsauswertung als PDF herunterladen";
+        } else if (selectedType === 'QUARTER') {
+            monthSelectDiv.classList.add('hidden');
+            quarterSelectDiv.classList.remove('hidden');
+            balanceMonthInput.required = false;
+            balanceQuarterSelect.required = true; // Quartal ist erforderlich
+            pdfButton.disabled = true; // PDF-Download für Quartal (noch) nicht erlaubt
+            pdfButton.title = "PDF-Download nur für Monatsauswertung verfügbar.";
+        } else { // YEAR
+            monthSelectDiv.classList.add('hidden');
+            quarterSelectDiv.classList.add('hidden');
+            balanceMonthInput.required = false;
+            balanceQuarterSelect.required = false;
+            pdfButton.disabled = true; // PDF-Download für Jahr (noch) nicht erlaubt
+            pdfButton.title = "PDF-Download nur für Monatsauswertung verfügbar.";
+        }
+        // Ergebnis leeren, wenn Typ gewechselt wird
+        balanceResultDiv.innerHTML = '';
+    }
+
+
+    // Funktion zur Berechnung und Anzeige der Auswertung (Monat, Quartal oder Jahr)
+    async function handleCalculateBalance(e) {
       e.preventDefault();
-      const balanceNameElem = document.getElementById('balanceName');
-      const balanceYearElem = document.getElementById('balanceYear');
-      const balanceMonthElem = document.getElementById('balanceMonth');
-      const resultDiv = document.getElementById('monthlyBalanceResult');
+      const name = balanceNameSelect.value;
+      const year = balanceYearInput.value;
+      const selectedType = document.querySelector('input[name="periodType"]:checked').value;
 
-      const name = balanceNameElem.value;
-      const year = balanceYearElem.value;
-      const month = balanceMonthElem.value;
+      let month = null;
+      let quarter = null;
+      let valid = true;
+      let url = '';
 
-      // Validierung
+      // --- Validierung ---
       if (!name) {
         alert("Bitte wählen Sie einen Mitarbeiter aus.");
-        return;
+        valid = false;
       }
       if (!year || isNaN(parseInt(year))) {
           alert("Bitte geben Sie ein gültiges Jahr ein.");
-          return;
+          valid = false;
       }
-       if (!month || isNaN(parseInt(month)) || month < 1 || month > 12) {
-           alert("Bitte geben Sie einen gültigen Monat (1-12) ein.");
-           return;
-       }
 
-      resultDiv.innerHTML = "Berechnung läuft..."; // Feedback für den Nutzer
+      // --- URL und Parameter basierend auf Typ bauen ---
+      if (selectedType === 'MONTH') {
+          month = balanceMonthInput.value;
+          if (!month || isNaN(parseInt(month)) || month < 1 || month > 12) {
+              alert("Bitte geben Sie einen gültigen Monat (1-12) ein.");
+              valid = false;
+          } else {
+               url = `/calculate-monthly-balance?name=${encodeURIComponent(name)}&year=${year}&month=${month}`;
+          }
+      } else if (selectedType === 'QUARTER') {
+          quarter = balanceQuarterSelect.value; // Wert ist 1-4
+          if (!quarter) { // Sollte nicht passieren wegen required, aber sicher ist sicher
+               alert("Bitte wählen Sie ein Quartal aus.");
+               valid = false;
+          } else {
+              url = `/calculate-period-balance?name=${encodeURIComponent(name)}&year=${year}&periodType=QUARTER&periodValue=${quarter}`;
+          }
+      } else { // YEAR
+          url = `/calculate-period-balance?name=${encodeURIComponent(name)}&year=${year}&periodType=YEAR`;
+      }
+
+      if (!valid) return; // Abbruch bei Validierungsfehler
+
+      balanceResultDiv.innerHTML = "Berechnung läuft..."; // Feedback für den Nutzer
 
       try {
-        // Fetch an den Backend-Endpunkt zur Berechnung
-        const response = await fetch(`/calculate-monthly-balance?name=${encodeURIComponent(name)}&year=${year}&month=${month}`, {
-          credentials: "include" // Wichtig für Admin-Authentifizierung
-        });
+        // Fetch an den passenden Backend-Endpunkt
+        const response = await fetch(url, { credentials: "include" });
 
         if (!response.ok) {
-          // Versuche, eine detaillierte Fehlermeldung vom Server zu bekommen
           const errorText = await response.text().catch(() => `HTTP-Status ${response.status}`);
           throw new Error(`Fehler ${response.status}: ${errorText}`);
         }
 
-        const data = await response.json(); // Antwort als JSON erwarten
+        const data = await response.json();
 
-        // Ergebnis im HTML anzeigen
-        let html = `<h3>Monatsauswertung für ${data.employeeName || name} (${String(month).padStart(2,'0')}/${year})</h3>`;
-
-        // Prüfen, ob erwartete Daten vorhanden sind
-        if (data.previousCarryOver !== undefined &&
-            data.totalExpected !== undefined &&
-            data.totalActual !== undefined &&
-            data.newCarryOver !== undefined) {
-
-          html += `<p>Übertrag Vormonat (Saldo Vormonat Ende): <strong>${data.previousCarryOver.toFixed(2)} Std.</strong></p>`;
-          html += `<p>Soll-Arbeitsstunden (aktueller Monat): <strong>${data.totalExpected.toFixed(2)} Std.</strong></p>`;
-          html += `<p>Ist-Arbeitsstunden (aktueller Monat): <strong>${data.totalActual.toFixed(2)} Std.</strong></p>`;
-          const currentMonthDiff = data.totalActual - data.totalExpected;
-          html += `<p>Differenz (aktueller Monat): <strong>${currentMonthDiff.toFixed(2)} Std.</strong></p>`;
-          html += `<hr>`;
-          html += `<p>Neuer Übertrag (Saldo aktueller Monat Ende): <strong>${data.newCarryOver.toFixed(2)} Std.</strong></p>`;
-
-        } else if (data.message) {
-            // Falls der Server eine Nachricht sendet (z.B. "Keine Einträge")
-             html += `<p>${data.message}</p>`;
+        // --- Ergebnis anzeigen (unterscheidet zwischen Monats- und Perioden-Antwort) ---
+        let html = '';
+        if (selectedType === 'MONTH') {
+            // Monatsauswertung anzeigen
+            html = `<h3>Monatsauswertung für ${data.employeeName || name} (${String(data.month).padStart(2,'0')}/${data.year})</h3>`;
+            if (data.previousCarryOver !== undefined) {
+                html += `<p>Übertrag Vormonat (Saldo Vormonat Ende): <strong>${data.previousCarryOver.toFixed(2)} Std.</strong></p>`;
+                html += `<p>Soll-Arbeitsstunden (aktueller Monat): <strong>${data.totalExpected.toFixed(2)} Std.</strong></p>`;
+                html += `<p>Ist-Arbeitsstunden (aktueller Monat): <strong>${data.totalActual.toFixed(2)} Std.</strong></p>`;
+                const currentMonthDiff = data.totalActual - data.totalExpected;
+                html += `<p>Differenz (aktueller Monat): <strong>${currentMonthDiff.toFixed(2)} Std.</strong></p>`;
+                html += `<hr>`;
+                html += `<p>Neuer Übertrag (Saldo aktueller Monat Ende): <strong>${data.newCarryOver.toFixed(2)} Std.</strong></p>`;
+            } else if (data.message) {
+                 html += `<p>${data.message}</p>`;
+            } else {
+                 html += `<p style="color:orange;">Keine vollständigen Daten für die Monatsberechnung verfügbar.</p>`;
+            }
         } else {
-          html += `<p style="color:orange;">Keine vollständigen Daten für die Berechnung verfügbar.</p>`;
+             // Periodenauswertung (Quartal/Jahr) anzeigen
+             const periodLabel = data.periodIdentifier || (selectedType === 'QUARTER' ? `Q${quarter}` : 'Jahr');
+             const startDateFormatted = new Date(data.periodStartDate + 'T00:00:00Z').toLocaleDateString('de-DE', { timeZone: 'UTC' });
+             const endDateFormatted = new Date(data.periodEndDate + 'T00:00:00Z').toLocaleDateString('de-DE', { timeZone: 'UTC' });
+
+             html = `<h3>Auswertung ${periodLabel} für ${data.employeeName || name} (${data.year})</h3>`;
+             html += `<p>Zeitraum: ${startDateFormatted} - ${endDateFormatted}</p>`;
+             if (data.startingBalance !== undefined) {
+                 html += `<p>Übertrag Periodenbeginn: <strong>${data.startingBalance.toFixed(2)} Std.</strong></p>`;
+                 html += `<p>Soll-Arbeitsstunden (${periodLabel}): <strong>${data.totalExpectedPeriod.toFixed(2)} Std.</strong></p>`;
+                 html += `<p>Ist-Arbeitsstunden (${periodLabel}): <strong>${data.totalActualPeriod.toFixed(2)} Std.</strong></p>`;
+                 html += `<p>Differenz (${periodLabel}): <strong>${data.periodDifference.toFixed(2)} Std.</strong></p>`;
+                 html += `<hr>`;
+                 html += `<p>Neuer Übertrag (Saldo Periodenende): <strong>${data.endingBalancePeriod.toFixed(2)} Std.</strong></p>`;
+             } else if (data.message) {
+                 html += `<p>${data.message}</p>`;
+             } else {
+                html += `<p style="color:orange;">Keine vollständigen Daten für die Periodenberechnung verfügbar.</p>`;
+             }
         }
-        resultDiv.innerHTML = html;
+        balanceResultDiv.innerHTML = html;
 
       } catch (error) {
-        console.error("Fehler bei der Monatsauswertung:", error);
-        resultDiv.innerHTML = `<p style="color:red;">Fehler bei der Berechnung: ${error.message}</p>`;
+        console.error(`Fehler bei der ${selectedType}-Auswertung:`, error);
+        balanceResultDiv.innerHTML = `<p style="color:red;">Fehler bei der Berechnung: ${error.message}</p>`;
       }
     }
 
-    // --- PDF DOWNLOAD ---
+
+    // --- PDF DOWNLOAD (nur für Monat aktiviert) ---
     function handleDownloadPdf() {
-      const balanceNameElem = document.getElementById('balanceName');
-      const balanceYearElem = document.getElementById('balanceYear');
-      const balanceMonthElem = document.getElementById('balanceMonth');
+      const selectedType = document.querySelector('input[name="periodType"]:checked').value;
 
-      const name = balanceNameElem.value;
-      const year = balanceYearElem.value;
-      const month = balanceMonthElem.value;
+      // Nur für Monatsauswahl erlauben
+      if (selectedType !== 'MONTH') {
+          alert("PDF-Download ist derzeit nur für die Monatsauswertung verfügbar.");
+          return;
+      }
 
-      // Validierung (redundant, aber sicher)
+      const name = balanceNameSelect.value;
+      const year = balanceYearInput.value;
+      const month = balanceMonthInput.value;
+
+      // Validierung für Monat (redundant, aber sicher)
       if (!name || !year || !month || isNaN(parseInt(year)) || isNaN(parseInt(month)) || month < 1 || month > 12) {
         alert("Bitte wählen Sie einen Mitarbeiter aus und geben Sie ein gültiges Jahr und einen gültigen Monat (1-12) ein.");
         return;
       }
 
-      // *** NEUER ENDPUNKT ***
-      // Der Pfad muss mit dem Pfad übereinstimmen, unter dem der Router in server.js eingebunden wurde
+      // URL für Monats-PDF Endpunkt
       const pdfUrl = `/api/pdf/create-monthly-pdf?name=${encodeURIComponent(name)}&year=${year}&month=${month}`;
 
-      // PDF in neuem Tab öffnen (Download wird durch Server-Header ausgelöst)
+      // PDF in neuem Tab öffnen
       window.open(pdfUrl, '_blank');
     }
     // --- ENDE PDF DOWNLOAD ---
