@@ -61,12 +61,12 @@ module.exports = function (db) {
             const parsedYear = parseInt(year, 10);
             const parsedMonth = parseInt(month, 10);
 
-            // PDF-Dokument erstellen
+            // PDF-Dokument erstellen - *** SEITENRÄNDER WEITER ANGEPASST ***
             const doc = new PDFDocument({
                 size: 'A4',
                 margins: {
                     top: 25,
-                    bottom: 30,
+                    bottom: 25, // *** Unten weiter reduziert ***
                     left: 40,
                     right: 40
                 }
@@ -81,7 +81,7 @@ module.exports = function (db) {
             const pageTopMargin = doc.page.margins.top;
             const pageLeftMargin = doc.page.margins.left;
             const pageRightMargin = doc.page.margins.right;
-            const pageBottomMargin = doc.page.margins.bottom;
+            const pageBottomMargin = doc.page.margins.bottom; // Jetzt 25
             const usableWidth = doc.page.width - pageLeftMargin - pageRightMargin;
 
             const fontNormal = 'Helvetica';
@@ -91,14 +91,15 @@ module.exports = function (db) {
             const fontSizeSubHeader = 11;
             const fontSizeTableHeader = 9;
             const fontSizeTableContent = 9;
-            const fontSizeSummary = 9; // *** SCHRIFTGRÖSSE HIER REDUZIERT ***
-            const fontSizeFooter = 9;
+            const fontSizeSummary = 8; // *** SCHRIFTGRÖSSE WEITER REDUZIERT ***
+            const fontSizeFooter = 8; // Footer auch kleiner machen
 
+            const vSpaceTiny = 2;      // Neuer, minimaler Abstand
             const vSpaceSmall = 4;
             const vSpaceMedium = 12;
-            const vSpaceLarge = 20;
-            const vSpaceXLarge = 35;
-            const tableRowHeight = 12; // *** ZEILENHÖHE WEITER REDUZIERT ***
+            const vSpaceLarge = 18;    // Etwas kleiner
+            const vSpaceXLarge = 30;   // Etwas kleiner
+            const tableRowHeight = 11.5; // Noch kleiner
 
             //-------------------------------
             // Kopfzeile
@@ -117,12 +118,12 @@ module.exports = function (db) {
             }
 
             doc.font(fontBold).fontSize(fontSizeHeader);
-            doc.text("Überstundennachweis", pageLeftMargin, currentY + vSpaceSmall, {
+            doc.text("Überstundennachweis", pageLeftMargin, currentY + vSpaceTiny, { // Minimaler Abstand nach oben
                 align: 'center',
                 width: usableWidth
             });
-            currentY = Math.max(currentY + fontSizeHeader + vSpaceSmall, logoY + logoHeight);
-            currentY += vSpaceSmall;
+            currentY = Math.max(currentY + fontSizeHeader + vSpaceTiny, logoY + logoHeight);
+            currentY += vSpaceTiny; // *** ABSTAND WEITER REDUZIERT (nach Titel/Logo, vor Name) ***
 
             doc.font(fontNormal).fontSize(fontSizeSubHeader);
             doc.text(`Name: ${employeeName}`, pageLeftMargin, currentY);
@@ -172,7 +173,7 @@ module.exports = function (db) {
                     .lineTo(pageLeftMargin + usableWidth, headerBottomY)
                     .lineWidth(0.5)
                     .stroke();
-                return headerBottomY + vSpaceMedium; // Abstand nach Kopfzeile beibehalten
+                return headerBottomY + vSpaceMedium;
             };
 
             currentY = drawTableHeader(currentY);
@@ -182,8 +183,9 @@ module.exports = function (db) {
             doc.y = contentStartY;
 
             // --- HÖHE BERECHNEN für Summary und Footer (mit neuer Schriftgröße) ---
-            const summaryHeight = 5 * (fontSizeSummary + vSpaceSmall) + vSpaceLarge; // *** Höhe mit fontSizeSummary=9 ***
-            const footerHeight = fontSizeFooter + vSpaceXLarge + fontSizeFooter;
+            const summaryLineHeight = fontSizeSummary + vSpaceTiny; // Höhe einer Summary-Zeile
+            const summaryHeight = 5 * summaryLineHeight + vSpaceLarge; // Höhe des Summary-Blocks inkl. Abstand danach
+            const footerHeight = fontSizeFooter + vSpaceXLarge + fontSizeFooter; // Höhe des Footer-Blocks
 
             if (!workEntries || workEntries.length === 0) {
                 doc.text('Keine Arbeitszeitbuchungen in diesem Monat gefunden.', pageLeftMargin, currentY, { width: usableWidth });
@@ -193,6 +195,8 @@ module.exports = function (db) {
                     const entry = workEntries[i];
 
                     const spaceNeededForRest = tableRowHeight + summaryHeight + footerHeight;
+                    // Prüfe, ob genügend Platz für die Zeile UND den Rest vorhanden ist
+                    // Verwende pageBottomMargin (jetzt 25)
                     if (doc.y + spaceNeededForRest > doc.page.height - pageBottomMargin && i > 0) {
                         doc.addPage();
                         currentY = pageTopMargin;
@@ -200,6 +204,7 @@ module.exports = function (db) {
                         doc.font(fontNormal).fontSize(fontSizeTableContent).lineGap(0);
                         doc.y = currentY;
                     } else if (doc.y + tableRowHeight > doc.page.height - pageBottomMargin) {
+                         // Wenn nur die Zeile nicht mehr passt
                         doc.addPage();
                         currentY = pageTopMargin;
                         currentY = drawTableHeader(currentY);
@@ -244,7 +249,7 @@ module.exports = function (db) {
                     doc.text(workedStr, colPositions.actual, currentRowY, { width: colWidths.actual, align: 'center', lineBreak: false });
                     doc.text(diffStr, colPositions.diff, currentRowY, { width: colWidths.diff, align: 'center', lineBreak: false });
 
-                    doc.y += tableRowHeight; // Y-Position erhöhen (jetzt kleinerer Sprung)
+                    doc.y += tableRowHeight; // Y-Position erhöhen (kleinster Sprung jetzt)
                 }
             }
             currentY = doc.y;
@@ -260,14 +265,14 @@ module.exports = function (db) {
             doc.y = currentY;
 
             // *** SCHRIFTGRÖSSE HIER GESETZT ***
-            doc.font(fontBold).fontSize(fontSizeSummary); // fontSizeSummary ist jetzt 9
+            doc.font(fontBold).fontSize(fontSizeSummary); // fontSizeSummary ist jetzt 8
             const summaryLabelWidth = colWidths.date + colWidths.start + colWidths.end + colWidths.expected - vSpaceSmall;
             const summaryValueWidth = colWidths.actual + colWidths.diff;
             const summaryLabelX = pageLeftMargin;
             const summaryValueX = colPositions.actual;
 
-            // Ggf. Zeilenabstand für Summary anpassen, wenn Schrift kleiner wird
-            const summaryLineSpacing = 0.3;
+            // Minimaler Zeilenabstand für Summary
+            const summaryLineSpacing = 0.25;
             doc.text("Übertrag Vormonat (+/-):", summaryLabelX, doc.y, { width: summaryLabelWidth, align: 'left' });
             doc.text(decimalHoursToHHMM(previousCarryOver || 0), summaryValueX, doc.y, { width: summaryValueWidth, align: 'right' });
             doc.moveDown(summaryLineSpacing);
@@ -285,7 +290,7 @@ module.exports = function (db) {
             doc.text(decimalHoursToHHMM(totalDiff), summaryValueX, doc.y, { width: summaryValueWidth, align: 'right' });
             doc.moveDown(summaryLineSpacing);
 
-            doc.font(fontBold); // Letzte Zeile bleibt fett
+            doc.font(fontBold);
             doc.text("Neuer Übertrag (Saldo Ende):", summaryLabelX, doc.y, { width: summaryLabelWidth, align: 'left' });
             doc.text(decimalHoursToHHMM(newCarryOver || 0), summaryValueX, doc.y, { width: summaryValueWidth, align: 'right' });
 
@@ -300,14 +305,14 @@ module.exports = function (db) {
             }
             doc.y = currentY;
 
-            doc.font(fontNormal).fontSize(fontSizeFooter);
+            doc.font(fontNormal).fontSize(fontSizeFooter); // Footer Schriftgröße 8
             doc.text(
                 "Ich bestätige hiermit, dass die oben genannten Arbeitsstunden erbracht wurden und rechtmäßig in Rechnung gestellt werden.",
                 pageLeftMargin,
                 doc.y,
                 { align: 'left', width: usableWidth }
             );
-            doc.y += vSpaceXLarge;
+            doc.y += vSpaceXLarge; // Abstand für Unterschrift
 
             doc.text("Datum, Unterschrift", pageLeftMargin, doc.y, { align: 'left' });
 
