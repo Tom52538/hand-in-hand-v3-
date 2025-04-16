@@ -1,96 +1,29 @@
-// server.js
-
-require('dotenv').config();
-const express = require('express');
-const { Pool } = require('pg');
-const bodyParser = require('body-parser');
-const session = require('express-session');
-const pgSession = require('connect-pg-simple')(session);
-const path = require('path');
-const cors = require("cors");
-const monthlyPdfRouter = require('./routes/monthlyPdfEndpoint');
-const app = express();
-// Stelle sicher, dass die *korrigierte* calculationUtils geladen wird
-const { calculateMonthlyData, getExpectedHours, calculatePeriodData } = require('./utils/calculationUtils');
-
-// *** NEU: date-holidays importieren ***
+// 1. Bibliothek importieren
 const Holidays = require('date-holidays');
-// *** NEU: Initialisiere für NRW ***
-// Wird später in der Route verwendet
+
+// 2. Instanz für Deutschland (DE), Nordrhein-Westfalen (NW) erstellen
 const hd = new Holidays('DE', 'NW');
 
+// 3. Das gewünschte Jahr festlegen
+const jahr = 2025;
 
-// --- HILFSFUNKTIONEN ---
-// parseTime, calculateWorkHours, convertToCSV... (unverändert)
-function parseTime(timeStr) {
-    if (!timeStr || typeof timeStr !== 'string' || !timeStr.includes(':')) return 0;
-    const [hh, mm] = timeStr.split(':');
-    return parseInt(hh, 10) * 60 + parseInt(mm, 10);
-}
+// 4. Feiertage für das Jahr abrufen << DIESER SCHRITT FEHLTE
+const alleFeiertage = hd.getHolidays(jahr);
 
-function calculateWorkHours(startTime, endTime) {
-    if (!startTime || !endTime) return 0;
-    const startMinutes = parseTime(startTime);
-    const endMinutes = parseTime(endTime);
-    let diffInMin = endMinutes - startMinutes;
-    if (diffInMin < 0) { diffInMin += 24 * 60; }
-    if (diffInMin > 24 * 60) { console.warn(`Arbeitszeit > 24h für ${startTime}-${endTime}. Setze auf 0.`); return 0; }
-    return diffInMin / 60;
-}
+// 5. Jetzt kannst du die Variable verwenden: Alle Feiertage ausgeben
+console.log("Alle Feiertage in NW für " + jahr + ":");
+console.log(alleFeiertage);
 
-async function convertToCSV(db, data) {
-    if (!data || data.length === 0) return '';
-    const csvRows = [];
-    const headers = ["ID", "Name", "Datum", "Arbeitsbeginn", "Arbeitsende", "Ist-Std", "Soll-Std (Standard)", "Differenz (vs. Standard)", "Bemerkung"];
-    csvRows.push(headers.join(','));
-    const employeeNames = [...new Set(data.map(row => row.name))].filter(Boolean);
-    let employeesData = {};
-    if (employeeNames.length > 0) {
-      try {
-          const empQuery = `SELECT id, name, mo_hours, di_hours, mi_hours, do_hours, fr_hours FROM employees WHERE name = ANY($1::text[])`;
-          const empResult = await db.query(empQuery, [employeeNames]);
-          empResult.rows.forEach(emp => { employeesData[emp.name.toLowerCase()] = emp; });
-      } catch(dbError) {
-          console.error("Fehler Abrufen MA-Daten für CSV:", dbError);
-      }
-    }
-    for (const row of data) {
-      let dateFormatted = "", dateStringForCalc = null;
-      if (row.date) {
-        try {
-            const dateObj = (row.date instanceof Date) ? row.date : new Date(row.date.split('T')[0] + 'T00:00:00Z');
-            dateFormatted = dateObj.toLocaleDateString('de-DE', { timeZone: 'UTC' });
-            dateStringForCalc = dateObj.toISOString().split('T')[0];
-        } catch (e) { dateFormatted = String(row.date); console.warn("CSV Datumsformat Fehler:", row.date, e); }
-      }
-      const startTimeFormatted = row.startTime || "";
-      const endTimeFormatted = row.endTime || "";
-      const istHours = parseFloat(row.hours) || 0;
-      let expected = 0;
-      const employee = row.name ? employeesData[row.name.toLowerCase()] : null;
-      if (employee && dateStringForCalc && typeof getExpectedHours === 'function') {
-          try { expected = getExpectedHours(employee, dateStringForCalc); }
-          catch (e) { console.error(`Fehler Soll-Std CSV (MA: ${row.name}, Datum: ${dateStringForCalc}):`, e); }
-      }
-      const diff = istHours - expected;
-      const commentFormatted = `"${(row.comment || '').replace(/"/g, '""')}"`;
-      const values = [ row.id, row.name || '', dateFormatted, startTimeFormatted, endTimeFormatted, istHours.toFixed(2), expected.toFixed(2), diff.toFixed(2), commentFormatted ];
-      csvRows.push(values.join(','));
-    }
-    return csvRows.join('\n');
-}
+// 6. Nur die gesetzlichen Feiertage filtern und ausgeben
+const gesetzlicheFeiertage = alleFeiertage.filter(h => h.type === 'public');
+console.log("\nNur gesetzliche Feiertage in NW für " + jahr + ":");
+console.log(gesetzlicheFeiertage);
 
-
-// Middleware, DB Pool, Session Setup
-app.use(cors({ origin: "*", credentials: true }));
-app.set('trust proxy', 1);
-const port = process.env.PORT || 8080;
-app.use(bodyParser.json());
-app.use(express.static('public'));
-const db = new Pool({ connectionString: process.env.DATABASE_URL, ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false, });
-db.on('error', (err, client) => { console.error('Unerwarteter Fehler im PostgreSQL Idle Client', err); process.exit(-1); });
-const sessionStore = new pgSession({ pool : db, tableName : 'user_sessions', createTableIfMissing: true });
-app.use(session({ store: sessionStore, secret: process.env.SESSION_SECRET || 'ein-sehr-geheimes-geheimnis-das-man-aendern-sollte', resave: false, saveUninitialized: false, cookie: { secure: process.env.NODE_ENV === 'production', httpOnly: true, maxAge: 24 * 60 * 60 * 1000, sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax' } }));
+// Optional: Schönere Ausgabe der gesetzlichen Feiertage
+console.log("\nGesetzliche Feiertage (formatiert):");
+gesetzlicheFeiertage.forEach(feiertag => {
+  console.log(`${feiertag.date} - ${feiertag.name}`);
+});
 // Datenbank-Setup Funktion
 const setupTables = async () => {
   try {
@@ -460,7 +393,7 @@ app.delete('/admin/employees/:id', isAdmin, async (req, res) => {
   try {
     client = await db.connect(); await client.query('BEGIN');
     const nameResult = await client.query('SELECT name FROM employees WHERE id = $1', [employeeId]);
-    if (nameResult.rows.length === 0) { await client.query('ROLLBACK'); return res.status(404).send(`MA ID ${employeeId} nicht gefunden.`); }
+    if (nameResult.rows.length === 0) { await client.query('ROLLBACK'); client.release(); return res.status(404).send(`MA ID ${employeeId} nicht gefunden.`); }
     const employeeName = nameResult.rows[0].name; console.log(`Lösche MA ${employeeName} (ID: ${employeeId})...`);
     console.log(`Lösche Arbeitszeiten für ${employeeName}...`);
     const workHoursDeleteResult = await client.query('DELETE FROM work_hours WHERE LOWER(name) = LOWER($1)', [employeeName.toLowerCase()]);
@@ -469,7 +402,7 @@ app.delete('/admin/employees/:id', isAdmin, async (req, res) => {
     const result = await client.query('DELETE FROM employees WHERE id = $1', [employeeId]);
     await client.query('COMMIT');
     if (result.rowCount > 0) { console.log(`Admin Delete MA ID ${employeeId} (${employeeName}) OK.`); res.status(200).send('Mitarbeiter und Daten gelöscht.'); }
-    else { console.warn(`MA ID ${employeeId} nicht gefunden beim Löschen.`); res.status(404).send(`MA ID ${employeeId} nicht gefunden.`); }
+    else { await client.query('ROLLBACK'); console.warn(`MA ID ${employeeId} nicht gefunden beim Löschen.`); res.status(404).send(`MA ID ${employeeId} nicht gefunden.`); }
   } catch (err) {
     if (client) await client.query('ROLLBACK'); console.error(`DB Fehler DELETE /admin/employees/${employeeId}:`, err);
     if (err.code === '23503') { res.status(409).send('FK Fehler: Abhängige Daten existieren.'); }
@@ -547,7 +480,7 @@ app.post('/admin/absences', isAdmin, async (req, res) => {
     const targetDate = new Date(date + 'T00:00:00Z'); const dayOfWeek = targetDate.getUTCDay();
     if (dayOfWeek === 0 || dayOfWeek === 6) { return res.status(400).json({ message: 'Keine Abwesenheiten am Wochenende.' }); }
 
-    // *** NEU: Prüfung auf Feiertag, falls Typ PUBLIC_HOLIDAY gewählt wurde ***
+    // Prüfung auf Feiertag, falls Typ PUBLIC_HOLIDAY gewählt wurde
     if (absenceType === 'PUBLIC_HOLIDAY') {
         const isHoliday = hd.isHoliday(targetDate); // hd wurde oben initialisiert
         if (!isHoliday) {
@@ -555,12 +488,7 @@ app.post('/admin/absences', isAdmin, async (req, res) => {
              console.warn(`Admin versucht ${formattedTargetDate} als Feiertag für MA ${empIdInt} zu buchen, aber isHoliday()=false.`);
              return res.status(400).json({ message: `Datum ${formattedTargetDate} ist laut System kein Feiertag in NRW.` });
         }
-        // Optional: Feiertagsnamen als Kommentar hinzufügen, falls keiner gesetzt
-        // if (!comment && isHoliday.name) {
-        //     comment = isHoliday.name;
-        // }
     }
-    // *** ENDE Prüfung Feiertag ***
 
     let client;
     try {
@@ -572,7 +500,7 @@ app.post('/admin/absences', isAdmin, async (req, res) => {
         if (credited_hours <= 0 && absenceType !== 'PUBLIC_HOLIDAY') {
             return res.status(400).json({ message: `Keine Soll-Std an diesem Tag (${targetDate.toLocaleDateString('de-DE', {weekday: 'long', timeZone:'UTC'})}). Abwesenheit nicht gebucht.` });
         }
-        const finalCreditedHours = Math.max(0, credited_hours); // Für Feiertag an Tag ohne Soll => 0 Gutschrift
+        const finalCreditedHours = Math.max(0, credited_hours);
 
         const insertQuery = `INSERT INTO absences (employee_id, date, absence_type, credited_hours, comment) VALUES ($1, $2, $3, $4, $5) RETURNING id, date, absence_type, credited_hours, comment;`;
         const insertResult = await client.query(insertQuery, [empIdInt, date, absenceType, finalCreditedHours, comment || null]);
@@ -595,7 +523,7 @@ app.delete('/admin/absences/:id', isAdmin, async (req, res) => {
         else { res.status(404).send(`Abwesenheit ID ${absenceId} nicht gefunden.`); }
     } catch (err) { console.error(`Fehler DELETE /admin/absences/${absenceId}:`, err); res.status(500).send('Serverfehler Löschen Abw.'); }
 });
-// *** NEUE ROUTE: Feiertage automatisch generieren ***
+// *** KORRIGIERTE ROUTE: Feiertage automatisch generieren ***
 app.post('/admin/generate-holidays', isAdmin, async (req, res) => {
     const { year } = req.body;
     const currentYear = new Date().getFullYear();
@@ -622,13 +550,18 @@ app.post('/admin/generate-holidays', isAdmin, async (req, res) => {
         processedEmployees = employees.length;
         if (processedEmployees === 0) {
              await client.query('ROLLBACK'); // Keine Mitarbeiter, nichts zu tun
+             console.warn(`Feiertagsgenerierung für ${targetYear} abgebrochen: Keine Mitarbeiter gefunden.`);
              return res.status(404).json({ message: "Keine Mitarbeiter gefunden, für die Feiertage generiert werden könnten." });
         }
         console.log(`   - ${processedEmployees} Mitarbeiter gefunden.`);
 
         // 2. Feiertage für NRW im Zieljahr holen
-        const holidays = hd.getHolidays(targetYear); // hd wurde oben initialisiert
-        console.log(`   - ${holidays.length} potenzielle Feiertage für ${targetYear} in NRW gefunden.`);
+        const holidaysOfYear = hd.getHolidays(targetYear); // hd wurde oben initialisiert
+
+        // *** KORREKTUR: Nur Feiertage vom Typ 'public' berücksichtigen ***
+        const publicHolidays = holidaysOfYear.filter(h => h.type === 'public');
+        console.log(`   - ${publicHolidays.length} gesetzliche Feiertage für ${targetYear} in NRW gefunden (nach Filterung auf Typ 'public').`);
+        // *** ENDE KORREKTUR ***
 
         // Query für das Einfügen vorbereiten (mit ON CONFLICT)
         const insertQuery = `
@@ -637,15 +570,16 @@ app.post('/admin/generate-holidays', isAdmin, async (req, res) => {
             ON CONFLICT (employee_id, date) DO NOTHING;
         `; // Wenn ein Eintrag für den Tag/MA schon existiert, passiert nichts
 
-        // 3. Durch jeden Feiertag iterieren
-        for (const holiday of holidays) {
+        // 3. Durch jeden **gesetzlichen** Feiertag iterieren
+        // *** KORREKTUR: Schleife über 'publicHolidays' statt 'holidaysOfYear' ***
+        for (const holiday of publicHolidays) {
             const holidayDate = new Date(holiday.date); // Datumsobjekt aus String erstellen
-            const holidayDateString = holiday.date.split('T')[0]; // YYYY-MM-DD Format
+            const holidayDateString = holiday.date.split(' ')[0]; // Nur YYYY-MM-DD Teil
             const dayOfWeek = holidayDate.getUTCDay(); // 0=So, 1=Mo, ..., 6=Sa
 
             // Überspringe Wochenenden (Sa/So)
             if (dayOfWeek === 0 || dayOfWeek === 6) {
-                console.log(`   - Überspringe Feiertag '${holiday.name}' am ${holidayDateString} (Wochenende).`);
+                // console.log(`   - Überspringe Feiertag '${holiday.name}' am ${holidayDateString} (Wochenende).`);
                 continue;
             }
 
@@ -665,20 +599,15 @@ app.post('/admin/generate-holidays', isAdmin, async (req, res) => {
                     ]);
                     if (result.rowCount > 0) {
                         generatedCount++; // Zähle erfolgreiche Einfügungen
-                        // console.log(`   - Feiertag '${holiday.name}' für ${employee.name} am ${holidayDateString} hinzugefügt.`);
                     } else {
                         skippedCount++; // Zähle Einträge, die übersprungen wurden (wegen ON CONFLICT)
-                         // console.log(`   - Feiertag '${holiday.name}' für ${employee.name} am ${holidayDateString} existierte bereits.`);
                     }
-                } else {
-                    // Mitarbeiter arbeitet an diesem Wochentag normalerweise nicht
-                    // console.log(`   - Überspringe Feiertag '${holiday.name}' für ${employee.name} am ${holidayDateString} (keine Soll-Stunden).`);
                 }
-            }
-        }
+            } // Ende Schleife Mitarbeiter
+        } // Ende Schleife Feiertage
 
         await client.query('COMMIT'); // Transaktion erfolgreich abschließen
-        console.log(`Feiertagsgenerierung für ${targetYear} abgeschlossen. ${generatedCount} Einträge erstellt, ${skippedCount} übersprungen (existierten bereits).`);
+        console.log(`Feiertagsgenerierung für ${targetYear} abgeschlossen. ${generatedCount} Einträge erstellt, ${skippedCount} übersprungen.`);
         res.status(200).json({
             message: `Feiertage für ${targetYear} erfolgreich generiert.`,
             generated: generatedCount,
@@ -694,7 +623,7 @@ app.post('/admin/generate-holidays', isAdmin, async (req, res) => {
         if (client) client.release(); // Verbindung immer freigeben
     }
 });
-// *** ENDE NEUE ROUTE Feiertage generieren ***
+// *** ENDE KORRIGIERTE ROUTE Feiertage generieren ***
 // === PDF Router ===
 // Stelle sicher, dass die calculationUtils korrekt übergeben werden
 app.use('/api/pdf', monthlyPdfRouter(db)); // monthlyPdfRouter benötigt die DB-Verbindung
