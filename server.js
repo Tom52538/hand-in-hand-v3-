@@ -506,7 +506,7 @@ app.get('/admin-work-hours', isAdmin, async (req, res) => {
         finalQuery += ` WHERE ${whereClauses.join(' AND ')}`; // Bedingungen mit AND verknüpfen
     }
     // Sortierung hinzufügen
-    finalQuery += ` ORDER BY w.date DESC, e.name ASC, w.starttime ASC NULLS LAST;`;
+    finalQuery += ` ORDER BY w.date ASC, e.name ASC, w.starttime ASC NULLS FIRST;`;
 
     console.log(`${logPrefix} Executing query: ${finalQuery.substring(0, 200)}... Params: ${queryParams}`); // Log query start
 
@@ -986,7 +986,7 @@ app.get('/admin/absences', isAdmin, async (req, res) => {
     try {
         console.log(`${logPrefix} Querying absences from DB...`);
         // Abwesenheiten für die gegebene Mitarbeiter-ID holen, nach Datum sortiert
-        const query = `SELECT id, date, absence_type, credited_hours, comment FROM absences WHERE employee_id = $1 ORDER BY date DESC`;
+        const query = `SELECT id, date, absence_type, credited_hours, comment FROM absences WHERE employee_id = $1 ORDER BY date ASC`;
         const result = await db.query(query, [empIdInt]);
         console.log(`${logPrefix} DB query successful, found ${result.rows.length} entries. Formatting and sending response.`);
 
