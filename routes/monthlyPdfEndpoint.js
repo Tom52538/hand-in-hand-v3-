@@ -1,4 +1,4 @@
-// monthlyPdfEndpoint.js - ÜBERARBEITET für dynamische Paginierung
+// monthlyPdfEndpoint.js - ÜBERARBEITET für dynamische Paginierung + Test Route
 
 const express = require('express');
 const PDFDocument = require('pdfkit');
@@ -38,7 +38,7 @@ function decimalHoursToHHMM(decimalHours) {
     const totalMinutes = Math.round(absHours * 60);
     const hours = Math.floor(totalMinutes / 60);
     const minutes = totalMinutes % 60;
-    return `${sign}${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
+    return `<span class="math-inline">\{sign\}</span>{String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
 }
 
 // Hilfsfunktion: Datum TT.MM.YYYY (unverändert)
@@ -155,6 +155,16 @@ function drawFooter(doc, startY) {
     const usableWidth = doc.page.width - pageLeftMargin - doc.page.margins.right;
     let currentY = startY;
 
+    // Prüfe, ob überhaupt genug Platz für den Footer ist, notfalls neue Seite
+    // Dies ist eine zusätzliche Sicherheit, falls der Footer alleine umbrechen muss
+    const neededHeight = doc.heightOfString("Ich bestätige...", { width: usableWidth }) + V_SPACE.SIGNATURE_GAP + V_SPACE.SMALL + FONT_SIZE.FOOTER + V_SPACE.SMALL;
+    if (currentY + neededHeight > doc.page.height - doc.page.margins.bottom) {
+        console.log(`[PDF Footer] Seitenumbruch nötig nur für Footer bei Y=${currentY}`);
+        doc.addPage();
+        currentY = doc.page.margins.top;
+    }
+
+
     doc.font(FONT_NORMAL).fontSize(FONT_SIZE.FOOTER);
     doc.text("Ich bestätige hiermit, dass die oben genannten Arbeits-/Gutschriftstunden erbracht wurden und rechtmäßig berücksichtigt werden.", pageLeftMargin, currentY, { align: 'left', width: usableWidth });
     currentY += doc.heightOfString("Ich bestätige...", { width: usableWidth }) + V_SPACE.SIGNATURE_GAP; // Abstand zur Linie
@@ -172,17 +182,35 @@ function drawFooter(doc, startY) {
 
 // Middleware: isAdmin (unverändert)
 function isAdmin(req, res, next) {
+    // Wichtig: Prüfe, ob die Session überhaupt existiert
     if (req.session && req.session.isAdmin === true) {
-        next();
+        next(); // Zugriff erlaubt
     } else {
-        console.warn(`PDF Route: isAdmin-Check fehlgeschlagen.`);
-        res.status(403).send('Zugriff verweigert.');
+        // Optional: Logge mehr Details bei fehlgeschlagenem Check
+        console.warn(`isAdmin Check FAILED - Session ID: ${req.sessionID}, isAdmin Flag: ${req.session ? req.session.isAdmin : 'undefined'}, Path: ${req.originalUrl}`);
+        res.status(403).send('Zugriff verweigert. Admin-Login erforderlich.'); // Zugriff verweigert
     }
 }
+
+
 //-----------------------------------------------------
 // PDF ROUTEN
 //-----------------------------------------------------
 module.exports = function (db) {
+
+    // +++ NEUE TEST ROUTE +++
+    router.get('/test', (req, res) => {
+        console.log('*************************************');
+        console.log('[PDF TEST ROUTE] /api/pdf/test wurde erreicht!');
+        console.log('*************************************');
+        // Optional: Prüfen ob Admin, falls nötig zum Testen
+        // if (!req.session || req.session.isAdmin !== true) {
+        //     return res.status(403).send('Admin erforderlich für Test');
+        // }
+        res.status(200).send('PDF Test Route OK');
+    });
+    // --- Ende Test-Route ---
+
 
     // GET /create-monthly-pdf (Angepasst für Paginierung)
     router.get('/create-monthly-pdf', isAdmin, async (req, res) => {
@@ -195,7 +223,7 @@ module.exports = function (db) {
             const parsedYear = parseInt(year, 10);
             const parsedMonth = parseInt(month, 10);
 
-            console.log(`[PDF Mon] Starte Generierung für ${name}, ${parsedMonth}/${parsedYear}`);
+            console.log(`[PDF Mon] Starte Generierung für ${name}, <span class="math-inline">\{parsedMonth\}/</span>{parsedYear}`);
             const data = await calculateMonthlyData(db, name, year, month);
             const employeeDataForPdf = data.employeeData; // Für getExpectedHours
 
@@ -212,7 +240,7 @@ module.exports = function (db) {
 
             // *** Erste Seite: Header und Tabellenkopf ***
             let currentY = drawDocumentHeader(doc,
-                `Monatsnachweis ${String(parsedMonth).padStart(2, '0')}/${parsedYear}`,
+                `Monatsnachweis <span class="math-inline">\{String\(parsedMonth\)\.padStart\(2, '0'\)\}/</span>{parsedYear}`,
                 data.employeeName,
                 new Date(Date.UTC(parsedYear, parsedMonth - 1, 1)),
                 new Date(Date.UTC(parsedYear, parsedMonth, 0)) // Letzter Tag des Monats
@@ -222,38 +250,76 @@ module.exports = function (db) {
             doc.font(FONT_NORMAL).fontSize(FONT_SIZE.TABLE_CONTENT).lineGap(1); // LineGap für besseren Abstand
             doc.y = currentY; // Setze Startposition für Zeilen
 
-            // Kombinierte und sortierte Liste aus Arbeit und Abwesenheit (unverändert)
-            const allDays = [];
-            data.workEntries.forEach(entry => { const dateStr = (entry.date instanceof Date) ? entry.date.toISOString().split('T')[0] : String(entry.date); allDays.push({ date: dateStr, type: 'WORK', startTime: entry.startTime, endTime: entry.endTime, actualHours: parseFloat(entry.hours) || 0, comment: entry.comment }); });
-            data.absenceEntries.forEach(absence => { const dateStr = (absence.date instanceof Date) ? absence.date.toISOString().split('T')[0] : String(absence.date); if (!allDays.some(d => d.date === dateStr)) { allDays.push({ date: dateStr, type: absence.type, startTime: '--:--', endTime: '--:--', actualHours: parseFloat(absence.hours) || 0, comment: absence.type === 'VACATION' ? 'Urlaub' : (absence.type === 'SICK' ? 'Krank' : 'Feiertag') }); } });
-            allDays.sort((a, b) => new Date(a.date) - new Date(b.date));
+            // Kombinierte und sortierte Liste aus Arbeit und Abwesen
+        //-----------------------------------------------------
 
-            console.log(`[PDF Mon] ${allDays.length} Einträge zu zeichnen.`);
+    // GET /create-period-pdf (Angepasst für Paginierung)
+    router.get('/create-period-pdf', isAdmin, async (req, res) => {
+        let doc; // Definiere doc außerhalb für Catch-Block Zugriff
+         try {
+            const { name, year, periodType, periodValue } = req.query;
+            // Validierung (unverändert)
+            if (!name || !year || isNaN(parseInt(year)) || !periodType || !['QUARTER', 'YEAR'].includes(periodType.toUpperCase())) {
+                 return res.status(400).send("Parameter fehlen oder sind ungültig (Name, Jahr, PeriodType).");
+            }
+            if (periodType.toUpperCase() === 'QUARTER' && (!periodValue || isNaN(parseInt(periodValue)) || periodValue < 1 || periodValue > 4)) {
+                 return res.status(400).send("Gültiger periodValue (1-4) für Quartal erforderlich.");
+            }
+            const parsedYear = parseInt(year, 10);
+            const pTypeUpper = periodType.toUpperCase();
+            const pValue = periodType === 'QUARTER' ? parseInt(periodValue) : null;
 
-            // *** Schleife zum Zeichnen der Tabellenzeilen ***
-            if (allDays.length === 0) {
-                doc.text('Keine Buchungen/Abwesenheiten für diesen Monat.', doc.page.margins.left, doc.y, {width: usableWidth});
+            console.log(`[PDF Per] Starte Generierung für ${name}, ${year}, Typ: ${pTypeUpper}, Wert: ${pValue}`);
+            const data = await calculatePeriodData(db, name, year, pTypeUpper, pValue);
+            const employeeDataForPdf = data.employeeData; // Für getExpectedHours
+
+            doc = new PDFDocument(PAGE_OPTIONS); // autoFirstPage: false
+            doc.addPage(); // Erste Seite manuell
+
+            const safeName = (data.employeeName || 'Unbekannt').replace(/[^a-z0-9_\-]/gi, '_');
+            const periodLabelFile = data.periodIdentifier || (pTypeUpper === 'QUARTER' ? `Q${pValue}` : 'Jahr');
+            const filename = `Nachweis_${periodLabelFile}_${safeName}_${parsedYear}.pdf`;
+            res.setHeader('Content-Type', 'application/pdf');
+            res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+            doc.pipe(res);
+
+            const usableWidth = doc.page.width - doc.page.margins.left - doc.page.margins.right;
+
+            // *** Erste Seite: Header und Tabellenkopf ***
+            const title = pTypeUpper === 'QUARTER' ? `Quartalsnachweis ${data.periodIdentifier}/${parsedYear}` : `Jahresnachweis ${parsedYear}`;
+            let currentY = drawDocumentHeader(doc, title, data.employeeName, data.periodStartDate, data.periodEndDate);
+            let tableLayout = drawTableHeader(doc, currentY, usableWidth);
+            currentY = tableLayout.headerBottomY;
+            doc.font(FONT_NORMAL).fontSize(FONT_SIZE.TABLE_CONTENT).lineGap(1);
+            doc.y = currentY;
+
+            // Kombinierte und sortierte Liste (Periode)
+            const allDaysPeriod = [];
+            data.workEntriesPeriod.forEach(entry => { const dateStr = (entry.date instanceof Date) ? entry.date.toISOString().split('T')[0] : String(entry.date); allDaysPeriod.push({ date: dateStr, type: 'WORK', startTime: entry.startTime, endTime: entry.endTime, actualHours: parseFloat(entry.hours) || 0, comment: entry.comment }); });
+            data.absenceEntriesPeriod.forEach(absence => { const dateStr = (absence.date instanceof Date) ? absence.date.toISOString().split('T')[0] : String(absence.date); if (!allDaysPeriod.some(d => d.date === dateStr)) { allDaysPeriod.push({ date: dateStr, type: absence.type, startTime: '--:--', endTime: '--:--', actualHours: parseFloat(absence.hours) || 0, comment: absence.type === 'VACATION' ? 'Urlaub' : (absence.type === 'SICK' ? 'Krank' : 'Feiertag') }); } });
+            allDaysPeriod.sort((a, b) => new Date(a.date) - new Date(b.date));
+
+            console.log(`[PDF Per] ${allDaysPeriod.length} Einträge zu zeichnen.`);
+
+            // *** Schleife zum Zeichnen der Tabellenzeilen (Periode) ***
+            if (allDaysPeriod.length === 0) {
+                doc.text('Keine Buchungen/Abwesenheiten für diesen Zeitraum.', doc.page.margins.left, doc.y, {width: usableWidth});
                 doc.y += TABLE_ROW_HEIGHT;
-                currentY = doc.y;
+                // currentY = doc.y; // Nicht nötig
             } else {
-                for (let i = 0; i < allDays.length; i++) {
-                    const dayData = allDays[i];
+                 for (let i = 0; i < allDaysPeriod.length; i++) {
+                    const dayData = allDaysPeriod[i];
 
                     // === NEUE Seitenumbruch-Prüfung VOR dem Zeichnen der Zeile ===
-                    // Prüft, ob die NÄCHSTE Zeile noch auf die aktuelle Seite passt.
                     if (doc.y + TABLE_ROW_HEIGHT > doc.page.height - doc.page.margins.bottom) {
-                        console.log(`[PDF Mon] Seitenumbruch vor Zeile ${i+1} bei Y=${doc.y}`);
+                        console.log(`[PDF Per] Seitenumbruch vor Zeile ${i+1} bei Y=${doc.y.toFixed(2)}`);
                         doc.addPage();
                         currentY = doc.page.margins.top;
-
-                        // KEINEN Dokumenten-Header hier, der ist nur auf Seite 1 (oder anpassen wenn nötig)
-
                         // Tabellen-Header auf neuer Seite zeichnen
                         tableLayout = drawTableHeader(doc, currentY, usableWidth);
-                        currentY = tableLayout.headerBottomY; // Y-Position unter den neuen Header setzen
-                        doc.y = currentY; // Sicherstellen, dass pdfkit die Position kennt
-
-                        // Schriftart/Stil für Tabelleninhalt wiederherstellen
+                        currentY = tableLayout.headerBottomY;
+                        doc.y = currentY;
+                        // Schriftart/Stil wiederherstellen
                         doc.font(FONT_NORMAL).fontSize(FONT_SIZE.TABLE_CONTENT).lineGap(1);
                     }
                     // === Ende Seitenumbruch-Prüfung ===
@@ -261,12 +327,11 @@ module.exports = function (db) {
                     // --- Zeile zeichnen (Code fast unverändert) ---
                     const dateFormatted = formatDateGermanWithWeekday(dayData.date);
                     const actualHours = dayData.actualHours || 0;
-                    // Stelle sicher, dass employeeDataForPdf existiert
                     const expectedHours = employeeDataForPdf ? getExpectedHours(employeeDataForPdf, dayData.date) : 0;
                     const diffHours = actualHours - expectedHours;
                     let startOverride = dayData.startTime || "--:--";
                     let endOverride = dayData.endTime || "--:--";
-                    if (dayData.type !== 'WORK') {
+                     if (dayData.type !== 'WORK') {
                         startOverride = '--:--';
                         endOverride = dayData.comment || (dayData.type === 'VACATION' ? 'Urlaub' : (dayData.type === 'SICK' ? 'Krank' : 'Feiertag'));
                     }
@@ -275,10 +340,8 @@ module.exports = function (db) {
                     const diffStr = decimalHoursToHHMM(diffHours);
 
                     const currentRowY = doc.y; // Aktuelle Y-Position merken
+                    const { colPositions, colWidths } = tableLayout; // Verwende das aktuelle tableLayout
 
-                    // Zeichne die Zellen-Texte nebeneinander
-                    // Nutze die neu berechneten colPositions und colWidths aus tableLayout
-                    const { colPositions, colWidths } = tableLayout;
                     doc.text(dateFormatted, colPositions.date, currentRowY, { width: colWidths.date, align: 'left', lineBreak: false });
                     doc.text(startOverride, colPositions.start, currentRowY, { width: colWidths.start, align: 'center', lineBreak: false });
                     doc.text(endOverride, colPositions.end, currentRowY, { width: colWidths.end, align: 'center', lineBreak: false });
@@ -286,18 +349,21 @@ module.exports = function (db) {
                     doc.text(actualStr, colPositions.actual, currentRowY, { width: colWidths.actual, align: 'center', lineBreak: false });
                     doc.text(diffStr, colPositions.diff, currentRowY, { width: colWidths.diff, align: 'center', lineBreak: false });
 
-                    // Wichtig: Y-Position manuell erhöhen, da lineBreak: false verwendet wird
+                    // Y-Position manuell erhöhen
                     doc.y = currentRowY + TABLE_ROW_HEIGHT;
                     // --- Ende Zeile zeichnen ---
                 } // Ende der for-Schleife
             }
-            // *** Ende Schleife für Tabellenzeilen ***
-        // *** Zusammenfassung und Footer NUR AM ENDE zeichnen (Periode) ***
-            console.log(`[PDF Per] Ende Tabelle bei Y=${doc.y}. Prüfe Platz für Summary (${SUMMARY_TOTAL_HEIGHT}px) + Footer (${FOOTER_TOTAL_HEIGHT}px).`);
+            // *** Ende Schleife für Tabellenzeilen (Periode) ***
+
+
+             // *** Zusammenfassung und Footer NUR AM ENDE zeichnen (Periode) ***
+            console.log(`[PDF Per] Ende Tabelle bei Y=${doc.y.toFixed(2)}. Prüfe Platz für Summary (${SUMMARY_TOTAL_HEIGHT.toFixed(2)}px) + Footer (${FOOTER_TOTAL_HEIGHT.toFixed(2)}px).`);
+            const spaceNeededForSummaryAndFooter = SUMMARY_TOTAL_HEIGHT + FOOTER_TOTAL_HEIGHT + V_SPACE.LARGE;
 
             // Prüfen, ob Zusammenfassung UND Footer noch auf die AKTUELLE Seite passen
-            if (doc.y + SUMMARY_TOTAL_HEIGHT + FOOTER_TOTAL_HEIGHT > doc.page.height - doc.page.margins.bottom) {
-                console.log(`[PDF Per] Seitenumbruch vor Summary/Footer bei Y=${doc.y}`);
+            if (doc.y + spaceNeededForSummaryAndFooter > doc.page.height - doc.page.margins.bottom) {
+                console.log(`[PDF Per] Seitenumbruch vor Summary/Footer bei Y=${doc.y.toFixed(2)}`);
                 doc.addPage(); // Neue Seite NUR für Summary & Footer
                 doc.y = doc.page.margins.top; // An den Seitenanfang
             } else {
@@ -307,7 +373,7 @@ module.exports = function (db) {
 
             // --- Zeichne Zusammenfassung (Periode) ---
             const summaryStartY = doc.y;
-            console.log(`[PDF Per] Zeichne Summary bei Y=${summaryStartY}`);
+            console.log(`[PDF Per] Zeichne Summary bei Y=${summaryStartY.toFixed(2)}`);
             doc.font(FONT_BOLD).fontSize(FONT_SIZE.SUMMARY);
             // Nutze Spaltenbreiten/Positionen vom letzten tableLayout
             const summaryLabelWidth = tableLayout.colWidths.date + tableLayout.colWidths.start + tableLayout.colWidths.end + tableLayout.colWidths.expected - V_SPACE.SMALL;
@@ -329,13 +395,13 @@ module.exports = function (db) {
             doc.font(FONT_BOLD); doc.text("Neuer Übertrag (Saldo Ende):", summaryLabelX, doc.y, { width: summaryLabelWidth });
             doc.text(decimalHoursToHHMM(data.endingBalancePeriod || 0), summaryValueX, doc.y, { width: summaryValueWidth, align: 'right' });
 
-            const summaryEndY = doc.y;
-            console.log(`[PDF Per] Ende Summary bei Y=${summaryEndY}`);
+            const summaryEndY = doc.y; // Position nach der Zusammenfassung
+            console.log(`[PDF Per] Ende Summary bei Y=${summaryEndY.toFixed(2)}`);
 
             // --- Zeichne Footer ---
             const footerStartY = summaryEndY + V_SPACE.LARGE; // Abstand nach der Summary
-            console.log(`[PDF Per] Zeichne Footer bei Y=${footerStartY}`);
-            drawFooter(doc, footerStartY);
+            console.log(`[PDF Per] Zeichne Footer bei Y=${footerStartY.toFixed(2)}`);
+            drawFooter(doc, footerStartY); // Funktion zeichnet Footer
 
             // --- PDF abschließen ---
             console.log("[PDF Per] Finalisiere Dokument.");
@@ -354,5 +420,6 @@ module.exports = function (db) {
         }
     }); // Ende /create-period-pdf
 
-    return router;
+
+    return router; // Router zurückgeben
 }; // Ende module.exports
