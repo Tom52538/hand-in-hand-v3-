@@ -1,5 +1,5 @@
-// monthlyPdfEndpoint.js - V6: Fix für Font Error (drawPageNumber vereinfacht, keine Font-Wiederherstellung)
-// +++ DEBUG LOGGING ERWEITERT +++
+// monthlyPdfEndpoint.js - V7: Fix für Layout (leere erste Seite, Header-Position)
+// +++ DEBUG LOGGING WEITERHIN AKTIV +++
 
 const express = require('express');
 const PDFDocument = require('pdfkit');
@@ -10,8 +10,8 @@ const router = express.Router();
 const { calculateMonthlyData, calculatePeriodData, getExpectedHours } = require('../utils/calculationUtils');
 
 // --- Konstanten & Hilfsfunktionen ---
-const FONT_NORMAL = 'Helvetica'; // Standard PDF Font
-const FONT_BOLD = 'Helvetica-Bold'; // Standard PDF Font
+const FONT_NORMAL = 'Helvetica';
+const FONT_BOLD = 'Helvetica-Bold';
 const PAGE_OPTIONS = { size: 'A4', autoFirstPage: false, margins: { top: 25, bottom: 35, left: 40, right: 40 } };
 const V_SPACE = { TINY: 1, SMALL: 4, MEDIUM: 10, LARGE: 18, SIGNATURE_GAP: 45 };
 const FONT_SIZE = { HEADER: 16, SUB_HEADER: 11, TABLE_HEADER: 9, TABLE_CONTENT: 9, SUMMARY: 8, FOOTER: 8, PAGE_NUMBER: 8 };
@@ -22,7 +22,7 @@ const FOOTER_CONTENT_HEIGHT = FONT_SIZE.FOOTER + V_SPACE.SMALL;
 const SIGNATURE_AREA_HEIGHT = V_SPACE.SIGNATURE_GAP + FONT_SIZE.FOOTER + V_SPACE.SMALL;
 const FOOTER_TOTAL_HEIGHT = FOOTER_CONTENT_HEIGHT + SIGNATURE_AREA_HEIGHT + V_SPACE.MEDIUM;
 const SUMMARY_LINE_HEIGHT = FONT_SIZE.SUMMARY + V_SPACE.TINY + 0.5;
-const SUMMARY_TOTAL_HEIGHT = (7 * SUMMARY_LINE_HEIGHT) + V_SPACE.LARGE;
+const SUMMARY_TOTAL_HEIGHT = (7 * SUMMARY_LINE_HEIGHT) + V_SPACE.LARGE; // Angepasst für 7 Zeilen
 
 // Formatierungsoptionen (unverändert)
 const pdfDateOptions = { day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'UTC' };
@@ -68,47 +68,58 @@ function formatDateGermanWithWeekday(dateInput) {
 }
 
 // Hilfsfunktion: Zeichnet den Dokumentenkopf (mit Debug Log)
+// Setzt intern die benötigten Fonts und gibt die Y-Position *nach* dem Header zurück.
 function drawDocumentHeader(doc, title, employeeName, periodStartDate, periodEndDate) {
-    console.log(`[PDF DEBUG] drawDocumentHeader START für Titel: ${title}`);
+    console.log(`[PDF DEBUG V7] drawDocumentHeader START für Titel: ${title}`);
     const pageLeftMargin = doc.page.margins.left;
     const pageRightMargin = doc.page.margins.right;
     const usableWidth = doc.page.width - pageLeftMargin - pageRightMargin;
-    let currentY = doc.page.margins.top;
+    let currentY = doc.page.margins.top; // Startet oben!
     const headerStartY = currentY;
+    console.log(`[PDF DEBUG V7] drawDocumentHeader: Start Y = ${currentY.toFixed(2)} (Margin Top)`);
 
     // Logo (mit Debug Log)
     try {
-        console.log(`[PDF DEBUG] drawDocumentHeader: Versuche Logo zu laden...`);
+        console.log(`[PDF DEBUG V7] drawDocumentHeader: Versuche Logo zu laden...`);
         const logoPath = path.join(process.cwd(), 'public', 'icons', 'Hand-in-Hand-Logo-192x192.png');
         const logoWidth = 70;
         const logoHeight = 70;
         const logoX = doc.page.width - pageRightMargin - logoWidth;
-        doc.image(logoPath, logoX, currentY, { width: logoWidth, height: logoHeight });
-        currentY += V_SPACE.SMALL;
-        console.log(`[PDF DEBUG] drawDocumentHeader: Logo gezeichnet bei Y=${currentY.toFixed(2)}`);
+        // Zeichne Logo *rechts oben*
+        doc.image(logoPath, logoX, headerStartY, { width: logoWidth, height: logoHeight });
+        console.log(`[PDF DEBUG V7] drawDocumentHeader: Logo rechts oben gezeichnet.`);
+        // Y Position für Text unter dem Logo / neben dem Titel? Vorerst Y für Titel beibehalten
+        // currentY += logoHeight + V_SPACE.SMALL; // Nicht erhöhen, Text beginnt links
     } catch (errLogo) {
-        console.warn("[PDF DEBUG] Logo Fehler:", errLogo);
-        currentY += V_SPACE.SMALL; // Trotzdem Platz lassen
+        console.warn("[PDF DEBUG V7] Logo Fehler:", errLogo);
+        // Kein Y-Inkrement bei Fehler
     }
 
-    // Text (mit Debug Log)
-    console.log(`[PDF DEBUG] drawDocumentHeader: Zeichne Titel...`);
+    // Titel (zentriert, etwas unterhalb des oberen Rands)
+    console.log(`[PDF DEBUG V7] drawDocumentHeader: Zeichne Titel...`);
     doc.font(FONT_BOLD).fontSize(FONT_SIZE.HEADER);
-    doc.text(title, pageLeftMargin, headerStartY + V_SPACE.SMALL, { align: 'center', width: usableWidth });
-    currentY = headerStartY + V_SPACE.SMALL + FONT_SIZE.HEADER + V_SPACE.LARGE;
-    console.log(`[PDF DEBUG] drawDocumentHeader: Zeichne Name/Zeitraum...`);
+    const titleY = headerStartY + V_SPACE.SMALL; // Kleiner Abstand von oben
+    doc.text(title, pageLeftMargin, titleY, { align: 'center', width: usableWidth });
+    // Y-Position nach dem Titel (Titelhöhe + Abstand)
+    currentY = titleY + doc.heightOfString(title, { width: usableWidth, align: 'center' }) + V_SPACE.LARGE;
+    console.log(`[PDF DEBUG V7] drawDocumentHeader: Y nach Titel: ${currentY.toFixed(2)}`);
+
+
+    // Name und Zeitraum (linksbündig, unterhalb des Titels)
+    console.log(`[PDF DEBUG V7] drawDocumentHeader: Zeichne Name/Zeitraum...`);
     doc.font(FONT_NORMAL).fontSize(FONT_SIZE.SUB_HEADER);
     doc.text(`Name: ${employeeName || 'Unbekannt'}`, pageLeftMargin, currentY);
-    currentY += FONT_SIZE.SUB_HEADER + V_SPACE.SMALL;
+    currentY += FONT_SIZE.SUB_HEADER + V_SPACE.SMALL; // Abstand nach Name
     doc.text(`Zeitraum: ${formatDateGerman(periodStartDate)} - ${formatDateGerman(periodEndDate)}`, pageLeftMargin, currentY);
-    currentY += FONT_SIZE.SUB_HEADER + V_SPACE.LARGE;
-    console.log(`[PDF DEBUG] drawDocumentHeader ENDE bei Y=${currentY.toFixed(2)}`);
-    return currentY;
+    currentY += FONT_SIZE.SUB_HEADER + V_SPACE.LARGE; // Größerer Abstand nach dem gesamten Header
+    console.log(`[PDF DEBUG V7] drawDocumentHeader ENDE bei Y=${currentY.toFixed(2)}`);
+    return currentY; // Gibt die Y-Position zurück, wo der nächste Inhalt starten soll
 }
 
 // Hilfsfunktion: Zeichnet den Tabellenkopf (mit Debug Log)
+// Setzt intern die benötigten Fonts und gibt die Y-Position *nach* dem Header + Linie zurück.
 function drawTableHeader(doc, startY, usableWidth) {
-    console.log(`[PDF DEBUG] drawTableHeader START bei Y=${startY.toFixed(2)}`);
+    console.log(`[PDF DEBUG V7] drawTableHeader START bei Y=${startY.toFixed(2)}`);
     const pageLeftMargin = doc.page.margins.left;
     const colWidths = {
         date: 105,
@@ -116,8 +127,11 @@ function drawTableHeader(doc, startY, usableWidth) {
         end: 85,
         expected: 75,
         actual: 75,
-        diff: usableWidth - 105 - 65 - 85 - 75 - 75
+        diff: usableWidth - 105 - 65 - 85 - 75 - 75 // Restbreite
     };
+    // Sicherstellen, dass diff nicht negativ wird (falls usableWidth zu klein)
+    if (colWidths.diff < 30) colWidths.diff = 30; // Mindestbreite
+
     const colPositions = {
         date: pageLeftMargin,
         start: pageLeftMargin + colWidths.date,
@@ -126,9 +140,12 @@ function drawTableHeader(doc, startY, usableWidth) {
         actual: pageLeftMargin + colWidths.date + colWidths.start + colWidths.end + colWidths.expected,
         diff: pageLeftMargin + colWidths.date + colWidths.start + colWidths.end + colWidths.expected + colWidths.actual
     };
-    doc.font(FONT_BOLD).fontSize(FONT_SIZE.TABLE_HEADER);
-    const headerTextY = startY + V_SPACE.TINY;
 
+    // Font für Header setzen
+    doc.font(FONT_BOLD).fontSize(FONT_SIZE.TABLE_HEADER);
+    const headerTextY = startY + V_SPACE.TINY; // Kleiner Abstand nach oben
+
+    // Texte zeichnen
     doc.text("Datum", colPositions.date, headerTextY, { width: colWidths.date, align: 'left' });
     doc.text("Arbeits-\nbeginn", colPositions.start, headerTextY, { width: colWidths.start, align: 'center' });
     doc.text("Arbeits-\nende", colPositions.end, headerTextY, { width: colWidths.end, align: 'center' });
@@ -136,27 +153,29 @@ function drawTableHeader(doc, startY, usableWidth) {
     doc.text("Ist-Zeit\n(HH:MM)", colPositions.actual, headerTextY, { width: colWidths.actual, align: 'center' });
     doc.text("Mehr/Minder\nStd.(HH:MM)", colPositions.diff, headerTextY, { width: colWidths.diff, align: 'center' });
 
-    const headerBottomY = headerTextY + (FONT_SIZE.TABLE_HEADER * 2) + V_SPACE.SMALL;
+    // Höhe des Headers berechnen (ca. 2 Zeilen Text + Abstand)
+    const headerHeight = (FONT_SIZE.TABLE_HEADER * 2) + V_SPACE.TINY + V_SPACE.SMALL;
+    const headerBottomY = startY + headerHeight;
+
+    // Linie unter dem Header
     doc.moveTo(pageLeftMargin, headerBottomY).lineTo(pageLeftMargin + usableWidth, headerBottomY).lineWidth(0.5).stroke();
 
-    const result = { headerBottomY: headerBottomY + V_SPACE.SMALL, colWidths, colPositions };
-    console.log(`[PDF DEBUG] drawTableHeader ENDE, returniert headerBottomY=${result.headerBottomY.toFixed(2)}`);
+    const result = { headerBottomY: headerBottomY + V_SPACE.SMALL, colWidths, colPositions }; // Nächster Startpunkt mit kleinem Abstand
+    console.log(`[PDF DEBUG V7] drawTableHeader ENDE, returniert headerBottomY=${result.headerBottomY.toFixed(2)}`);
     return result;
 }
 
-// ------------------------------------------------------
-// Hilfsfunktion: Zeichnet die Seitenzahl (Vereinfacht V6)
-// ------------------------------------------------------
+// Hilfsfunktion: Zeichnet die Seitenzahl (Vereinfacht V6/V7)
+// Setzt intern Font und Größe, *ändert* den globalen Font-Status.
 function drawPageNumber(doc, pageNum) {
-    console.log(`[PDF DEBUG V6] drawPageNumber START für Seite ${pageNum}`);
-    const pageBottom = doc.page.height - doc.page.margins.bottom + 10;
+    console.log(`[PDF DEBUG V7] drawPageNumber START für Seite ${pageNum}`);
+    const pageBottom = doc.page.height - doc.page.margins.bottom + 10; // Etwas unterhalb des unteren Rands
     const pageLeftMargin = doc.page.margins.left;
     const usableWidth = doc.page.width - pageLeftMargin - doc.page.margins.right;
 
-    // Font *explizit* setzen, KEINE Speicherung/Wiederherstellung des alten Zustands mehr.
-    // Wichtig: Der Font ist nach diesem Aufruf auf FONT_NORMAL, Größe PAGE_NUMBER gesetzt!
-    console.log(`[PDF DEBUG V6] drawPageNumber: Setze Font auf ${FONT_NORMAL}, Size ${FONT_SIZE.PAGE_NUMBER}`);
-    doc.font(FONT_NORMAL) // Oder 'Helvetica' direkt verwenden
+    // Font explizit setzen
+    console.log(`[PDF DEBUG V7] drawPageNumber: Setze Font auf ${FONT_NORMAL}, Size ${FONT_SIZE.PAGE_NUMBER}`);
+    doc.font(FONT_NORMAL)
        .fontSize(FONT_SIZE.PAGE_NUMBER)
        .fillColor('black') // Sicherstellen, dass die Farbe stimmt
        .text(`Seite ${pageNum}`, pageLeftMargin, pageBottom, {
@@ -164,36 +183,37 @@ function drawPageNumber(doc, pageNum) {
            align: 'center'
        });
 
-    console.log(`[PDF DEBUG V6] drawPageNumber ENDE für Seite ${pageNum}`);
-    // HINWEIS: Der Font bleibt jetzt auf FONT_NORMAL, Größe PAGE_NUMBER stehen.
-    // Der aufrufende Code muss bei Bedarf den Font für nachfolgende Operationen neu setzen.
+    console.log(`[PDF DEBUG V7] drawPageNumber ENDE für Seite ${pageNum}`);
+    // Font-Status wurde geändert! Aufrufer muss ggf. zurücksetzen.
 }
-// ------------------------------------------------------
 
 
-// Hilfsfunktion: Zeichnet den Footer (NUR Signatur) - unverändert (mit Debug Log)
+// Hilfsfunktion: Zeichnet den Footer (NUR Signatur)
+// Setzt intern Font und Größe.
 function drawSignatureFooter(doc, startY) {
-    console.log(`[PDF DEBUG] drawSignatureFooter START bei Y=${startY.toFixed(2)}`);
+    console.log(`[PDF DEBUG V7] drawSignatureFooter START bei Y=${startY.toFixed(2)}`);
     const pageLeftMargin = doc.page.margins.left;
     const usableWidth = doc.page.width - pageLeftMargin - doc.page.margins.right;
     let currentY = startY;
 
-    // Keine Seitenumbruch-Logik mehr hier, muss vorher geprüft werden.
-
+    // Font für Footer setzen
     doc.font(FONT_NORMAL).fontSize(FONT_SIZE.FOOTER);
-    console.log(`[PDF DEBUG] drawSignatureFooter: Zeichne Bestätigungstext...`);
-    doc.text("Ich bestätige hiermit, dass die oben genannten Arbeits-/Gutschriftstunden erbracht wurden und rechtmäßig berücksichtigt werden.", pageLeftMargin, currentY, { align: 'left', width: usableWidth });
-    currentY += doc.heightOfString("Ich bestätige...", { width: usableWidth }) + V_SPACE.SIGNATURE_GAP;
+    console.log(`[PDF DEBUG V7] drawSignatureFooter: Zeichne Bestätigungstext... (Font: ${doc._font?.name}, Size: ${doc._fontSize})`);
+    const confirmationText = "Ich bestätige hiermit, dass die oben genannten Arbeits-/Gutschriftstunden erbracht wurden und rechtmäßig berücksichtigt werden.";
+    doc.text(confirmationText, pageLeftMargin, currentY, { align: 'left', width: usableWidth });
+    currentY += doc.heightOfString(confirmationText, { width: usableWidth }) + V_SPACE.SIGNATURE_GAP; // Größerer Abstand für Unterschrift
 
     const lineStartX = pageLeftMargin;
-    const lineEndX = pageLeftMargin + 200;
-    console.log(`[PDF DEBUG] drawSignatureFooter: Zeichne Unterschriftslinie bei Y=${currentY.toFixed(2)}`);
+    const lineEndX = pageLeftMargin + 200; // Länge der Linie
+    console.log(`[PDF DEBUG V7] drawSignatureFooter: Zeichne Unterschriftslinie bei Y=${currentY.toFixed(2)}`);
     doc.moveTo(lineStartX, currentY).lineTo(lineEndX, currentY).lineWidth(0.5).stroke();
-    currentY += V_SPACE.SMALL;
+    currentY += V_SPACE.SMALL; // Kleiner Abstand unter der Linie
 
-    console.log(`[PDF DEBUG] drawSignatureFooter: Zeichne 'Datum, Unterschrift'...`);
+    console.log(`[PDF DEBUG V7] drawSignatureFooter: Zeichne 'Datum, Unterschrift'...`);
     doc.text("Datum, Unterschrift", pageLeftMargin, currentY);
-    console.log(`[PDF DEBUG] drawSignatureFooter ENDE bei Y=${currentY.toFixed(2)}`);
+    currentY += doc.heightOfString("Datum, Unterschrift") // Höhe der Zeile addieren
+    console.log(`[PDF DEBUG V7] drawSignatureFooter ENDE bei Y=${currentY.toFixed(2)}`);
+    // Beachte: currentY ist hier die Position *nach* dem Text "Datum, Unterschrift"
 }
 
 // Middleware: isAdmin (unverändert)
@@ -222,126 +242,122 @@ module.exports = function (db) {
     // --- Ende Test-Route ---
 
 
-    // GET /create-monthly-pdf (V6 - drawPageNumber vereinfacht)
+    // GET /create-monthly-pdf (V7 - Layout Fix)
     router.get('/create-monthly-pdf', isAdmin, async (req, res) => {
-        console.log(`[PDF Mon V6 DEBUG] Route /create-monthly-pdf START.`);
+        console.log(`[PDF Mon V7 DEBUG] Route /create-monthly-pdf START.`);
         let doc;
         let currentPage = 0;
         try {
             const { name, year, month } = req.query;
-            console.log(`[PDF Mon V6 DEBUG] Query Params: name=${name}, year=${year}, month=${month}`);
+            console.log(`[PDF Mon V7 DEBUG] Query Params: name=${name}, year=${year}, month=${month}`);
             if (!name || !year || !month || isNaN(parseInt(year)) || isNaN(parseInt(month)) || month < 1 || month > 12) {
-                 console.error("[PDF Mon V6 DEBUG] Ungültige Parameter empfangen.");
+                 console.error("[PDF Mon V7 DEBUG] Ungültige Parameter empfangen.");
                 return res.status(400).send("Parameter fehlen oder sind ungültig.");
             }
             const parsedYear = parseInt(year, 10);
             const parsedMonth = parseInt(month, 10);
 
-            console.log(`[PDF Mon V6] Starte Generierung für ${name}, ${parsedMonth}/${parsedYear}`);
-            console.log(`[PDF Mon V6 DEBUG] Rufe calculateMonthlyData auf...`);
+            console.log(`[PDF Mon V7] Starte Generierung für ${name}, ${parsedMonth}/${parsedYear}`);
+            console.log(`[PDF Mon V7 DEBUG] Rufe calculateMonthlyData auf...`);
             const data = await calculateMonthlyData(db, name, year, month);
-            console.log(`[PDF Mon V6 DEBUG] calculateMonthlyData erfolgreich. ${data?.workEntries?.length || 0} Arbeits- und ${data?.absenceEntries?.length || 0} Abwesenheitseinträge gefunden.`);
-            const employeeDataForPdf = data.employeeData; // Für getExpectedHours benötigt
+            console.log(`[PDF Mon V7 DEBUG] calculateMonthlyData erfolgreich. ${data?.workEntries?.length || 0} Arbeits- und ${data?.absenceEntries?.length || 0} Abwesenheitseinträge gefunden.`);
+            const employeeDataForPdf = data.employeeData;
 
-            console.log(`[PDF Mon V6 DEBUG] Erstelle PDFDocument...`);
+            console.log(`[PDF Mon V7 DEBUG] Erstelle PDFDocument...`);
             doc = new PDFDocument(PAGE_OPTIONS);
-            console.log(`[PDF Mon V6 DEBUG] Pipe PDF zu Response...`);
+            console.log(`[PDF Mon V7 DEBUG] Pipe PDF zu Response...`);
             doc.pipe(res);
 
-            // Erste Seite manuell hinzufügen
-            console.log(`[PDF Mon V6 DEBUG] Füge erste Seite hinzu...`);
-            doc.addPage();
+            // --- Erste Seite ---
+            console.log(`[PDF Mon V7 DEBUG] Füge erste Seite hinzu...`);
+            doc.addPage(); // Fügt Seite 1 hinzu
             currentPage++;
-            console.log(`[PDF Mon V6 DEBUG] Erste Seite (${currentPage}) hinzugefügt.`);
-             // Seitenzahl zeichnen *nachdem* Seite existiert
-            drawPageNumber(doc, currentPage);
-            // ACHTUNG V6: Font muss evtl. hier neu gesetzt werden, da drawPageNumber ihn ändert!
-            console.log(`[PDF Mon V6 DEBUG] Font nach drawPageNumber: ${doc._font?.name}, Size: ${doc._fontSize}`);
-            doc.font(FONT_NORMAL).fontSize(FONT_SIZE.SUB_HEADER); // Beispiel: Font für Header wiederherstellen
-            console.log(`[PDF Mon V6 DEBUG] Font zurückgesetzt für Header.`);
-
+            console.log(`[PDF Mon V7 DEBUG] Erste Seite (${currentPage}) hinzugefügt.`);
+            drawPageNumber(doc, currentPage); // Zeichnet "Seite 1" unten auf Seite 1
 
             const safeName = (data.employeeName || 'Unbekannt').replace(/[^a-z0-9_\-]/gi, '_');
             const filename = `Monatsnachweis_${safeName}_${String(parsedMonth).padStart(2, '0')}_${parsedYear}.pdf`;
-            console.log(`[PDF Mon V6 DEBUG] Setze Header: Content-Type und Content-Disposition (Filename: ${filename})`);
+            console.log(`[PDF Mon V7 DEBUG] Setze Header: Content-Type und Content-Disposition (Filename: ${filename})`);
             res.setHeader('Content-Type', 'application/pdf');
             res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
 
             const usableWidth = doc.page.width - doc.page.margins.left - doc.page.margins.right;
-            console.log(`[PDF Mon V6 DEBUG] Usable Width: ${usableWidth.toFixed(2)}`);
+            console.log(`[PDF Mon V7 DEBUG] Usable Width: ${usableWidth.toFixed(2)}`);
 
-            // *** Erste Seite: Header ***
-            console.log(`[PDF Mon V6 DEBUG] Zeichne Dokumentenkopf auf Seite ${currentPage}...`);
-            let currentY = drawDocumentHeader(doc, // Verwendet intern FONT_BOLD, FONT_NORMAL etc.
+            // Dokumentenkopf zeichnen (startet bei doc.page.margins.top)
+            console.log(`[PDF Mon V7 DEBUG] Zeichne Dokumentenkopf auf Seite ${currentPage}...`);
+            let currentY = drawDocumentHeader(doc,
                 `Monatsnachweis ${String(parsedMonth).padStart(2, '0')}/${parsedYear}`,
                 data.employeeName,
                 new Date(Date.UTC(parsedYear, parsedMonth - 1, 1)),
                 new Date(Date.UTC(parsedYear, parsedMonth, 0))
             );
-            console.log(`[PDF Mon V6 DEBUG] Dokumentenkopf gezeichnet, Y=${currentY.toFixed(2)}`);
+            console.log(`[PDF Mon V7 DEBUG] Dokumentenkopf gezeichnet, Y=${currentY.toFixed(2)}`);
 
-            // *** Erste Seite: Tabellenkopf ***
-             console.log(`[PDF Mon V6 DEBUG] Zeichne Tabellenkopf auf Seite ${currentPage} bei Y=${currentY.toFixed(2)}...`);
-            let tableLayout = drawTableHeader(doc, currentY, usableWidth); // Verwendet FONT_BOLD
-            currentY = tableLayout.headerBottomY;
-            console.log(`[PDF Mon V6 DEBUG] Tabellenkopf gezeichnet, Y=${currentY.toFixed(2)}`);
-             // Font für Tabelleninhalt setzen (wichtig!)
-            console.log(`[PDF Mon V6 DEBUG] Setze Font für Tabelleninhalt auf ${FONT_NORMAL}, Size ${FONT_SIZE.TABLE_CONTENT}`);
+            // Tabellenkopf zeichnen (startet bei currentY, den drawDocumentHeader zurückgegeben hat)
+            console.log(`[PDF Mon V7 DEBUG] Zeichne Tabellenkopf auf Seite ${currentPage} bei Y=${currentY.toFixed(2)}...`);
+            let tableLayout = drawTableHeader(doc, currentY, usableWidth);
+            currentY = tableLayout.headerBottomY; // Y-Position nach dem Tabellenkopf
+            console.log(`[PDF Mon V7 DEBUG] Tabellenkopf gezeichnet, Y=${currentY.toFixed(2)}`);
+
+            // Font für Tabelleninhalt setzen (wichtig!)
+            console.log(`[PDF Mon V7 DEBUG] Setze Font für Tabelleninhalt auf ${FONT_NORMAL}, Size ${FONT_SIZE.TABLE_CONTENT}`);
             doc.font(FONT_NORMAL).fontSize(FONT_SIZE.TABLE_CONTENT).lineGap(1.5);
-            doc.y = currentY;
+            doc.y = currentY; // Setze die aktuelle Zeichenposition
 
-            // Kombinierte und sortierte Liste (unverändert)
-            console.log(`[PDF Mon V6 DEBUG] Bereite kombinierte Tagesliste vor...`);
+            // --- Kombinierte und sortierte Liste ---
+            console.log(`[PDF Mon V7 DEBUG] Bereite kombinierte Tagesliste vor...`);
             const allDays = [];
+            // ... (Rest der Datenaufbereitung bleibt gleich)
             data.workEntries.forEach(entry => { const dateStr = (entry.date instanceof Date) ? entry.date.toISOString().split('T')[0] : String(entry.date); allDays.push({ date: dateStr, type: 'WORK', startTime: entry.startTime, endTime: entry.endTime, actualHours: parseFloat(entry.hours) || 0, comment: entry.comment }); });
             data.absenceEntries.forEach(absence => { const dateStr = (absence.date instanceof Date) ? absence.date.toISOString().split('T')[0] : String(absence.date); if (!allDays.some(d => d.date === dateStr)) { allDays.push({ date: dateStr, type: absence.type, startTime: '--:--', endTime: '--:--', actualHours: parseFloat(absence.hours) || 0, comment: absence.type === 'VACATION' ? 'Urlaub' : (absence.type === 'SICK' ? 'Krank' : 'Feiertag') }); } });
             allDays.sort((a, b) => new Date(a.date) - new Date(b.date));
-            console.log(`[PDF Mon V6 DEBUG] ${allDays.length} Einträge zu zeichnen.`);
+            console.log(`[PDF Mon V7 DEBUG] ${allDays.length} Einträge zu zeichnen.`);
 
-            // *** Schleife zum Zeichnen der Tabellenzeilen ***
-            console.log(`[PDF Mon V6 DEBUG] Starte Schleife zum Zeichnen der Tabellenzeilen bei Y=${doc.y.toFixed(2)}...`);
+            // --- Schleife zum Zeichnen der Tabellenzeilen ---
+            console.log(`[PDF Mon V7 DEBUG] Starte Schleife zum Zeichnen der Tabellenzeilen bei Y=${doc.y.toFixed(2)}...`);
             if (allDays.length === 0) {
-                console.log(`[PDF Mon V6 DEBUG] Keine Einträge vorhanden, zeichne Platzhaltertext.`);
-                // Sicherstellen, dass der Font korrekt ist, falls die Schleife nie betreten wird
-                doc.font(FONT_NORMAL).fontSize(FONT_SIZE.TABLE_CONTENT);
+                console.log(`[PDF Mon V7 DEBUG] Keine Einträge vorhanden, zeichne Platzhaltertext.`);
+                doc.font(FONT_NORMAL).fontSize(FONT_SIZE.TABLE_CONTENT); // Font sicherheitshalber setzen
                 doc.text('Keine Buchungen/Abwesenheiten für diesen Monat.', doc.page.margins.left, doc.y, {width: usableWidth});
                 doc.y += TABLE_ROW_HEIGHT;
             } else {
                 for (let i = 0; i < allDays.length; i++) {
                     const dayData = allDays[i];
-                    console.log(`[PDF Mon V6 DEBUG] --- Schleife Iteration ${i+1}/${allDays.length} für Datum ${dayData.date} ---`);
-                    console.log(`[PDF Mon V6 DEBUG] Aktuelle Position Y=${doc.y.toFixed(2)}, Seitenhöhe=${doc.page.height}, Unterer Rand=${doc.page.margins.bottom}`);
+                    console.log(`[PDF Mon V7 DEBUG] --- Schleife Iteration ${i+1}/${allDays.length} für Datum ${dayData.date} ---`);
+                    console.log(`[PDF Mon V7 DEBUG] Aktuelle Position Y=${doc.y.toFixed(2)}, Seitenhöhe=${doc.page.height}, Unterer Rand=${doc.page.margins.bottom}`);
 
                     // === Seitenumbruch-Prüfung VOR dem Zeichnen der Zeile ===
-                    console.log(`[PDF Mon V6 DEBUG] Prüfe Seitenumbruch: Y (${doc.y.toFixed(2)}) + RowHeight (${TABLE_ROW_HEIGHT}) > Limit (${(doc.page.height - doc.page.margins.bottom).toFixed(2)})?`);
-                    if (doc.y + TABLE_ROW_HEIGHT > doc.page.height - doc.page.margins.bottom) {
-                        console.log(`[PDF Mon V6 DEBUG] >>> Seitenumbruch NÖTIG vor Zeile ${i+1} bei Y=${doc.y.toFixed(2)} <<<`);
-                        console.log(`[PDF Mon V6 DEBUG] Füge neue Seite hinzu...`);
-                        doc.addPage();
+                    const estimatedLineHeight = TABLE_ROW_HEIGHT; // Einfache Annahme
+                    console.log(`[PDF Mon V7 DEBUG] Prüfe Seitenumbruch: Y (${doc.y.toFixed(2)}) + RowHeight (${estimatedLineHeight}) > Limit (${(doc.page.height - doc.page.margins.bottom).toFixed(2)})?`);
+                    if (doc.y + estimatedLineHeight > doc.page.height - doc.page.margins.bottom) {
+                        console.log(`[PDF Mon V7 DEBUG] >>> Seitenumbruch NÖTIG vor Zeile ${i+1} bei Y=${doc.y.toFixed(2)} <<<`);
+                        console.log(`[PDF Mon V7 DEBUG] Füge neue Seite hinzu...`);
+                        doc.addPage(); // Fügt Seite (currentPage + 1) hinzu
                         currentPage++;
-                        console.log(`[PDF Mon V6 DEBUG] Seite ${currentPage} manuell hinzugefügt.`);
-                        drawPageNumber(doc, currentPage); // Seitenzahl manuell zeichnen
-                         // ACHTUNG V6: Font muss nach drawPageNumber für Header neu gesetzt werden!
-                        console.log(`[PDF Mon V6 DEBUG] Font nach drawPageNumber (auf neuer Seite): ${doc._font?.name}, Size: ${doc._fontSize}`);
+                        console.log(`[PDF Mon V7 DEBUG] Seite ${currentPage} manuell hinzugefügt.`);
+                        drawPageNumber(doc, currentPage); // Zeichnet Seitenzahl unten
 
-                        currentY = doc.page.margins.top;
-                        console.log(`[PDF Mon V6 DEBUG] Rufe drawTableHeader auf Seite ${currentPage} auf bei Y=${currentY.toFixed(2)}.`);
-                        tableLayout = drawTableHeader(doc, currentY, usableWidth); // Setzt Font auf BOLD
+                        // Tabellenkopf auf neuer Seite zeichnen
+                        currentY = doc.page.margins.top; // Startet oben auf der neuen Seite
+                        console.log(`[PDF Mon V7 DEBUG] Rufe drawTableHeader auf Seite ${currentPage} auf bei Y=${currentY.toFixed(2)}.`);
+                        tableLayout = drawTableHeader(doc, currentY, usableWidth); // Zeichnet Header, gibt Y danach zurück
                         currentY = tableLayout.headerBottomY;
-                        doc.y = currentY;
-                        // Font wiederherstellen für Tabelleninhalt!
-                        console.log(`[PDF Mon V6 DEBUG] Setze Font für Tabelleninhalt auf neuer Seite auf ${FONT_NORMAL}, Size ${FONT_SIZE.TABLE_CONTENT}`);
+                        doc.y = currentY; // Setzt aktuelle Zeichenposition
+
+                        // Font für Tabelleninhalt auf neuer Seite setzen!
+                        console.log(`[PDF Mon V7 DEBUG] Setze Font für Tabelleninhalt auf neuer Seite auf ${FONT_NORMAL}, Size ${FONT_SIZE.TABLE_CONTENT}`);
                         doc.font(FONT_NORMAL).fontSize(FONT_SIZE.TABLE_CONTENT).lineGap(1.5);
-                        console.log(`[PDF Mon V6 DEBUG] Tabellenkopf auf neuer Seite gezeichnet, Y=${doc.y.toFixed(2)}`);
+                        console.log(`[PDF Mon V7 DEBUG] Tabellenkopf auf neuer Seite gezeichnet, weiter bei Y=${doc.y.toFixed(2)}`);
                     } else {
-                         console.log(`[PDF Mon V6 DEBUG] Kein Seitenumbruch nötig.`);
+                         console.log(`[PDF Mon V7 DEBUG] Kein Seitenumbruch nötig.`);
                     }
                     // === Ende Seitenumbruch-Prüfung ===
 
-                    // --- Zeile zeichnen (mit rechter Ausrichtung) ---
-                    // Sicherstellen, dass der Font für den Tabelleninhalt korrekt ist (könnte durch drawPageNumber geändert worden sein)
+                    // --- Zeile zeichnen ---
+                    // Sicherstellen, dass der Font für den Tabelleninhalt korrekt ist
                     doc.font(FONT_NORMAL).fontSize(FONT_SIZE.TABLE_CONTENT);
-                    console.log(`[PDF Mon V6 DEBUG] Zeichne Zeile ${i+1} für Datum ${dayData.date} bei Y=${doc.y.toFixed(2)} (Font: ${doc._font?.name}, Size: ${doc._fontSize})...`);
+                    console.log(`[PDF Mon V7 DEBUG] Zeichne Zeile ${i+1} für Datum ${dayData.date} bei Y=${doc.y.toFixed(2)} (Font: ${doc._font?.name}, Size: ${doc._fontSize})...`);
 
                     const dateFormatted = formatDateGermanWithWeekday(dayData.date);
                     const actualHours = dayData.actualHours || 0;
@@ -369,56 +385,57 @@ module.exports = function (db) {
                     doc.text(actualStr, colPositions.actual, currentRowY, { width: colWidths.actual, align: 'right', lineBreak: false });
                     doc.text(diffStr, colPositions.diff, currentRowY, { width: colWidths.diff, align: 'right', lineBreak: false });
 
-                    doc.y = currentRowY + TABLE_ROW_HEIGHT;
-                    console.log(`[PDF Mon V6 DEBUG] Zeile ${i+1} gezeichnet. Neue Position Y=${doc.y.toFixed(2)}`);
+                    doc.y = currentRowY + TABLE_ROW_HEIGHT; // Y-Position für nächste Zeile erhöhen
+                    console.log(`[PDF Mon V7 DEBUG] Zeile ${i+1} gezeichnet. Neue Position Y=${doc.y.toFixed(2)}`);
                     // --- Ende Zeile zeichnen ---
                 } // Ende der for-Schleife
-                console.log(`[PDF Mon V6 DEBUG] Schleife für Tabellenzeilen beendet.`);
+                console.log(`[PDF Mon V7 DEBUG] Schleife für Tabellenzeilen beendet.`);
             }
             // *** Ende Schleife für Tabellenzeilen ***
 
-            // *** Zusammenfassung und Signatur-Footer NUR AM ENDE zeichnen ***
-            console.log(`[PDF Mon V6 DEBUG] Ende Tabelle bei Y=${doc.y.toFixed(2)}. Prüfe Platz für Summary (${SUMMARY_TOTAL_HEIGHT.toFixed(2)}px) + Footer (${FOOTER_TOTAL_HEIGHT.toFixed(2)}px).`);
-            const spaceNeededForSummaryAndFooter = SUMMARY_TOTAL_HEIGHT + FOOTER_TOTAL_HEIGHT + V_SPACE.LARGE;
-            console.log(`[PDF Mon V6 DEBUG] Platz benötigt: ${spaceNeededForSummaryAndFooter.toFixed(2)}. Verfügbar bis ${(doc.page.height - doc.page.margins.bottom).toFixed(2)}.`);
+            // *** Zusammenfassung und Signatur-Footer ***
+            console.log(`[PDF Mon V7 DEBUG] Ende Tabelle bei Y=${doc.y.toFixed(2)}. Prüfe Platz für Summary (${SUMMARY_TOTAL_HEIGHT.toFixed(2)}px) + Footer (${FOOTER_TOTAL_HEIGHT.toFixed(2)}px).`);
+            const spaceNeededForSummaryAndFooter = SUMMARY_TOTAL_HEIGHT + FOOTER_TOTAL_HEIGHT + V_SPACE.LARGE; // Extra Platz
+            console.log(`[PDF Mon V7 DEBUG] Platz benötigt: ${spaceNeededForSummaryAndFooter.toFixed(2)}. Verfügbar bis ${(doc.page.height - doc.page.margins.bottom).toFixed(2)}.`);
 
             // Prüfen, ob Zusammenfassung UND Footer noch auf die AKTUELLE Seite passen
             if (doc.y + spaceNeededForSummaryAndFooter > doc.page.height - doc.page.margins.bottom) {
-                console.log(`[PDF Mon V6 DEBUG] >>> Seitenumbruch NÖTIG vor Summary/Footer bei Y=${doc.y.toFixed(2)} <<<`);
-                console.log(`[PDF Mon V6 DEBUG] Füge neue Seite für Summary/Footer hinzu...`);
+                console.log(`[PDF Mon V7 DEBUG] >>> Seitenumbruch NÖTIG vor Summary/Footer bei Y=${doc.y.toFixed(2)} <<<`);
+                console.log(`[PDF Mon V7 DEBUG] Füge neue Seite für Summary/Footer hinzu...`);
                 doc.addPage();
                 currentPage++;
-                console.log(`[PDF Mon V6 DEBUG] Seite ${currentPage} manuell für Summary/Footer hinzugefügt.`);
-                drawPageNumber(doc, currentPage); // Seitenzahl manuell zeichnen
-                // ACHTUNG V6: Font muss nach drawPageNumber für Summary neu gesetzt werden!
-                console.log(`[PDF Mon V6 DEBUG] Font nach drawPageNumber (vor Summary): ${doc._font?.name}, Size: ${doc._fontSize}`);
+                console.log(`[PDF Mon V7 DEBUG] Seite ${currentPage} manuell für Summary/Footer hinzugefügt.`);
+                drawPageNumber(doc, currentPage); // Seitenzahl zeichnen
+
+                // Startposition oben auf der neuen Seite
                 doc.y = doc.page.margins.top;
-                console.log(`[PDF Mon V6 DEBUG] Neue Seite für Summary/Footer gestartet bei Y=${doc.y.toFixed(2)}.`);
+                console.log(`[PDF Mon V7 DEBUG] Neue Seite für Summary/Footer gestartet bei Y=${doc.y.toFixed(2)}.`);
             } else {
-                 console.log(`[PDF Mon V6 DEBUG] Kein Seitenumbruch vor Summary/Footer nötig.`);
+                 console.log(`[PDF Mon V7 DEBUG] Kein Seitenumbruch vor Summary/Footer nötig.`);
                  doc.y += V_SPACE.LARGE; // Platz vor Summary lassen
-                 console.log(`[PDF Mon V6 DEBUG] Y nach V_SPACE.LARGE: ${doc.y.toFixed(2)}`);
+                 console.log(`[PDF Mon V7 DEBUG] Y nach V_SPACE.LARGE: ${doc.y.toFixed(2)}`);
             }
 
-            // --- Zeichne Zusammenfassung (mit rechter Ausrichtung für Werte) ---
+            // --- Zeichne Zusammenfassung ---
             const summaryStartY = doc.y;
-            console.log(`[PDF Mon V6 DEBUG] Zeichne Summary auf Seite ${currentPage} bei Y=${summaryStartY.toFixed(2)}`);
-            // Font für Summary setzen (wichtig!)
-            console.log(`[PDF Mon V6 DEBUG] Setze Font für Summary auf ${FONT_BOLD}, Size ${FONT_SIZE.SUMMARY}`);
+            console.log(`[PDF Mon V7 DEBUG] Zeichne Summary auf Seite ${currentPage} bei Y=${summaryStartY.toFixed(2)}`);
+            // Font für Summary setzen
+            console.log(`[PDF Mon V7 DEBUG] Setze Font für Summary auf ${FONT_BOLD}, Size ${FONT_SIZE.SUMMARY}`);
             doc.font(FONT_BOLD).fontSize(FONT_SIZE.SUMMARY);
             const summaryLabelWidth = tableLayout.colWidths.date + tableLayout.colWidths.start + tableLayout.colWidths.end + tableLayout.colWidths.expected - V_SPACE.SMALL;
             const summaryValueWidth = tableLayout.colWidths.actual + tableLayout.colWidths.diff;
             const summaryLabelX = doc.page.margins.left;
             const summaryValueX = tableLayout.colPositions.actual;
-            const summaryLineSpacing = 0.5;
+            const summaryLineSpacing = 0.5; // Kleiner Zeilenabstand
+
             doc.text("Übertrag Vormonat (+/-):", summaryLabelX, doc.y, { width: summaryLabelWidth }); doc.text(decimalHoursToHHMM(data.previousCarryOver || 0), summaryValueX, doc.y, { width: summaryValueWidth, align: 'right' });
             doc.moveDown(summaryLineSpacing);
             doc.text("Gesamt Soll-Zeit (Monat):", summaryLabelX, doc.y, { width: summaryLabelWidth });
             doc.text(decimalHoursToHHMM(data.totalExpected || 0), summaryValueX, doc.y, { width: summaryValueWidth, align: 'right' }); doc.moveDown(summaryLineSpacing);
             doc.text("Gesamt Ist-Zeit (Monat):", summaryLabelX, doc.y, { width: summaryLabelWidth }); doc.text(decimalHoursToHHMM(data.totalActual || 0), summaryValueX, doc.y, { width: summaryValueWidth, align: 'right' });
             doc.moveDown(summaryLineSpacing);
-             // Detailzeile mit FONT_NORMAL
-            doc.font(FONT_NORMAL).fontSize(FONT_SIZE.SUMMARY); // Font für Detailzeile
+            // Detailzeile mit FONT_NORMAL
+            doc.font(FONT_NORMAL).fontSize(FONT_SIZE.SUMMARY); // Font für Detailzeile umschalten
             doc.text(`(davon gearb.: ${decimalHoursToHHMM(data.workedHours)}, Abwesenh.: ${decimalHoursToHHMM(data.absenceHours)})`, summaryLabelX + 10, doc.y, {width: summaryLabelWidth -10});
             doc.moveDown(summaryLineSpacing+0.3);
             doc.font(FONT_BOLD).fontSize(FONT_SIZE.SUMMARY); // Font wieder auf BOLD für nächste Zeilen
@@ -427,53 +444,51 @@ module.exports = function (db) {
             doc.text("Neuer Übertrag (Saldo Ende):", summaryLabelX, doc.y, { width: summaryLabelWidth });
             doc.text(decimalHoursToHHMM(data.newCarryOver || 0), summaryValueX, doc.y, { width: summaryValueWidth, align: 'right' });
 
-            const summaryEndY = doc.y;
-            console.log(`[PDF Mon V6 DEBUG] Ende Summary bei Y=${summaryEndY.toFixed(2)}`);
+            // Y-Position nach der letzten Zeile der Zusammenfassung
+            const summaryEndY = doc.y + doc.heightOfString("Neuer Übertrag...", {width: summaryLabelWidth}); // Höhe der letzten Zeile berücksichtigen
+            console.log(`[PDF Mon V7 DEBUG] Ende Summary bei Y=${summaryEndY.toFixed(2)}`);
+            doc.y = summaryEndY; // doc.y explizit setzen
 
             // --- Zeichne Signatur-Footer ---
-            const footerStartY = summaryEndY + V_SPACE.LARGE;
-            // Font wird in drawSignatureFooter intern gesetzt (FONT_NORMAL, FONT_SIZE.FOOTER)
-            console.log(`[PDF Mon V6 DEBUG] Zeichne Signatur-Footer auf Seite ${currentPage} bei Y=${footerStartY.toFixed(2)}`);
-            drawSignatureFooter(doc, footerStartY);
-            const footerEndY = doc.y; // Aktuelle Y-Position nach dem Footer
-            console.log(`[PDF Mon V6 DEBUG] Signatur-Footer gezeichnet, Ende bei Y=${footerEndY.toFixed(2)}`);
+            const footerStartY = doc.y + V_SPACE.LARGE; // Abstand nach Summary
+            console.log(`[PDF Mon V7 DEBUG] Zeichne Signatur-Footer auf Seite ${currentPage} bei Y=${footerStartY.toFixed(2)}`);
+            drawSignatureFooter(doc, footerStartY); // Setzt intern Font etc.
 
             // --- PDF abschließen ---
-            console.log("[PDF Mon V6 DEBUG] Finalisiere Dokument (rufe doc.end() auf)...");
+            console.log("[PDF Mon V7 DEBUG] Finalisiere Dokument (rufe doc.end() auf)...");
             doc.end();
-            console.log("[PDF Mon V6 DEBUG] doc.end() aufgerufen. Warten auf Stream-Ende.");
+            console.log("[PDF Mon V7 DEBUG] doc.end() aufgerufen. Warten auf Stream-Ende.");
 
         } catch (err) {
-             // *** ERSTE AKTION IM CATCH BLOCK ***
-            console.error("[PDF Mon V6 DEBUG] !!!!! CATCH BLOCK REACHED !!!!!");
-            console.error("Fehler Erstellen Monats-PDF V6:", err);
+             // *** Fehlerbehandlung ***
+            console.error("[PDF Mon V7 DEBUG] !!!!! CATCH BLOCK REACHED !!!!!");
+            console.error("Fehler Erstellen Monats-PDF V7:", err);
             if (doc && !doc.writableEnded && !res.headersSent) {
-                 console.error("[PDF Mon V6 DEBUG] Catch-Block: Versuche Fehler-PDF zu senden.");
+                 console.error("[PDF Mon V7 DEBUG] Catch-Block: Versuche Fehler-PDF zu senden.");
                  try {
-                     // Sicherstellen, dass mindestens eine Seite existiert
-                     if (currentPage === 0) {
-                         console.error("[PDF Mon V6 DEBUG] Catch-Block: Keine Seite vorhanden, füge eine hinzu.");
+                     if (currentPage === 0) { // Falls noch keine Seite existiert
+                         console.error("[PDF Mon V7 DEBUG] Catch-Block: Keine Seite vorhanden, füge eine hinzu.");
                          doc.addPage(); currentPage++; drawPageNumber(doc, currentPage);
                      }
-                     // Sicherstellen, dass der Font für die Fehlermeldung gesetzt ist
-                     doc.font(FONT_NORMAL).fontSize(10);
-                     doc.text(`Fehler beim Erstellen des PDFs: ${err.message}`, doc.page.margins.left, doc.page.margins.top);
-                     console.error("[PDF Mon V6 DEBUG] Catch-Block: Rufe doc.end() für Fehler-PDF auf.");
+                     doc.font(FONT_NORMAL).fontSize(10); // Font für Fehlermeldung
+                     doc.text(`Fehler beim Erstellen des PDFs: ${err.message}\n\nStack: ${err.stack}`, // Mehr Details im Fehlerfall
+                              doc.page.margins.left, doc.page.margins.top, { width: usableWidth });
+                     console.error("[PDF Mon V7 DEBUG] Catch-Block: Rufe doc.end() für Fehler-PDF auf.");
                      doc.end();
                  } catch (pdfErr) {
-                     console.error("[PDF Mon V6 DEBUG] Catch-Block: Konnte nicht einmal Fehler-PDF generieren:", pdfErr);
+                     console.error("[PDF Mon V7 DEBUG] Catch-Block: Konnte nicht einmal Fehler-PDF generieren:", pdfErr);
                      if (!res.headersSent) {
-                         console.error("[PDF Mon V6 DEBUG] Catch-Block: Sende 500er Status.");
+                         console.error("[PDF Mon V7 DEBUG] Catch-Block: Sende 500er Status.");
                          res.status(500).send(`Interner Serverfehler beim PDF erstellen: ${err.message}`);
                      }
                  }
             } else if (!res.headersSent) {
-                 console.error("[PDF Mon V6 DEBUG] Catch-Block: Keine Header gesendet, sende 500er Status.");
+                 console.error("[PDF Mon V7 DEBUG] Catch-Block: Keine Header gesendet, sende 500er Status.");
                 res.status(500).send(`Fehler Erstellen Monats-PDF: ${err.message}`);
             } else {
-                 console.error("[PDF Mon V6 DEBUG] Catch-Block: Header bereits gesendet, beende Stream, falls möglich.");
+                 console.error("[PDF Mon V7 DEBUG] Catch-Block: Header bereits gesendet, beende Stream, falls möglich.");
                  if (doc && !doc.writableEnded) {
-                    console.error("[PDF Mon V6 DEBUG] Catch-Block: Rufe doc.end() für bestehenden Stream auf.");
+                    console.error("[PDF Mon V7 DEBUG] Catch-Block: Rufe doc.end() für bestehenden Stream auf.");
                     doc.end();
                  }
             }
@@ -481,20 +496,20 @@ module.exports = function (db) {
     }); // Ende /create-monthly-pdf
     //-----------------------------------------------------
 
-    // GET /create-period-pdf (V6 - drawPageNumber vereinfacht)
+    // GET /create-period-pdf (V7 - Layout Fix)
     router.get('/create-period-pdf', isAdmin, async (req, res) => {
-        console.log(`[PDF Per V6 DEBUG] Route /create-period-pdf START.`);
+        console.log(`[PDF Per V7 DEBUG] Route /create-period-pdf START.`);
         let doc;
         let currentPage = 0;
          try {
             const { name, year, periodType, periodValue } = req.query;
-            console.log(`[PDF Per V6 DEBUG] Query Params: name=${name}, year=${year}, periodType=${periodType}, periodValue=${periodValue}`);
+            console.log(`[PDF Per V7 DEBUG] Query Params: name=${name}, year=${year}, periodType=${periodType}, periodValue=${periodValue}`);
             if (!name || !year || isNaN(parseInt(year)) || !periodType || !['QUARTER', 'YEAR'].includes(periodType.toUpperCase())) {
-                 console.error("[PDF Per V6 DEBUG] Ungültige Parameter empfangen (Name, Jahr, PeriodType).");
+                 console.error("[PDF Per V7 DEBUG] Ungültige Parameter empfangen (Name, Jahr, PeriodType).");
                 return res.status(400).send("Parameter fehlen oder sind ungültig (Name, Jahr, PeriodType).");
             }
             if (periodType.toUpperCase() === 'QUARTER' && (!periodValue || isNaN(parseInt(periodValue)) || periodValue < 1 || periodValue > 4)) {
-                 console.error("[PDF Per V6 DEBUG] Ungültiger periodValue für Quartal.");
+                 console.error("[PDF Per V7 DEBUG] Ungültiger periodValue für Quartal.");
                  return res.status(400).send("Gültiger periodValue (1-4) für Quartal erforderlich.");
             }
 
@@ -502,109 +517,105 @@ module.exports = function (db) {
             const pTypeUpper = periodType.toUpperCase();
             const pValue = pTypeUpper === 'QUARTER' ? parseInt(periodValue) : null;
 
-            console.log(`[PDF Per V6] Starte Generierung für ${name}, ${year}, Typ: ${pTypeUpper}, Wert: ${pValue}`);
-            console.log(`[PDF Per V6 DEBUG] Rufe calculatePeriodData auf...`);
+            console.log(`[PDF Per V7] Starte Generierung für ${name}, ${year}, Typ: ${pTypeUpper}, Wert: ${pValue}`);
+            console.log(`[PDF Per V7 DEBUG] Rufe calculatePeriodData auf...`);
             const data = await calculatePeriodData(db, name, year, pTypeUpper, pValue);
-            console.log(`[PDF Per V6 DEBUG] calculatePeriodData erfolgreich. ${data?.workEntriesPeriod?.length || 0} Arbeits- und ${data?.absenceEntriesPeriod?.length || 0} Abwesenheitseinträge gefunden.`);
-            const employeeDataForPdf = data.employeeData; // Für getExpectedHours benötigt
+            console.log(`[PDF Per V7 DEBUG] calculatePeriodData erfolgreich. ${data?.workEntriesPeriod?.length || 0} Arbeits- und ${data?.absenceEntriesPeriod?.length || 0} Abwesenheitseinträge gefunden.`);
+            const employeeDataForPdf = data.employeeData;
 
-            console.log(`[PDF Per V6 DEBUG] Erstelle PDFDocument...`);
+            console.log(`[PDF Per V7 DEBUG] Erstelle PDFDocument...`);
             doc = new PDFDocument(PAGE_OPTIONS);
-            console.log(`[PDF Per V6 DEBUG] Pipe PDF zu Response...`);
+            console.log(`[PDF Per V7 DEBUG] Pipe PDF zu Response...`);
             doc.pipe(res);
 
-            // Erste Seite manuell hinzufügen
-            console.log(`[PDF Per V6 DEBUG] Füge erste Seite hinzu...`);
-            doc.addPage();
+            // --- Erste Seite ---
+            console.log(`[PDF Per V7 DEBUG] Füge erste Seite hinzu...`);
+            doc.addPage(); // Fügt Seite 1 hinzu
             currentPage++;
-            console.log(`[PDF Per V6 DEBUG] Erste Seite (${currentPage}) hinzugefügt.`);
-             // Seitenzahl zeichnen *nachdem* Seite existiert
-            drawPageNumber(doc, currentPage);
-            // ACHTUNG V6: Font muss evtl. hier neu gesetzt werden, da drawPageNumber ihn ändert!
-            console.log(`[PDF Per V6 DEBUG] Font nach drawPageNumber: ${doc._font?.name}, Size: ${doc._fontSize}`);
-            doc.font(FONT_NORMAL).fontSize(FONT_SIZE.SUB_HEADER); // Beispiel: Font für Header wiederherstellen
-            console.log(`[PDF Per V6 DEBUG] Font zurückgesetzt für Header.`);
-
+            console.log(`[PDF Per V7 DEBUG] Erste Seite (${currentPage}) hinzugefügt.`);
+            drawPageNumber(doc, currentPage); // Zeichnet "Seite 1" unten auf Seite 1
 
             const safeName = (data.employeeName || 'Unbekannt').replace(/[^a-z0-9_\-]/gi, '_');
             const periodLabelFile = data.periodIdentifier || (pTypeUpper === 'QUARTER' ? `Q${pValue}` : 'Jahr');
             const filename = `Nachweis_${periodLabelFile}_${safeName}_${parsedYear}.pdf`;
-            console.log(`[PDF Per V6 DEBUG] Setze Header: Content-Type und Content-Disposition (Filename: ${filename})`);
+            console.log(`[PDF Per V7 DEBUG] Setze Header: Content-Type und Content-Disposition (Filename: ${filename})`);
             res.setHeader('Content-Type', 'application/pdf');
             res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
 
             const usableWidth = doc.page.width - doc.page.margins.left - doc.page.margins.right;
-            console.log(`[PDF Per V6 DEBUG] Usable Width: ${usableWidth.toFixed(2)}`);
+            console.log(`[PDF Per V7 DEBUG] Usable Width: ${usableWidth.toFixed(2)}`);
 
-            // *** Erste Seite: Header ***
+            // Dokumentenkopf zeichnen (startet bei doc.page.margins.top)
             const title = pTypeUpper === 'QUARTER' ?
                 `Quartalsnachweis ${data.periodIdentifier}/${parsedYear}` : `Jahresnachweis ${parsedYear}`;
-            console.log(`[PDF Per V6 DEBUG] Zeichne Dokumentenkopf auf Seite ${currentPage} mit Titel: ${title}...`);
-            let currentY = drawDocumentHeader(doc, title, data.employeeName, data.periodStartDate, data.periodEndDate); // Verwendet intern FONT_BOLD, FONT_NORMAL etc.
-            console.log(`[PDF Per V6 DEBUG] Dokumentenkopf gezeichnet, Y=${currentY.toFixed(2)}`);
+            console.log(`[PDF Per V7 DEBUG] Zeichne Dokumentenkopf auf Seite ${currentPage} mit Titel: ${title}...`);
+            let currentY = drawDocumentHeader(doc, title, data.employeeName, data.periodStartDate, data.periodEndDate);
+            console.log(`[PDF Per V7 DEBUG] Dokumentenkopf gezeichnet, Y=${currentY.toFixed(2)}`);
 
-             // *** Erste Seite: Tabellenkopf ***
-            console.log(`[PDF Per V6 DEBUG] Zeichne Tabellenkopf auf Seite ${currentPage} bei Y=${currentY.toFixed(2)}...`);
-            let tableLayout = drawTableHeader(doc, currentY, usableWidth); // Verwendet FONT_BOLD
-            currentY = tableLayout.headerBottomY;
-            console.log(`[PDF Per V6 DEBUG] Tabellenkopf gezeichnet, Y=${currentY.toFixed(2)}`);
-             // Font für Tabelleninhalt setzen (wichtig!)
-             console.log(`[PDF Per V6 DEBUG] Setze Font für Tabelleninhalt auf ${FONT_NORMAL}, Size ${FONT_SIZE.TABLE_CONTENT}`);
+             // Tabellenkopf zeichnen (startet bei currentY, den drawDocumentHeader zurückgegeben hat)
+            console.log(`[PDF Per V7 DEBUG] Zeichne Tabellenkopf auf Seite ${currentPage} bei Y=${currentY.toFixed(2)}...`);
+            let tableLayout = drawTableHeader(doc, currentY, usableWidth);
+            currentY = tableLayout.headerBottomY; // Y-Position nach dem Tabellenkopf
+            console.log(`[PDF Per V7 DEBUG] Tabellenkopf gezeichnet, Y=${currentY.toFixed(2)}`);
+
+            // Font für Tabelleninhalt setzen (wichtig!)
+             console.log(`[PDF Per V7 DEBUG] Setze Font für Tabelleninhalt auf ${FONT_NORMAL}, Size ${FONT_SIZE.TABLE_CONTENT}`);
             doc.font(FONT_NORMAL).fontSize(FONT_SIZE.TABLE_CONTENT).lineGap(1.5);
-            doc.y = currentY;
+            doc.y = currentY; // Setze die aktuelle Zeichenposition
 
-            // Kombinierte und sortierte Liste (Periode)
-            console.log(`[PDF Per V6 DEBUG] Bereite kombinierte Tagesliste für Periode vor...`);
+            // --- Kombinierte und sortierte Liste (Periode) ---
+            console.log(`[PDF Per V7 DEBUG] Bereite kombinierte Tagesliste für Periode vor...`);
             const allDaysPeriod = [];
+            // ... (Rest der Datenaufbereitung bleibt gleich)
             data.workEntriesPeriod.forEach(entry => { const dateStr = (entry.date instanceof Date) ? entry.date.toISOString().split('T')[0] : String(entry.date); allDaysPeriod.push({ date: dateStr, type: 'WORK', startTime: entry.startTime, endTime: entry.endTime, actualHours: parseFloat(entry.hours) || 0, comment: entry.comment }); });
             data.absenceEntriesPeriod.forEach(absence => { const dateStr = (absence.date instanceof Date) ? absence.date.toISOString().split('T')[0] : String(absence.date); if (!allDaysPeriod.some(d => d.date === dateStr)) { allDaysPeriod.push({ date: dateStr, type: absence.type, startTime: '--:--', endTime: '--:--', actualHours: parseFloat(absence.hours) || 0, comment: absence.type === 'VACATION' ? 'Urlaub' : (absence.type === 'SICK' ? 'Krank' : 'Feiertag') }); } });
             allDaysPeriod.sort((a, b) => new Date(a.date) - new Date(b.date));
-            console.log(`[PDF Per V6 DEBUG] ${allDaysPeriod.length} Einträge zu zeichnen.`);
+            console.log(`[PDF Per V7 DEBUG] ${allDaysPeriod.length} Einträge zu zeichnen.`);
 
-            // *** Schleife zum Zeichnen der Tabellenzeilen (Periode) ***
-            console.log(`[PDF Per V6 DEBUG] Starte Schleife zum Zeichnen der Tabellenzeilen bei Y=${doc.y.toFixed(2)}...`);
+            // --- Schleife zum Zeichnen der Tabellenzeilen (Periode) ---
+            console.log(`[PDF Per V7 DEBUG] Starte Schleife zum Zeichnen der Tabellenzeilen bei Y=${doc.y.toFixed(2)}...`);
             if (allDaysPeriod.length === 0) {
-                console.log(`[PDF Per V6 DEBUG] Keine Einträge vorhanden, zeichne Platzhaltertext.`);
-                // Sicherstellen, dass der Font korrekt ist, falls die Schleife nie betreten wird
-                doc.font(FONT_NORMAL).fontSize(FONT_SIZE.TABLE_CONTENT);
+                console.log(`[PDF Per V7 DEBUG] Keine Einträge vorhanden, zeichne Platzhaltertext.`);
+                doc.font(FONT_NORMAL).fontSize(FONT_SIZE.TABLE_CONTENT); // Font sicherheitshalber setzen
                 doc.text('Keine Buchungen/Abwesenheiten für diesen Zeitraum.', doc.page.margins.left, doc.y, {width: usableWidth});
                 doc.y += TABLE_ROW_HEIGHT;
             } else {
                  for (let i = 0; i < allDaysPeriod.length; i++) {
                     const dayData = allDaysPeriod[i];
-                    console.log(`[PDF Per V6 DEBUG] --- Schleife Iteration ${i+1}/${allDaysPeriod.length} für Datum ${dayData.date} ---`);
-                    console.log(`[PDF Per V6 DEBUG] Aktuelle Position Y=${doc.y.toFixed(2)}, Seitenhöhe=${doc.page.height}, Unterer Rand=${doc.page.margins.bottom}`);
+                    console.log(`[PDF Per V7 DEBUG] --- Schleife Iteration ${i+1}/${allDaysPeriod.length} für Datum ${dayData.date} ---`);
+                    console.log(`[PDF Per V7 DEBUG] Aktuelle Position Y=${doc.y.toFixed(2)}, Seitenhöhe=${doc.page.height}, Unterer Rand=${doc.page.margins.bottom}`);
 
                     // === Seitenumbruch-Prüfung VOR dem Zeichnen der Zeile ===
-                    console.log(`[PDF Per V6 DEBUG] Prüfe Seitenumbruch: Y (${doc.y.toFixed(2)}) + RowHeight (${TABLE_ROW_HEIGHT}) > Limit (${(doc.page.height - doc.page.margins.bottom).toFixed(2)})?`);
-                    if (doc.y + TABLE_ROW_HEIGHT > doc.page.height - doc.page.margins.bottom) {
-                        console.log(`[PDF Per V6 DEBUG] >>> Seitenumbruch NÖTIG vor Zeile ${i+1} bei Y=${doc.y.toFixed(2)} <<<`);
-                        console.log(`[PDF Per V6 DEBUG] Füge neue Seite hinzu...`);
-                        doc.addPage();
+                    const estimatedLineHeight = TABLE_ROW_HEIGHT; // Einfache Annahme
+                    console.log(`[PDF Per V7 DEBUG] Prüfe Seitenumbruch: Y (${doc.y.toFixed(2)}) + RowHeight (${estimatedLineHeight}) > Limit (${(doc.page.height - doc.page.margins.bottom).toFixed(2)})?`);
+                    if (doc.y + estimatedLineHeight > doc.page.height - doc.page.margins.bottom) {
+                        console.log(`[PDF Per V7 DEBUG] >>> Seitenumbruch NÖTIG vor Zeile ${i+1} bei Y=${doc.y.toFixed(2)} <<<`);
+                        console.log(`[PDF Per V7 DEBUG] Füge neue Seite hinzu...`);
+                        doc.addPage(); // Fügt Seite (currentPage + 1) hinzu
                         currentPage++;
-                        console.log(`[PDF Per V6 DEBUG] Seite ${currentPage} manuell hinzugefügt.`);
-                        drawPageNumber(doc, currentPage); // Seitenzahl manuell zeichnen
-                         // ACHTUNG V6: Font muss nach drawPageNumber für Header neu gesetzt werden!
-                        console.log(`[PDF Per V6 DEBUG] Font nach drawPageNumber (auf neuer Seite): ${doc._font?.name}, Size: ${doc._fontSize}`);
+                        console.log(`[PDF Per V7 DEBUG] Seite ${currentPage} manuell hinzugefügt.`);
+                        drawPageNumber(doc, currentPage); // Zeichnet Seitenzahl unten
 
-                        currentY = doc.page.margins.top;
-                        console.log(`[PDF Per V6 DEBUG] Rufe drawTableHeader auf Seite ${currentPage} auf bei Y=${currentY.toFixed(2)}.`);
-                        tableLayout = drawTableHeader(doc, currentY, usableWidth); // Setzt Font auf BOLD
+                        // Tabellenkopf auf neuer Seite zeichnen
+                        currentY = doc.page.margins.top; // Startet oben auf der neuen Seite
+                        console.log(`[PDF Per V7 DEBUG] Rufe drawTableHeader auf Seite ${currentPage} auf bei Y=${currentY.toFixed(2)}.`);
+                        tableLayout = drawTableHeader(doc, currentY, usableWidth); // Zeichnet Header, gibt Y danach zurück
                         currentY = tableLayout.headerBottomY;
-                        doc.y = currentY;
-                        // Font wiederherstellen für Tabelleninhalt!
-                         console.log(`[PDF Per V6 DEBUG] Setze Font für Tabelleninhalt auf neuer Seite auf ${FONT_NORMAL}, Size ${FONT_SIZE.TABLE_CONTENT}`);
+                        doc.y = currentY; // Setzt aktuelle Zeichenposition
+
+                        // Font für Tabelleninhalt auf neuer Seite setzen!
+                        console.log(`[PDF Per V7 DEBUG] Setze Font für Tabelleninhalt auf neuer Seite auf ${FONT_NORMAL}, Size ${FONT_SIZE.TABLE_CONTENT}`);
                         doc.font(FONT_NORMAL).fontSize(FONT_SIZE.TABLE_CONTENT).lineGap(1.5);
-                        console.log(`[PDF Per V6 DEBUG] Tabellenkopf auf neuer Seite gezeichnet, Y=${doc.y.toFixed(2)}`);
+                        console.log(`[PDF Per V7 DEBUG] Tabellenkopf auf neuer Seite gezeichnet, weiter bei Y=${doc.y.toFixed(2)}`);
                     } else {
-                         console.log(`[PDF Per V6 DEBUG] Kein Seitenumbruch nötig.`);
+                         console.log(`[PDF Per V7 DEBUG] Kein Seitenumbruch nötig.`);
                     }
                     // === Ende Seitenumbruch-Prüfung ===
 
-                    // --- Zeile zeichnen (mit rechter Ausrichtung) ---
-                    // Sicherstellen, dass der Font für den Tabelleninhalt korrekt ist (könnte durch drawPageNumber geändert worden sein)
+                    // --- Zeile zeichnen ---
+                    // Sicherstellen, dass der Font für den Tabelleninhalt korrekt ist
                     doc.font(FONT_NORMAL).fontSize(FONT_SIZE.TABLE_CONTENT);
-                    console.log(`[PDF Per V6 DEBUG] Zeichne Zeile ${i+1} für Datum ${dayData.date} bei Y=${doc.y.toFixed(2)} (Font: ${doc._font?.name}, Size: ${doc._fontSize})...`);
+                    console.log(`[PDF Per V7 DEBUG] Zeichne Zeile ${i+1} für Datum ${dayData.date} bei Y=${doc.y.toFixed(2)} (Font: ${doc._font?.name}, Size: ${doc._fontSize})...`);
 
                     const dateFormatted = formatDateGermanWithWeekday(dayData.date);
                     const actualHours = dayData.actualHours || 0;
@@ -632,58 +643,59 @@ module.exports = function (db) {
                     doc.text(actualStr, colPositions.actual, currentRowY, { width: colWidths.actual, align: 'right', lineBreak: false });
                     doc.text(diffStr, colPositions.diff, currentRowY, { width: colWidths.diff, align: 'right', lineBreak: false });
 
-                    doc.y = currentRowY + TABLE_ROW_HEIGHT;
-                    console.log(`[PDF Per V6 DEBUG] Zeile ${i+1} gezeichnet. Neue Position Y=${doc.y.toFixed(2)}`);
+                    doc.y = currentRowY + TABLE_ROW_HEIGHT; // Y-Position für nächste Zeile erhöhen
+                    console.log(`[PDF Per V7 DEBUG] Zeile ${i+1} gezeichnet. Neue Position Y=${doc.y.toFixed(2)}`);
                     // --- Ende Zeile zeichnen ---
                 } // Ende der for-Schleife
-                console.log(`[PDF Per V6 DEBUG] Schleife für Tabellenzeilen beendet.`);
+                console.log(`[PDF Per V7 DEBUG] Schleife für Tabellenzeilen beendet.`);
             }
             // *** Ende Schleife für Tabellenzeilen (Periode) ***
 
 
-             // *** Zusammenfassung und Signatur-Footer NUR AM ENDE zeichnen (Periode) ***
-            console.log(`[PDF Per V6 DEBUG] Ende Tabelle bei Y=${doc.y.toFixed(2)}. Prüfe Platz für Summary (${SUMMARY_TOTAL_HEIGHT.toFixed(2)}px) + Footer (${FOOTER_TOTAL_HEIGHT.toFixed(2)}px).`);
-            const spaceNeededForSummaryAndFooter = SUMMARY_TOTAL_HEIGHT + FOOTER_TOTAL_HEIGHT + V_SPACE.LARGE;
-            console.log(`[PDF Per V6 DEBUG] Platz benötigt: ${spaceNeededForSummaryAndFooter.toFixed(2)}. Verfügbar bis ${(doc.page.height - doc.page.margins.bottom).toFixed(2)}.`);
+             // *** Zusammenfassung und Signatur-Footer ***
+            console.log(`[PDF Per V7 DEBUG] Ende Tabelle bei Y=${doc.y.toFixed(2)}. Prüfe Platz für Summary (${SUMMARY_TOTAL_HEIGHT.toFixed(2)}px) + Footer (${FOOTER_TOTAL_HEIGHT.toFixed(2)}px).`);
+            const spaceNeededForSummaryAndFooter = SUMMARY_TOTAL_HEIGHT + FOOTER_TOTAL_HEIGHT + V_SPACE.LARGE; // Extra Platz
+            console.log(`[PDF Per V7 DEBUG] Platz benötigt: ${spaceNeededForSummaryAndFooter.toFixed(2)}. Verfügbar bis ${(doc.page.height - doc.page.margins.bottom).toFixed(2)}.`);
 
             // Prüfen, ob Zusammenfassung UND Footer noch auf die AKTUELLE Seite passen
             if (doc.y + spaceNeededForSummaryAndFooter > doc.page.height - doc.page.margins.bottom) {
-                console.log(`[PDF Per V6 DEBUG] >>> Seitenumbruch NÖTIG vor Summary/Footer bei Y=${doc.y.toFixed(2)} <<<`);
-                console.log(`[PDF Per V6 DEBUG] Füge neue Seite für Summary/Footer hinzu...`);
+                console.log(`[PDF Per V7 DEBUG] >>> Seitenumbruch NÖTIG vor Summary/Footer bei Y=${doc.y.toFixed(2)} <<<`);
+                console.log(`[PDF Per V7 DEBUG] Füge neue Seite für Summary/Footer hinzu...`);
                 doc.addPage();
                 currentPage++;
-                console.log(`[PDF Per V6 DEBUG] Seite ${currentPage} manuell für Summary/Footer hinzugefügt.`);
-                drawPageNumber(doc, currentPage); // Seitenzahl manuell zeichnen
-                 // ACHTUNG V6: Font muss nach drawPageNumber für Summary neu gesetzt werden!
-                console.log(`[PDF Per V6 DEBUG] Font nach drawPageNumber (vor Summary): ${doc._font?.name}, Size: ${doc._fontSize}`);
+                console.log(`[PDF Per V7 DEBUG] Seite ${currentPage} manuell für Summary/Footer hinzugefügt.`);
+                drawPageNumber(doc, currentPage); // Seitenzahl zeichnen
+
+                // Startposition oben auf der neuen Seite
                 doc.y = doc.page.margins.top;
-                console.log(`[PDF Per V6 DEBUG] Neue Seite für Summary/Footer gestartet bei Y=${doc.y.toFixed(2)}.`);
+                console.log(`[PDF Per V7 DEBUG] Neue Seite für Summary/Footer gestartet bei Y=${doc.y.toFixed(2)}.`);
             } else {
-                 console.log(`[PDF Per V6 DEBUG] Kein Seitenumbruch vor Summary/Footer nötig.`);
+                 console.log(`[PDF Per V7 DEBUG] Kein Seitenumbruch vor Summary/Footer nötig.`);
                  doc.y += V_SPACE.LARGE; // Platz vor Summary lassen
-                 console.log(`[PDF Per V6 DEBUG] Y nach V_SPACE.LARGE: ${doc.y.toFixed(2)}`);
+                 console.log(`[PDF Per V7 DEBUG] Y nach V_SPACE.LARGE: ${doc.y.toFixed(2)}`);
             }
 
-            // --- Zeichne Zusammenfassung (Periode - mit rechter Ausrichtung für Werte) ---
+            // --- Zeichne Zusammenfassung (Periode) ---
             const summaryStartY = doc.y;
-             console.log(`[PDF Per V6 DEBUG] Zeichne Summary auf Seite ${currentPage} bei Y=${summaryStartY.toFixed(2)}`);
-            // Font für Summary setzen (wichtig!)
-            console.log(`[PDF Per V6 DEBUG] Setze Font für Summary auf ${FONT_BOLD}, Size ${FONT_SIZE.SUMMARY}`);
+            console.log(`[PDF Per V7 DEBUG] Zeichne Summary auf Seite ${currentPage} bei Y=${summaryStartY.toFixed(2)}`);
+             // Font für Summary setzen
+            console.log(`[PDF Per V7 DEBUG] Setze Font für Summary auf ${FONT_BOLD}, Size ${FONT_SIZE.SUMMARY}`);
             doc.font(FONT_BOLD).fontSize(FONT_SIZE.SUMMARY);
             const summaryLabelWidth = tableLayout.colWidths.date + tableLayout.colWidths.start + tableLayout.colWidths.end + tableLayout.colWidths.expected - V_SPACE.SMALL;
             const summaryValueWidth = tableLayout.colWidths.actual + tableLayout.colWidths.diff;
             const summaryLabelX = doc.page.margins.left;
             const summaryValueX = tableLayout.colPositions.actual;
-            const summaryLineSpacing = 0.5;
+            const summaryLineSpacing = 0.5; // Kleiner Zeilenabstand
             const periodLabelSummary = data.periodIdentifier || pTypeUpper;
+
             doc.text("Übertrag Periodenbeginn (+/-):", summaryLabelX, doc.y, { width: summaryLabelWidth }); doc.text(decimalHoursToHHMM(data.startingBalance || 0), summaryValueX, doc.y, { width: summaryValueWidth, align: 'right' });
             doc.moveDown(summaryLineSpacing);
             doc.text(`Gesamt Soll-Zeit (${periodLabelSummary}):`, summaryLabelX, doc.y, { width: summaryLabelWidth });
             doc.text(decimalHoursToHHMM(data.totalExpectedPeriod || 0), summaryValueX, doc.y, { width: summaryValueWidth, align: 'right' }); doc.moveDown(summaryLineSpacing);
             doc.text(`Gesamt Ist-Zeit (${periodLabelSummary}):`, summaryLabelX, doc.y, { width: summaryLabelWidth }); doc.text(decimalHoursToHHMM(data.totalActualPeriod || 0), summaryValueX, doc.y, { width: summaryValueWidth, align: 'right' });
             doc.moveDown(summaryLineSpacing);
-             // Detailzeile mit FONT_NORMAL
-            doc.font(FONT_NORMAL).fontSize(FONT_SIZE.SUMMARY); // Font für Detailzeile
+            // Detailzeile mit FONT_NORMAL
+            doc.font(FONT_NORMAL).fontSize(FONT_SIZE.SUMMARY); // Font für Detailzeile umschalten
             doc.text(`(davon gearb.: ${decimalHoursToHHMM(data.workedHoursPeriod)}, Abwesenh.: ${decimalHoursToHHMM(data.absenceHoursPeriod)})`, summaryLabelX + 10, doc.y, {width: summaryLabelWidth-10});
             doc.moveDown(summaryLineSpacing+0.3);
             doc.font(FONT_BOLD).fontSize(FONT_SIZE.SUMMARY); // Font wieder auf BOLD für nächste Zeilen
@@ -692,53 +704,53 @@ module.exports = function (db) {
             doc.text("Neuer Übertrag (Saldo Ende):", summaryLabelX, doc.y, { width: summaryLabelWidth });
             doc.text(decimalHoursToHHMM(data.endingBalancePeriod || 0), summaryValueX, doc.y, { width: summaryValueWidth, align: 'right' });
 
-            const summaryEndY = doc.y;
-            console.log(`[PDF Per V6 DEBUG] Ende Summary bei Y=${summaryEndY.toFixed(2)}`);
+            // Y-Position nach der letzten Zeile der Zusammenfassung
+            const summaryEndY = doc.y + doc.heightOfString("Neuer Übertrag...", {width: summaryLabelWidth}); // Höhe der letzten Zeile berücksichtigen
+            console.log(`[PDF Per V7 DEBUG] Ende Summary bei Y=${summaryEndY.toFixed(2)}`);
+            doc.y = summaryEndY; // doc.y explizit setzen
 
             // --- Zeichne Signatur-Footer ---
-            const footerStartY = summaryEndY + V_SPACE.LARGE;
+            const footerStartY = doc.y + V_SPACE.LARGE; // Abstand nach Summary
              // Font wird in drawSignatureFooter intern gesetzt (FONT_NORMAL, FONT_SIZE.FOOTER)
-            console.log(`[PDF Per V6 DEBUG] Zeichne Signatur-Footer auf Seite ${currentPage} bei Y=${footerStartY.toFixed(2)}`);
+            console.log(`[PDF Per V7 DEBUG] Zeichne Signatur-Footer auf Seite ${currentPage} bei Y=${footerStartY.toFixed(2)}`);
             drawSignatureFooter(doc, footerStartY);
-            const footerEndY = doc.y; // Aktuelle Y-Position nach dem Footer
-            console.log(`[PDF Per V6 DEBUG] Signatur-Footer gezeichnet, Ende bei Y=${footerEndY.toFixed(2)}`);
 
             // --- PDF abschließen ---
-            console.log("[PDF Per V6 DEBUG] Finalisiere Dokument (rufe doc.end() auf)...");
+            console.log("[PDF Per V7 DEBUG] Finalisiere Dokument (rufe doc.end() auf)...");
             doc.end();
-            console.log("[PDF Per V6 DEBUG] doc.end() aufgerufen. Warten auf Stream-Ende.");
+            console.log("[PDF Per V7 DEBUG] doc.end() aufgerufen. Warten auf Stream-Ende.");
 
         } catch (err) {
-            // *** ERSTE AKTION IM CATCH BLOCK ***
-            console.error("[PDF Per V6 DEBUG] !!!!! CATCH BLOCK REACHED !!!!!");
-            console.error("Fehler Erstellen Perioden-PDF V6:", err);
+             // *** Fehlerbehandlung ***
+            console.error("[PDF Per V7 DEBUG] !!!!! CATCH BLOCK REACHED !!!!!");
+            console.error("Fehler Erstellen Perioden-PDF V7:", err);
+            // Detailliertere Fehlermeldung im PDF
             if (doc && !doc.writableEnded && !res.headersSent) {
-                 console.error("[PDF Per V6 DEBUG] Catch-Block: Versuche Fehler-PDF zu senden.");
+                 console.error("[PDF Per V7 DEBUG] Catch-Block: Versuche Fehler-PDF zu senden.");
                  try {
-                      // Sicherstellen, dass mindestens eine Seite existiert
-                    if (currentPage === 0) {
-                        console.error("[PDF Per V6 DEBUG] Catch-Block: Keine Seite vorhanden, füge eine hinzu.");
+                    if (currentPage === 0) { // Falls noch keine Seite existiert
+                        console.error("[PDF Per V7 DEBUG] Catch-Block: Keine Seite vorhanden, füge eine hinzu.");
                         doc.addPage(); currentPage++; drawPageNumber(doc, currentPage);
                     }
-                    // Sicherstellen, dass der Font für die Fehlermeldung gesetzt ist
-                    doc.font(FONT_NORMAL).fontSize(10);
-                     doc.text(`Fehler beim Erstellen des PDFs: ${err.message}`, doc.page.margins.left, doc.page.margins.top);
-                     console.error("[PDF Per V6 DEBUG] Catch-Block: Rufe doc.end() für Fehler-PDF auf.");
-                     doc.end();
+                    doc.font(FONT_NORMAL).fontSize(10); // Font für Fehlermeldung
+                    doc.text(`Fehler beim Erstellen des PDFs: ${err.message}\n\nStack: ${err.stack}`, // Mehr Details im Fehlerfall
+                             doc.page.margins.left, doc.page.margins.top, { width: usableWidth });
+                    console.error("[PDF Per V7 DEBUG] Catch-Block: Rufe doc.end() für Fehler-PDF auf.");
+                    doc.end();
                  } catch (pdfErr) {
-                     console.error("[PDF Per V6 DEBUG] Catch-Block: Konnte nicht einmal Fehler-PDF generieren:", pdfErr);
+                     console.error("[PDF Per V7 DEBUG] Catch-Block: Konnte nicht einmal Fehler-PDF generieren:", pdfErr);
                      if (!res.headersSent) {
-                         console.error("[PDF Per V6 DEBUG] Catch-Block: Sende 500er Status.");
+                         console.error("[PDF Per V7 DEBUG] Catch-Block: Sende 500er Status.");
                          res.status(500).send(`Interner Serverfehler beim PDF erstellen: ${err.message}`);
                      }
                  }
             } else if (!res.headersSent) {
-                 console.error("[PDF Per V6 DEBUG] Catch-Block: Keine Header gesendet, sende 500er Status.");
+                 console.error("[PDF Per V7 DEBUG] Catch-Block: Keine Header gesendet, sende 500er Status.");
                  res.status(500).send(`Fehler Erstellen Perioden-PDF: ${err.message}`);
             } else {
-                 console.error("[PDF Per V6 DEBUG] Catch-Block: Header bereits gesendet, beende Stream, falls möglich.");
+                 console.error("[PDF Per V7 DEBUG] Catch-Block: Header bereits gesendet, beende Stream, falls möglich.");
                  if (doc && !doc.writableEnded) {
-                    console.error("[PDF Per V6 DEBUG] Catch-Block: Rufe doc.end() für bestehenden Stream auf.");
+                    console.error("[PDF Per V7 DEBUG] Catch-Block: Rufe doc.end() für bestehenden Stream auf.");
                     doc.end();
                  }
             }
