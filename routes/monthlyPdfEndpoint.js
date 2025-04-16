@@ -149,7 +149,7 @@ function drawPageNumber(doc, pageNum) {
     const oldColor = doc._fillColor;
 
     doc.fontSize(FONT_SIZE.PAGE_NUMBER)
-       .font(FONT_NORMAL)
+       .font('Helvetica') // Direkten String verwenden
        .fillColor('black')
        .text(`Seite ${pageNum}`, pageLeftMargin, pageBottom, {
            width: usableWidth,
