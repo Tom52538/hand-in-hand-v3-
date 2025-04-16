@@ -1,4 +1,4 @@
-// monthlyPdfEndpoint.js - V3: Paginierung + Test Route + Layout-Verbesserungen
+// monthlyPdfEndpoint.js - V4: Fix für Recursion Error (Event Listener entfernt)
 
 const express = require('express');
 const PDFDocument = require('pdfkit');
@@ -138,60 +138,48 @@ function drawTableHeader(doc, startY, usableWidth) {
     return { headerBottomY: headerBottomY + V_SPACE.SMALL, colWidths, colPositions };
 }
 
-// *** NEUE Hilfsfunktion: Zeichnet die Seitenzahl ***
+// Hilfsfunktion: Zeichnet die Seitenzahl (unverändert)
 function drawPageNumber(doc, pageNum) {
     const pageBottom = doc.page.height - doc.page.margins.bottom + 10; // Position unterhalb des unteren Rands
     const pageLeftMargin = doc.page.margins.left;
     const usableWidth = doc.page.width - pageLeftMargin - doc.page.margins.right;
 
-    // Aktuelle Einstellungen speichern
     const oldFont = doc._font;
     const oldFontSize = doc._fontSize;
     const oldColor = doc._fillColor;
 
-    // Seitenzahl zeichnen
     doc.fontSize(FONT_SIZE.PAGE_NUMBER)
        .font(FONT_NORMAL)
-       .fillColor('black') // Standardfarbe sicherstellen
+       .fillColor('black')
        .text(`Seite ${pageNum}`, pageLeftMargin, pageBottom, {
            width: usableWidth,
-           align: 'center' // Zentrierte Seitenzahl
+           align: 'center'
        });
 
-    // Vorherige Einstellungen wiederherstellen
     doc.font(oldFont)
        .fontSize(oldFontSize)
        .fillColor(oldColor);
 }
 
 
-// Hilfsfunktion: Zeichnet den Footer (NUR Bestätigungstext + Unterschriftsbereich)
+// Hilfsfunktion: Zeichnet den Footer (NUR Bestätigungstext + Unterschriftsbereich) - Sicherheit entfernt
 function drawSignatureFooter(doc, startY) {
     const pageLeftMargin = doc.page.margins.left;
     const usableWidth = doc.page.width - pageLeftMargin - doc.page.margins.right;
     let currentY = startY;
 
-    // Prüfen, ob genug Platz, notfalls Seite umbrechen (Sicherheit)
-    const neededHeight = doc.heightOfString("Ich bestätige hiermit, dass die oben genannten Arbeits-/Gutschriftstunden erbracht wurden und rechtmäßig berücksichtigt werden.", { width: usableWidth })
-                         + V_SPACE.SIGNATURE_GAP + V_SPACE.SMALL + FONT_SIZE.FOOTER + V_SPACE.SMALL;
-    if (currentY + neededHeight > doc.page.height - doc.page.margins.bottom) {
-        console.log(`[PDF Footer] Seitenumbruch nötig nur für Signatur-Footer bei Y=${currentY.toFixed(2)}`);
-        doc.addPage(); // Löst keinen pageAdded Event aus, wenn direkt von doc aufgerufen? Doch, sollte.
-        currentY = doc.page.margins.top;
-        // Seitenzahl wird durch pageAdded Event gezeichnet (oder manuell nach addPage)
-    }
+    // Die Sicherheitsprüfung mit addPage hier wurde entfernt, da sie problematisch sein kann.
+    // Die Prüfung *vor* dem Aufruf dieser Funktion muss ausreichen.
 
     doc.font(FONT_NORMAL).fontSize(FONT_SIZE.FOOTER);
     doc.text("Ich bestätige hiermit, dass die oben genannten Arbeits-/Gutschriftstunden erbracht wurden und rechtmäßig berücksichtigt werden.", pageLeftMargin, currentY, { align: 'left', width: usableWidth });
-    currentY += doc.heightOfString("Ich bestätige...", { width: usableWidth }) + V_SPACE.SIGNATURE_GAP; // Abstand zur Linie
+    currentY += doc.heightOfString("Ich bestätige...", { width: usableWidth }) + V_SPACE.SIGNATURE_GAP;
 
-    // Unterschriftslinie
     const lineStartX = pageLeftMargin;
     const lineEndX = pageLeftMargin + 200;
     doc.moveTo(lineStartX, currentY).lineTo(lineEndX, currentY).lineWidth(0.5).stroke();
-    currentY += V_SPACE.SMALL; // Abstand zum Text unter Linie
+    currentY += V_SPACE.SMALL;
 
-    // Text unter Linie
     doc.text("Datum, Unterschrift", pageLeftMargin, currentY);
 }
 
@@ -221,10 +209,10 @@ module.exports = function (db) {
     // --- Ende Test-Route ---
 
 
-    // GET /create-monthly-pdf (Angepasst für Paginierung & Layout)
+    // GET /create-monthly-pdf (Angepasst für Paginierung & Layout, OHNE Event Listener)
     router.get('/create-monthly-pdf', isAdmin, async (req, res) => {
         let doc;
-        let currentPage = 0; // Seitenzähler
+        let currentPage = 0; // Seitenzähler manuell
         try {
             const { name, year, month } = req.query;
             if (!name || !year || !month || isNaN(parseInt(year)) || isNaN(parseInt(month)) || month < 1 || month > 12) {
@@ -233,34 +221,25 @@ module.exports = function (db) {
             const parsedYear = parseInt(year, 10);
             const parsedMonth = parseInt(month, 10);
 
-            console.log(`[PDF Mon V3] Starte Generierung für ${name}, ${parsedMonth}/${parsedYear}`);
+            console.log(`[PDF Mon V4] Starte Generierung für ${name}, ${parsedMonth}/${parsedYear}`);
             const data = await calculateMonthlyData(db, name, year, month);
             const employeeDataForPdf = data.employeeData;
 
             doc = new PDFDocument(PAGE_OPTIONS);
-            doc.pipe(res); // Pipe so früh wie möglich
+            doc.pipe(res);
 
-            // Event Listener für neue Seiten (zeichnet Seitenzahl)
-             doc.on('pageAdded', () => {
-                 console.log(`[PDF Mon V3] Event 'pageAdded' ausgelöst, aktuelle Seite: ${currentPage + 1}`);
-                 currentPage++; // Seitenzähler erhöhen
-                 // Optional: Header auf Folgeseiten?
-                 // drawDocumentHeader(doc, ...); // Wenn benötigt
-                 drawPageNumber(doc, currentPage); // Seitenzahl auf neuer Seite zeichnen
-            });
+            // --- KEIN Event Listener mehr ---
 
-
-            // Erste Seite manuell hinzufügen (löst noch keinen 'pageAdded' Event aus)
+            // Erste Seite manuell hinzufügen
             doc.addPage();
-            currentPage++; // Zähler für erste Seite erhöhen
-            console.log(`[PDF Mon V3] Erste Seite (${currentPage}) hinzugefügt.`);
-            drawPageNumber(doc, currentPage); // Seitenzahl auf erster Seite zeichnen
+            currentPage++;
+            console.log(`[PDF Mon V4] Erste Seite (${currentPage}) hinzugefügt.`);
+            drawPageNumber(doc, currentPage); // Seitenzahl manuell zeichnen
 
             const safeName = (data.employeeName || 'Unbekannt').replace(/[^a-z0-9_\-]/gi, '_');
             const filename = `Monatsnachweis_${safeName}_${String(parsedMonth).padStart(2, '0')}_${parsedYear}.pdf`;
             res.setHeader('Content-Type', 'application/pdf');
             res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
-            // Wichtig: Header nach doc.pipe() setzen, aber bevor Daten gesendet werden
 
             const usableWidth = doc.page.width - doc.page.margins.left - doc.page.margins.right;
 
@@ -273,7 +252,7 @@ module.exports = function (db) {
             );
             let tableLayout = drawTableHeader(doc, currentY, usableWidth);
             currentY = tableLayout.headerBottomY;
-            doc.font(FONT_NORMAL).fontSize(FONT_SIZE.TABLE_CONTENT).lineGap(1.5); // Mehr Zeilenabstand
+            doc.font(FONT_NORMAL).fontSize(FONT_SIZE.TABLE_CONTENT).lineGap(1.5);
             doc.y = currentY;
 
             // Kombinierte und sortierte Liste (unverändert)
@@ -282,7 +261,7 @@ module.exports = function (db) {
             data.absenceEntries.forEach(absence => { const dateStr = (absence.date instanceof Date) ? absence.date.toISOString().split('T')[0] : String(absence.date); if (!allDays.some(d => d.date === dateStr)) { allDays.push({ date: dateStr, type: absence.type, startTime: '--:--', endTime: '--:--', actualHours: parseFloat(absence.hours) || 0, comment: absence.type === 'VACATION' ? 'Urlaub' : (absence.type === 'SICK' ? 'Krank' : 'Feiertag') }); } });
             allDays.sort((a, b) => new Date(a.date) - new Date(b.date));
 
-            console.log(`[PDF Mon V3] ${allDays.length} Einträge zu zeichnen.`);
+            console.log(`[PDF Mon V4] ${allDays.length} Einträge zu zeichnen.`);
 
             // *** Schleife zum Zeichnen der Tabellenzeilen ***
             if (allDays.length === 0) {
@@ -294,19 +273,20 @@ module.exports = function (db) {
 
                     // === Seitenumbruch-Prüfung VOR dem Zeichnen der Zeile ===
                     if (doc.y + TABLE_ROW_HEIGHT > doc.page.height - doc.page.margins.bottom) {
-                        console.log(`[PDF Mon V3] Seitenumbruch vor Zeile ${i+1} bei Y=${doc.y.toFixed(2)}`);
-                        const oldCurrentPage = currentPage; // Merken für Log
+                        console.log(`[PDF Mon V4] Seitenumbruch vor Zeile ${i+1} bei Y=${doc.y.toFixed(2)}`);
 
-                        doc.addPage(); // löst 'pageAdded' aus -> Seitenzahl wird gezeichnet
-                        // currentPage wird im Event Listener erhöht
+                        doc.addPage(); // Seite manuell hinzufügen
+                        currentPage++; // Zähler erhöhen
+                        console.log(`[PDF Mon V4] Seite ${currentPage} manuell hinzugefügt.`);
+                        drawPageNumber(doc, currentPage); // Seitenzahl manuell zeichnen
 
                         currentY = doc.page.margins.top;
-                        console.log(`[PDF Mon V3] Rufe drawTableHeader auf neuer Seite ${currentPage} auf (vorher: ${oldCurrentPage}).`);
+                        console.log(`[PDF Mon V4] Rufe drawTableHeader auf Seite ${currentPage} auf.`);
                         tableLayout = drawTableHeader(doc, currentY, usableWidth); // Kopf neu zeichnen
                         currentY = tableLayout.headerBottomY;
                         doc.y = currentY;
-                        doc.font(FONT_NORMAL).fontSize(FONT_SIZE.TABLE_CONTENT).lineGap(1.5); // Stil wiederherstellen
-                        console.log(`[PDF Mon V3] Tabellenkopf gezeichnet, Y=${doc.y.toFixed(2)}`);
+                        doc.font(FONT_NORMAL).fontSize(FONT_SIZE.TABLE_CONTENT).lineGap(1.5);
+                        console.log(`[PDF Mon V4] Tabellenkopf gezeichnet, Y=${doc.y.toFixed(2)}`);
                     }
                     // === Ende Seitenumbruch-Prüfung ===
 
@@ -330,32 +310,29 @@ module.exports = function (db) {
                     const currentRowY = doc.y;
                     const { colPositions, colWidths } = tableLayout;
 
-                    // Optional: Zebra-Streifen (Beispiel)
-                    // if (i % 2 !== 0) { // Jede zweite Zeile (ungerader Index)
-                    //     doc.rect(colPositions.date, currentRowY, usableWidth, TABLE_ROW_HEIGHT).fill('#f9f9f9');
-                    // }
-
                     doc.text(dateFormatted, colPositions.date, currentRowY, { width: colWidths.date, align: 'left', lineBreak: false });
                     doc.text(startOverride, colPositions.start, currentRowY, { width: colWidths.start, align: 'right', lineBreak: false });
-                    doc.text(endOverride, colPositions.end, currentRowY, { width: colWidths.end, align: isAbsence ? 'left' : 'right', lineBreak: false }); // Text links, Zeit rechts
+                    doc.text(endOverride, colPositions.end, currentRowY, { width: colWidths.end, align: isAbsence ? 'left' : 'right', lineBreak: false });
                     doc.text(expectedStr, colPositions.expected, currentRowY, { width: colWidths.expected, align: 'right', lineBreak: false });
                     doc.text(actualStr, colPositions.actual, currentRowY, { width: colWidths.actual, align: 'right', lineBreak: false });
                     doc.text(diffStr, colPositions.diff, currentRowY, { width: colWidths.diff, align: 'right', lineBreak: false });
 
-                    doc.y = currentRowY + TABLE_ROW_HEIGHT; // Y-Position manuell erhöhen
+                    doc.y = currentRowY + TABLE_ROW_HEIGHT;
                     // --- Ende Zeile zeichnen ---
                 } // Ende der for-Schleife
             }
             // *** Ende Schleife für Tabellenzeilen ***
         // *** Zusammenfassung und Signatur-Footer NUR AM ENDE zeichnen ***
-            console.log(`[PDF Mon V3] Ende Tabelle bei Y=${doc.y.toFixed(2)}. Prüfe Platz für Summary (${SUMMARY_TOTAL_HEIGHT.toFixed(2)}px) + Footer (${FOOTER_TOTAL_HEIGHT.toFixed(2)}px).`);
+            console.log(`[PDF Mon V4] Ende Tabelle bei Y=${doc.y.toFixed(2)}. Prüfe Platz für Summary (${SUMMARY_TOTAL_HEIGHT.toFixed(2)}px) + Footer (${FOOTER_TOTAL_HEIGHT.toFixed(2)}px).`);
             const spaceNeededForSummaryAndFooter = SUMMARY_TOTAL_HEIGHT + FOOTER_TOTAL_HEIGHT + V_SPACE.LARGE;
 
             // Prüfen, ob Zusammenfassung UND Footer noch auf die AKTUELLE Seite passen
             if (doc.y + spaceNeededForSummaryAndFooter > doc.page.height - doc.page.margins.bottom) {
-                console.log(`[PDF Mon V3] Seitenumbruch vor Summary/Footer bei Y=${doc.y.toFixed(2)}`);
-                doc.addPage(); // löst 'pageAdded' aus -> Seitenzahl wird gezeichnet
-                // currentPage wird im Event Listener erhöht
+                console.log(`[PDF Mon V4] Seitenumbruch vor Summary/Footer bei Y=${doc.y.toFixed(2)}`);
+                doc.addPage(); // Seite manuell hinzufügen
+                currentPage++; // Zähler erhöhen
+                console.log(`[PDF Mon V4] Seite ${currentPage} manuell für Summary/Footer hinzugefügt.`);
+                drawPageNumber(doc, currentPage); // Seitenzahl manuell zeichnen
                 doc.y = doc.page.margins.top; // An den Seitenanfang
             } else {
                  doc.y += V_SPACE.LARGE; // Abstand nach der Tabelle
@@ -363,7 +340,7 @@ module.exports = function (db) {
 
             // --- Zeichne Zusammenfassung (mit rechter Ausrichtung für Werte) ---
             const summaryStartY = doc.y;
-            console.log(`[PDF Mon V3] Zeichne Summary auf Seite ${currentPage} bei Y=${summaryStartY.toFixed(2)}`);
+            console.log(`[PDF Mon V4] Zeichne Summary auf Seite ${currentPage} bei Y=${summaryStartY.toFixed(2)}`);
             doc.font(FONT_BOLD).fontSize(FONT_SIZE.SUMMARY);
             const summaryLabelWidth = tableLayout.colWidths.date + tableLayout.colWidths.start + tableLayout.colWidths.end + tableLayout.colWidths.expected - V_SPACE.SMALL;
             const summaryValueWidth = tableLayout.colWidths.actual + tableLayout.colWidths.diff;
@@ -385,37 +362,49 @@ module.exports = function (db) {
             doc.text(decimalHoursToHHMM(data.newCarryOver || 0), summaryValueX, doc.y, { width: summaryValueWidth, align: 'right' });
 
             const summaryEndY = doc.y;
-            console.log(`[PDF Mon V3] Ende Summary bei Y=${summaryEndY.toFixed(2)}`);
+            console.log(`[PDF Mon V4] Ende Summary bei Y=${summaryEndY.toFixed(2)}`);
 
             // --- Zeichne Signatur-Footer ---
             const footerStartY = summaryEndY + V_SPACE.LARGE;
-            console.log(`[PDF Mon V3] Zeichne Signatur-Footer auf Seite ${currentPage} bei Y=${footerStartY.toFixed(2)}`);
-            drawSignatureFooter(doc, footerStartY); // NUR Signatur-Teil
+            console.log(`[PDF Mon V4] Zeichne Signatur-Footer auf Seite ${currentPage} bei Y=${footerStartY.toFixed(2)}`);
+            drawSignatureFooter(doc, footerStartY);
 
             // --- PDF abschließen ---
-            console.log("[PDF Mon V3] Finalisiere Dokument.");
+            console.log("[PDF Mon V4] Finalisiere Dokument.");
             doc.end();
 
         } catch (err) {
-            currentPage = -1; // Fehlerindikator
-            console.error("Fehler Erstellen Monats-PDF:", err);
-            if (!res.headersSent) {
+            console.error("Fehler Erstellen Monats-PDF V4:", err); // Detailliertere Fehlermeldung
+             // Versuche, eine Fehlerseite im PDF zu generieren, wenn möglich
+            if (doc && !doc.writableEnded && !res.headersSent) {
+                 try {
+                     // Nur wenn noch keine Seite hinzugefügt wurde (seltener Fall)
+                     if (currentPage === 0) {
+                         doc.addPage();
+                         currentPage++;
+                         drawPageNumber(doc, currentPage);
+                     }
+                     doc.font(FONT_NORMAL).fontSize(10).text(`Fehler beim Erstellen des PDFs: ${err.message}`, doc.page.margins.left, doc.page.margins.top);
+                     doc.end();
+                 } catch (pdfErr) {
+                     console.error("Konnte nicht einmal Fehler-PDF generieren:", pdfErr);
+                     if (!res.headersSent) res.status(500).send(`Interner Serverfehler beim PDF erstellen: ${err.message}`);
+                 }
+            } else if (!res.headersSent) {
                 res.status(500).send(`Fehler Erstellen Monats-PDF: ${err.message}`);
             } else {
-                console.error("Monats-PDF Header bereits gesendet, versuche Stream zu beenden.");
-                if (doc && !doc.writableEnded) {
-                    doc.end();
-                }
+                 console.error("Monats-PDF Header bereits gesendet nach Fehler, Stream wird beendet.");
+                 if (doc && !doc.writableEnded) doc.end(); // Nur beenden, wenn nötig
             }
         }
     }); // Ende /create-monthly-pdf
 
     //-----------------------------------------------------
 
-    // GET /create-period-pdf (Angepasst für Paginierung & Layout)
+    // GET /create-period-pdf (Angepasst für Paginierung & Layout, OHNE Event Listener)
     router.get('/create-period-pdf', isAdmin, async (req, res) => {
         let doc;
-        let currentPage = 0; // Seitenzähler
+        let currentPage = 0; // Seitenzähler manuell
          try {
             const { name, year, periodType, periodValue } = req.query;
             if (!name || !year || isNaN(parseInt(year)) || !periodType || !['QUARTER', 'YEAR'].includes(periodType.toUpperCase())) {
@@ -428,27 +417,20 @@ module.exports = function (db) {
             const pTypeUpper = periodType.toUpperCase();
             const pValue = periodType === 'QUARTER' ? parseInt(periodValue) : null;
 
-            console.log(`[PDF Per V3] Starte Generierung für ${name}, ${year}, Typ: ${pTypeUpper}, Wert: ${pValue}`);
+            console.log(`[PDF Per V4] Starte Generierung für ${name}, ${year}, Typ: ${pTypeUpper}, Wert: ${pValue}`);
             const data = await calculatePeriodData(db, name, year, pTypeUpper, pValue);
             const employeeDataForPdf = data.employeeData;
 
             doc = new PDFDocument(PAGE_OPTIONS);
-            doc.pipe(res); // Pipe so früh wie möglich
+            doc.pipe(res);
 
-            // Event Listener für neue Seiten (zeichnet Seitenzahl)
-            doc.on('pageAdded', () => {
-                 console.log(`[PDF Per V3] Event 'pageAdded' ausgelöst, aktuelle Seite: ${currentPage + 1}`);
-                 currentPage++; // Seitenzähler erhöhen
-                 // Optional: Header auf Folgeseiten?
-                 // drawDocumentHeader(doc, ...); // Wenn benötigt
-                 drawPageNumber(doc, currentPage); // Seitenzahl auf neuer Seite zeichnen
-            });
+            // --- KEIN Event Listener mehr ---
 
             // Erste Seite manuell hinzufügen
             doc.addPage();
             currentPage++;
-            console.log(`[PDF Per V3] Erste Seite (${currentPage}) hinzugefügt.`);
-            drawPageNumber(doc, currentPage); // Seitenzahl auf erster Seite zeichnen
+            console.log(`[PDF Per V4] Erste Seite (${currentPage}) hinzugefügt.`);
+            drawPageNumber(doc, currentPage); // Seitenzahl manuell zeichnen
 
             const safeName = (data.employeeName || 'Unbekannt').replace(/[^a-z0-9_\-]/gi, '_');
             const periodLabelFile = data.periodIdentifier || (pTypeUpper === 'QUARTER' ? `Q${pValue}` : 'Jahr');
@@ -463,7 +445,7 @@ module.exports = function (db) {
             let currentY = drawDocumentHeader(doc, title, data.employeeName, data.periodStartDate, data.periodEndDate);
             let tableLayout = drawTableHeader(doc, currentY, usableWidth);
             currentY = tableLayout.headerBottomY;
-            doc.font(FONT_NORMAL).fontSize(FONT_SIZE.TABLE_CONTENT).lineGap(1.5); // Mehr Zeilenabstand
+            doc.font(FONT_NORMAL).fontSize(FONT_SIZE.TABLE_CONTENT).lineGap(1.5);
             doc.y = currentY;
 
             // Kombinierte und sortierte Liste (Periode)
@@ -472,7 +454,7 @@ module.exports = function (db) {
             data.absenceEntriesPeriod.forEach(absence => { const dateStr = (absence.date instanceof Date) ? absence.date.toISOString().split('T')[0] : String(absence.date); if (!allDaysPeriod.some(d => d.date === dateStr)) { allDaysPeriod.push({ date: dateStr, type: absence.type, startTime: '--:--', endTime: '--:--', actualHours: parseFloat(absence.hours) || 0, comment: absence.type === 'VACATION' ? 'Urlaub' : (absence.type === 'SICK' ? 'Krank' : 'Feiertag') }); } });
             allDaysPeriod.sort((a, b) => new Date(a.date) - new Date(b.date));
 
-            console.log(`[PDF Per V3] ${allDaysPeriod.length} Einträge zu zeichnen.`);
+            console.log(`[PDF Per V4] ${allDaysPeriod.length} Einträge zu zeichnen.`);
 
             // *** Schleife zum Zeichnen der Tabellenzeilen (Periode) ***
             if (allDaysPeriod.length === 0) {
@@ -484,19 +466,20 @@ module.exports = function (db) {
 
                     // === Seitenumbruch-Prüfung VOR dem Zeichnen der Zeile ===
                     if (doc.y + TABLE_ROW_HEIGHT > doc.page.height - doc.page.margins.bottom) {
-                        console.log(`[PDF Per V3] Seitenumbruch vor Zeile ${i+1} bei Y=${doc.y.toFixed(2)}`);
-                         const oldCurrentPage = currentPage;
+                        console.log(`[PDF Per V4] Seitenumbruch vor Zeile ${i+1} bei Y=${doc.y.toFixed(2)}`);
 
-                        doc.addPage(); // löst 'pageAdded' aus -> Seitenzahl wird gezeichnet
-                        // currentPage wird im Event Listener erhöht
+                        doc.addPage(); // Seite manuell hinzufügen
+                        currentPage++; // Zähler erhöhen
+                        console.log(`[PDF Per V4] Seite ${currentPage} manuell hinzugefügt.`);
+                        drawPageNumber(doc, currentPage); // Seitenzahl manuell zeichnen
 
                         currentY = doc.page.margins.top;
-                        console.log(`[PDF Per V3] Rufe drawTableHeader auf neuer Seite ${currentPage} auf (vorher: ${oldCurrentPage}).`);
+                        console.log(`[PDF Per V4] Rufe drawTableHeader auf Seite ${currentPage} auf.`);
                         tableLayout = drawTableHeader(doc, currentY, usableWidth); // Kopf neu zeichnen
                         currentY = tableLayout.headerBottomY;
                         doc.y = currentY;
-                        doc.font(FONT_NORMAL).fontSize(FONT_SIZE.TABLE_CONTENT).lineGap(1.5); // Stil wiederherstellen
-                        console.log(`[PDF Per V3] Tabellenkopf gezeichnet, Y=${doc.y.toFixed(2)}`);
+                        doc.font(FONT_NORMAL).fontSize(FONT_SIZE.TABLE_CONTENT).lineGap(1.5);
+                        console.log(`[PDF Per V4] Tabellenkopf gezeichnet, Y=${doc.y.toFixed(2)}`);
                     }
                     // === Ende Seitenumbruch-Prüfung ===
 
@@ -520,19 +503,14 @@ module.exports = function (db) {
                     const currentRowY = doc.y;
                     const { colPositions, colWidths } = tableLayout;
 
-                    // Optional: Zebra-Streifen
-                    // if (i % 2 !== 0) {
-                    //     doc.rect(colPositions.date, currentRowY, usableWidth, TABLE_ROW_HEIGHT).fill('#f9f9f9');
-                    // }
-
                     doc.text(dateFormatted, colPositions.date, currentRowY, { width: colWidths.date, align: 'left', lineBreak: false });
                     doc.text(startOverride, colPositions.start, currentRowY, { width: colWidths.start, align: 'right', lineBreak: false });
-                    doc.text(endOverride, colPositions.end, currentRowY, { width: colWidths.end, align: isAbsence ? 'left' : 'right', lineBreak: false }); // Text links, Zeit rechts
+                    doc.text(endOverride, colPositions.end, currentRowY, { width: colWidths.end, align: isAbsence ? 'left' : 'right', lineBreak: false });
                     doc.text(expectedStr, colPositions.expected, currentRowY, { width: colWidths.expected, align: 'right', lineBreak: false });
                     doc.text(actualStr, colPositions.actual, currentRowY, { width: colWidths.actual, align: 'right', lineBreak: false });
                     doc.text(diffStr, colPositions.diff, currentRowY, { width: colWidths.diff, align: 'right', lineBreak: false });
 
-                    doc.y = currentRowY + TABLE_ROW_HEIGHT; // Y-Position manuell erhöhen
+                    doc.y = currentRowY + TABLE_ROW_HEIGHT;
                     // --- Ende Zeile zeichnen ---
                 } // Ende der for-Schleife
             }
@@ -540,14 +518,16 @@ module.exports = function (db) {
 
 
              // *** Zusammenfassung und Signatur-Footer NUR AM ENDE zeichnen (Periode) ***
-            console.log(`[PDF Per V3] Ende Tabelle bei Y=${doc.y.toFixed(2)}. Prüfe Platz für Summary (${SUMMARY_TOTAL_HEIGHT.toFixed(2)}px) + Footer (${FOOTER_TOTAL_HEIGHT.toFixed(2)}px).`);
+            console.log(`[PDF Per V4] Ende Tabelle bei Y=${doc.y.toFixed(2)}. Prüfe Platz für Summary (${SUMMARY_TOTAL_HEIGHT.toFixed(2)}px) + Footer (${FOOTER_TOTAL_HEIGHT.toFixed(2)}px).`);
             const spaceNeededForSummaryAndFooter = SUMMARY_TOTAL_HEIGHT + FOOTER_TOTAL_HEIGHT + V_SPACE.LARGE;
 
             // Prüfen, ob Zusammenfassung UND Footer noch auf die AKTUELLE Seite passen
             if (doc.y + spaceNeededForSummaryAndFooter > doc.page.height - doc.page.margins.bottom) {
-                console.log(`[PDF Per V3] Seitenumbruch vor Summary/Footer bei Y=${doc.y.toFixed(2)}`);
-                doc.addPage(); // löst 'pageAdded' aus -> Seitenzahl wird gezeichnet
-                // currentPage wird im Event Listener erhöht
+                console.log(`[PDF Per V4] Seitenumbruch vor Summary/Footer bei Y=${doc.y.toFixed(2)}`);
+                doc.addPage(); // Seite manuell hinzufügen
+                currentPage++; // Zähler erhöhen
+                console.log(`[PDF Per V4] Seite ${currentPage} manuell für Summary/Footer hinzugefügt.`);
+                drawPageNumber(doc, currentPage); // Seitenzahl manuell zeichnen
                 doc.y = doc.page.margins.top; // An den Seitenanfang
             } else {
                  doc.y += V_SPACE.LARGE; // Abstand nach der Tabelle
@@ -555,7 +535,7 @@ module.exports = function (db) {
 
             // --- Zeichne Zusammenfassung (Periode - mit rechter Ausrichtung für Werte) ---
             const summaryStartY = doc.y;
-            console.log(`[PDF Per V3] Zeichne Summary auf Seite ${currentPage} bei Y=${summaryStartY.toFixed(2)}`);
+            console.log(`[PDF Per V4] Zeichne Summary auf Seite ${currentPage} bei Y=${summaryStartY.toFixed(2)}`);
             doc.font(FONT_BOLD).fontSize(FONT_SIZE.SUMMARY);
             const summaryLabelWidth = tableLayout.colWidths.date + tableLayout.colWidths.start + tableLayout.colWidths.end + tableLayout.colWidths.expected - V_SPACE.SMALL;
             const summaryValueWidth = tableLayout.colWidths.actual + tableLayout.colWidths.diff;
@@ -577,27 +557,38 @@ module.exports = function (db) {
             doc.text(decimalHoursToHHMM(data.endingBalancePeriod || 0), summaryValueX, doc.y, { width: summaryValueWidth, align: 'right' });
 
             const summaryEndY = doc.y;
-            console.log(`[PDF Per V3] Ende Summary bei Y=${summaryEndY.toFixed(2)}`);
+            console.log(`[PDF Per V4] Ende Summary bei Y=${summaryEndY.toFixed(2)}`);
 
             // --- Zeichne Signatur-Footer ---
             const footerStartY = summaryEndY + V_SPACE.LARGE;
-            console.log(`[PDF Per V3] Zeichne Signatur-Footer auf Seite ${currentPage} bei Y=${footerStartY.toFixed(2)}`);
-            drawSignatureFooter(doc, footerStartY); // NUR Signatur-Teil
+            console.log(`[PDF Per V4] Zeichne Signatur-Footer auf Seite ${currentPage} bei Y=${footerStartY.toFixed(2)}`);
+            drawSignatureFooter(doc, footerStartY);
 
             // --- PDF abschließen ---
-            console.log("[PDF Per V3] Finalisiere Dokument.");
+            console.log("[PDF Per V4] Finalisiere Dokument.");
             doc.end();
 
         } catch (err) { // Catch-Block für die Route
-             currentPage = -1; // Fehlerindikator
-            console.error("Fehler Erstellen Perioden-PDF:", err);
-            if (!res.headersSent) {
+            console.error("Fehler Erstellen Perioden-PDF V4:", err); // Detailliertere Fehlermeldung
+             // Versuche, eine Fehlerseite im PDF zu generieren, wenn möglich
+            if (doc && !doc.writableEnded && !res.headersSent) {
+                 try {
+                     if (currentPage === 0) {
+                         doc.addPage();
+                         currentPage++;
+                         drawPageNumber(doc, currentPage);
+                     }
+                     doc.font(FONT_NORMAL).fontSize(10).text(`Fehler beim Erstellen des PDFs: ${err.message}`, doc.page.margins.left, doc.page.margins.top);
+                     doc.end();
+                 } catch (pdfErr) {
+                     console.error("Konnte nicht einmal Fehler-PDF generieren:", pdfErr);
+                     if (!res.headersSent) res.status(500).send(`Interner Serverfehler beim PDF erstellen: ${err.message}`);
+                 }
+            } else if (!res.headersSent) {
                 res.status(500).send(`Fehler Erstellen Perioden-PDF: ${err.message}`);
             } else {
-                console.error("Perioden-PDF Header bereits gesendet, versuche Stream zu beenden.");
-                if (doc && !doc.writableEnded) {
-                    doc.end();
-                }
+                 console.error("Perioden-PDF Header bereits gesendet nach Fehler, Stream wird beendet.");
+                 if (doc && !doc.writableEnded) doc.end();
             }
         } // Ende Catch-Block für die Route
     }); // Ende /create-period-pdf
