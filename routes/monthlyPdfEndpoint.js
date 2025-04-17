@@ -1,6 +1,7 @@
 // monthlyPdfEndpoint.js - V14: Vollständig mit Layout-Optimierung
 // *** KORREKTUR nach 500 Server Error ('margins' of null): Explizites addPage wieder eingefügt ***
 // *** KORREKTUR gegen leere erste Seite: Seitenumbruch vor erster Zeile verhindert ***
+// *** KORREKTUR SCHRITT 2: Vertikale Datenverteilung in Tabelle korrigiert ***
 const express = require('express');
 const PDFDocument = require('pdfkit');
 const path = require('path');
@@ -14,7 +15,7 @@ const FONT_NORMAL = 'Times-Roman';
 const FONT_BOLD   = 'Times-Bold';
 const PAGE_OPTIONS = {
   size: 'A4',
-  autoFirstPage: false, // Beibehalten, aber wir fügen jetzt wieder explizit hinzu
+  autoFirstPage: false,
   margins: { top: 25, bottom: 35, left: 40, right: 40 }
 };
 const V_SPACE = { TINY: 1, SMALL: 4, MEDIUM: 10, LARGE: 18, SIGNATURE_GAP: 45 };
@@ -23,14 +24,12 @@ const FONT_SIZE = {
   TABLE_HEADER: 9, TABLE_CONTENT: 9,
   SUMMARY: 8, FOOTER: 8, PAGE_NUMBER: 8
 };
-const TABLE_ROW_HEIGHT = 12; // Höhe einer Tabellenzeile (Anpassbar)
+const TABLE_ROW_HEIGHT = 12;
 const FOOTER_CONTENT_HEIGHT = FONT_SIZE.FOOTER + V_SPACE.SMALL;
 const SIGNATURE_AREA_HEIGHT = V_SPACE.SIGNATURE_GAP + FONT_SIZE.FOOTER + V_SPACE.SMALL;
-// Geschätzte Gesamthöhe des Footers inkl. Bestätigungstext und Signatur
 const FOOTER_TOTAL_HEIGHT = FOOTER_CONTENT_HEIGHT + SIGNATURE_AREA_HEIGHT + V_SPACE.MEDIUM;
-const SUMMARY_LINE_HEIGHT = FONT_SIZE.SUMMARY + V_SPACE.TINY + 0.5; // Höhe einer Zeile in der Zusammenfassung
-// Geschätzte Gesamthöhe der Zusammenfassung (Anzahl Zeilen * Zeilenhöhe + Abstand)
-const SUMMARY_TOTAL_HEIGHT = (7 * SUMMARY_LINE_HEIGHT) + V_SPACE.LARGE; // Annahme: 7 Zeilen für die Zusammenfassung
+const SUMMARY_LINE_HEIGHT = FONT_SIZE.SUMMARY + V_SPACE.TINY + 0.5;
+const SUMMARY_TOTAL_HEIGHT = (7 * SUMMARY_LINE_HEIGHT) + V_SPACE.LARGE; // Annahme: 7 Zeilen (könnte angepasst werden)
 
 // Konvertiert Dezimalstunden in HH:MM Format
 function decimalHoursToHHMM(decimalHours) {
@@ -60,7 +59,6 @@ function formatDateGermanWithWeekday(dateInput) {
 }
 
 // Zeichnet den Dokumentenkopf (Titel, Name, Zeitraum, Logo)
-// Benötigt jetzt keine Änderung mehr, da doc.page beim Aufruf existiert
 function drawDocumentHeader(doc, title, name, startDate, endDate) {
   const left = doc.page.margins.left;
   const right = doc.page.margins.right;
@@ -185,32 +183,25 @@ module.exports = function(db) {
       res.setHeader('Content-Type','application/pdf');
       res.setHeader('Content-Disposition',`attachment; filename="${filename}"`);
 
-      // *** KORREKTUR: Explizites addPage wieder eingefügt ***
-      // Dies stellt sicher, dass doc.page existiert, bevor drawDocumentHeader darauf zugreift.
       let page = 0;
       page++;
-      doc.addPage(); // Fügt die erste Seite hinzu
+      doc.addPage();
 
       const uW = doc.page.width - doc.page.margins.left - doc.page.margins.right;
 
       // === SEITE 1 ===
-      // Dokumenten-Header zeichnen
       let yPos = drawDocumentHeader(doc,
                                    `Monatsnachweis ${String(m).padStart(2,'0')}/${y}`,
                                    data.employeeName,
                                    new Date(Date.UTC(y,m-1,1)),
                                    new Date(Date.UTC(y,m,0))
                                   );
-      // Seitenzähler ist jetzt korrekt auf 1
+      // drawPageNumber(doc, page); // (TODO: In Schritt 3 entfernen)
 
-      // Seitennummer zeichnen (TODO: In Schritt 3 entfernen, falls gewünscht)
-      // drawPageNumber(doc, page);
-
-      // Tabellen-Header zeichnen
       const table = drawTableHeader(doc, yPos, uW);
       yPos = table.headerBottomY;
-      doc.font(FONT_NORMAL).fontSize(FONT_SIZE.TABLE_CONTENT).fillColor('black').lineGap(1.5);
-      doc.y = yPos; // Startposition für die erste Zeile
+      doc.font(FONT_NORMAL).fontSize(FONT_SIZE.TABLE_CONTENT).fillColor('black').lineGap(1.5); // Zeilenabstand für Inhalt
+      doc.y = yPos; // Setze die Startposition für die erste Zeile
 
       const allDays = [];
       data.workEntries.forEach(e => allDays.push({date:e.date,type:'WORK',start:e.startTime,end:e.endTime,actual:+e.hours||0}));
@@ -225,9 +216,7 @@ module.exports = function(db) {
 
       // Tabellenzeilen zeichnen
       allDays.forEach((d,i) => {
-
-        // *** KORREKTUR: Seitenumbruch nicht vor der allerersten Zeile prüfen (i > 0) ***
-        // Prüfen, ob ein Seitenumbruch nötig ist, aber nur NACH der ersten Zeile.
+        // Seitenumbruch-Logik (verhindert Umbruch vor erster Zeile)
         if (i > 0 && (doc.y + TABLE_ROW_HEIGHT > doc.page.height - doc.page.margins.bottom - FOOTER_TOTAL_HEIGHT - SUMMARY_TOTAL_HEIGHT)) {
           console.log(`[PDF] Seitenumbruch vor Zeile ${i+1} (Datum: ${d.date}) bei Y=${doc.y}`);
           page++;
@@ -244,41 +233,41 @@ module.exports = function(db) {
         const diffH= actH-expH;
         const sDate = formatDateGermanWithWeekday(d.date);
         const sStart= d.type==='WORK'?d.start:'--:--';
-        const sEnd  = d.type==='WORK'?d.end:'--:--';
+        const sEnd  = d.type==='WORK'?d.end:'--:--'; // TODO: Hier Abwesenheitstyp anzeigen
         const sExp  = decimalHoursToHHMM(expH);
         const sAct  = decimalHoursToHHMM(actH);
         const sDiff = decimalHoursToHHMM(diffH);
         const p = table.colPositions;
         const w = table.colWidths;
 
-        // *** KORREKTUR SCHRITT 2 (Platzhalter - noch nicht implementiert): ***
-        // const currentLineY = doc.y;
-        // doc.text(sDate,p.date,currentLineY,{width:w.date});
-        // ... etc. für alle Zellen ...
-        // doc.y = currentLineY + TABLE_ROW_HEIGHT;
+        // *** KORREKTUR SCHRITT 2: Feste Y-Position pro Zeile verwenden ***
+        const currentLineY = doc.y; // Aktuelle Y-Position für DIESE Zeile speichern
 
-        // *** Aktueller Code (führt zu vertikaler Verteilung - wird in Schritt 2 korrigiert): ***
-        doc.text(sDate,p.date,doc.y,{width:w.date});
-        doc.text(sStart,p.start,doc.y,{width:w.start,align:'right'});
-        doc.text(sEnd,p.end,doc.y,{width:w.end,align:d.type==='WORK'?'right':'left'});
-        doc.text(sExp,p.expected,doc.y,{width:w.expected,align:'right'});
-        doc.text(sAct,p.actual,doc.y,{width:w.actual,align:'right'});
-        doc.text(sDiff,p.diff,doc.y,{width:w.diff,align:'right'});
-        // doc.y += TABLE_ROW_HEIGHT; // (Wird in Schritt 2 angepasst)
+        // Zeichne alle Zellen auf der GLEICHEN Y-Position (currentLineY)
+        doc.text(sDate,    p.date,     currentLineY, { width:w.date,     lineGap: 1.5 }); // lineGap auch hier wichtig
+        doc.text(sStart,   p.start,    currentLineY, { width:w.start,    align:'right', lineGap: 1.5 });
+        doc.text(sEnd,     p.end,      currentLineY, { width:w.end,      align:d.type==='WORK'?'right':'left', lineGap: 1.5 }); // Ggf. links für Abwesenheitstyp
+        doc.text(sExp,     p.expected, currentLineY, { width:w.expected, align:'right', lineGap: 1.5 });
+        doc.text(sAct,     p.actual,   currentLineY, { width:w.actual,   align:'right', lineGap: 1.5 });
+        doc.text(sDiff,    p.diff,     currentLineY, { width:w.diff,     align:'right', lineGap: 1.5 });
+
+        // Setze die Y-Position für die NÄCHSTE Zeile (oder die Linie darunter)
+        doc.y = currentLineY + TABLE_ROW_HEIGHT;
+        // *** ENDE KORREKTUR SCHRITT 2 ***
 
         // Horizontale Trennlinie nach jeder Zeile
+        // Positioniert die Linie direkt unter der eben gezeichneten Zeile
         doc.save().lineWidth(0.25).strokeColor('#dddddd')
-           .moveTo(left, doc.y-1).lineTo(left+uW, doc.y-1).stroke().restore();
+           .moveTo(left, doc.y - V_SPACE.TINY).lineTo(left+uW, doc.y - V_SPACE.TINY).stroke().restore(); // Linie etwas nach oben justiert
       });
 
       // Rahmen um den gesamten Tabelleninhalt zeichnen
       const tableTopY = table.headerBottomY - table.headerHeight - V_SPACE.SMALL;
-      const tableBottomY = doc.y;
+      const tableBottomY = doc.y; // Y-Pos nach der letzten Zeile / Linie
       doc.save().lineWidth(0.5).strokeColor('#999999')
          .rect(left, tableTopY, uW, tableBottomY-tableTopY).stroke().restore();
 
       // Zusammenfassung & Footer zeichnen
-      // Prüfen, ob ein Seitenumbruch VOR der Zusammenfassung nötig ist
        if (doc.y + SUMMARY_TOTAL_HEIGHT + FOOTER_TOTAL_HEIGHT > doc.page.height - doc.page.margins.bottom) {
            console.log(`[PDF] Seitenumbruch vor Zusammenfassung bei Y=${doc.y}`);
            page++;
@@ -313,14 +302,12 @@ module.exports = function(db) {
       // Signatur-Footer zeichnen
       drawSignatureFooter(doc, doc.y + V_SPACE.LARGE);
 
-      // PDF abschließen und Stream beenden
       doc.end();
       console.log(`[PDF] Generierung für ${name} abgeschlossen und gesendet.`);
 
     } catch (err) {
       console.error('[PDF] Kritischer Fehler bei PDF-Erstellung:', err);
       if (!res.headersSent) {
-        // Die spezifische Fehlermeldung ausgeben, falls vorhanden
         res.status(500).send(`Fehler bei der PDF-Erstellung auf dem Server. (${err.message || 'Unbekannter interner Fehler'})`);
       }
     }
