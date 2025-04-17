@@ -1,12 +1,11 @@
 # nixpacks.toml
 
 [phases.setup]
-# Fügt das DejaVu Font-Paket hinzu, das viele Standard-Schriftarten enthält.
-# Diese sind oft ein guter Ersatz für Helvetica/Arial etc.
-# Paketname von https://search.nixos.org/packages überprüft.
-nixPkgs = ["dejavu_fonts"]
+# Stelle sicher, dass sowohl die Node.js-Umgebung als auch die Schriftarten installiert werden.
+# "nodejs_20" ist ein Beispiel für Node.js Version 20. Passe die Version ggf. an
+# die Version an, die du verwenden möchtest (z.B. "nodejs_18").
+# Überprüfe verfügbare Nix-Paketnamen für Node.js auf https://search.nixos.org/packages
+nixPkgs = ["nodejs_20", "dejavu_fonts"]
 
-# Optional: Wenn du absolut sicher sein willst, dass auch CJK (Chinesisch/Japanisch/Koreanisch)
-# Schriftarten dabei sind (falls dein Text solche Zeichen enthalten könnte), kannst du auch
-# "noto-fonts-cjk-sans" hinzufügen:
-# nixPkgs = ["dejavu_fonts", "noto-fonts-cjk-sans"]
+# WICHTIG: Wenn du eine andere Node.js Version brauchst, ersetze "nodejs_20"
+# durch das entsprechende Nix-Paket (z.B. nodejs_18, nodejs_16 etc.)
