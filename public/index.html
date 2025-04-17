@@ -1,11 +1,532 @@
-// Globale Variablen
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Arbeitszeiterfassung</title>
+  <style>
+    /* Basisstile */
+    body { font-family: sans-serif;
+ line-height: 1.6; color: #333; background-color: #f4f4f4; }
+    .container { max-width: 950px; margin: 20px auto; padding: 20px;
+ background-color: #fff; border-radius: 8px; box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+ }
+    h1, h2, h3 { color: #333; margin-bottom: 0.8em; }
+    h1 { text-align: center;
+ }
+    hr { border: 0; height: 1px; background: #ddd; margin: 2rem 0;
+ }
+
+    /* Formulare und Eingaben */
+    label { display: block; margin-bottom: 0.3rem; font-weight: bold;
+ }
+    input[type="text"], input[type="password"], input[type="number"], input[type="date"], input[type="time"], input[type="month"], select {
+        width: calc(100% - 20px);
+ /* Berücksichtigt Padding */
+        padding: 10px;
+        margin-bottom: 1rem;
+        border: 1px solid #ccc;
+ border-radius: 4px;
+        box-sizing: border-box; /* Stellt sicher, dass Padding die Breite nicht erhöht */
+        font-size: 1rem;
+ }
+    input[readonly] { background-color: #e9e9e9; cursor: default;
+ }
+    button {
+        padding: 10px 20px;
+        cursor: pointer;
+        margin-top: 5px;
+ margin-right: 5px;
+        border: none;
+        border-radius: 4px;
+        background-color: #007bff;
+        color: white;
+        font-size: 1rem;
+        transition: background-color 0.2s ease;
+ }
+    button:hover { background-color: #0056b3; }
+    button:disabled { cursor: not-allowed; background-color: #ccc; border-color: #bbb;
+ }
+    button#workTimeBtn[style*="background-color: orange"] { background-color: orange !important;
+ } /* Spezifischer für Arbeitsende */
+    button#workTimeBtn:disabled { opacity: 0.7;
+ }
+    button[style*="color: red"] { background-color: #dc3545; }
+    button[style*="color: red"]:hover { background-color: #c82333;
+ }
+
+    /* Tab-Navigation */
+    .tabs { list-style: none; padding: 0;
+ margin: 0 0 1rem 0; display: flex; flex-wrap: wrap; border-bottom: 1px solid #ccc;
+ }
+    .tabs li { padding: 10px 20px; cursor: pointer; border: 1px solid #ccc; border-bottom: none; margin-right: 5px;
+ margin-bottom: -1px; background: #f1f1f1; border-radius: 4px 4px 0 0; transition: background-color 0.2s ease;
+ }
+    .tabs li:hover { background: #e0e0e0; }
+    .tabs li.active { background: #fff; font-weight: bold;
+ border-bottom: 1px solid #fff; }
+    .tab-content { border: 1px solid #ccc; padding: 20px; background: #fff;
+ border-radius: 0 0 4px 4px; border-top: none; margin-bottom: 2rem; }
+
+    /* Tabellen */
+    .table-wrapper { overflow-x: auto;
+ margin-bottom: 1rem; }
+    table { width: 100%; border-collapse: collapse; margin-top: 1rem;
+ }
+    th, td { border: 1px solid #ddd; padding: 10px; text-align: left; vertical-align: middle;
+ }
+    th { background-color: #f8f8f8; font-weight: bold; }
+    tbody tr:nth-child(even) { background-color: #f9f9f9;
+ }
+    tbody tr:hover { background-color: #f1f1f1; }
+    td button { padding: 4px 8px;
+ font-size: 0.9rem; } /* Kleinere Buttons in Tabellen */
+
+    /* Spezifische Sektionen */
+    .booking-details { margin-top: 1rem;
+ background-color: #f9f9f9; padding: 15px; border-radius: 4px; }
+    .booking-row { margin-bottom: 0.7rem; display: flex; align-items: center;
+ }
+    .booking-row label { width: 120px; /* Feste Breite für Labels */ margin-right: 10px; font-weight: normal;
+ }
+    .booking-row input[type="text"] { flex-grow: 1; } /* Input nimmt restlichen Platz */
+    #summaryHours { margin-top: 1rem;
+ border-top: 1px dashed #ccc; padding-top: 1rem; }
+    #summaryHours span { font-weight: bold;
+ margin-left: 5px;}
+
+    #adminLoginForm { margin-top: 1rem; }
+    #workHoursFilterSection { margin-bottom: 1rem; padding: 15px;
+ background-color: #f0f0f0; border: 1px solid #ddd; border-radius: 4px; display: flex; align-items: center; flex-wrap: wrap; gap: 15px;
+ }
+    #workHoursFilterSection label { margin-right: 5px; font-weight: bold;
+ }
+    #workHoursFilterSection select, #workHoursFilterSection input[type="month"] { width: auto; /* Automatische Breite */ margin-right: 0;
+ }
+
+    #editWorkHoursSection, #editEmployeeSection { border: 1px solid #eee; padding: 20px; margin-top: 1.5rem; background-color: #fdfdfd; border-radius: 4px;
+ }
+    #addEmployeeForm, #addAbsenceForm, #generateHolidaysForm { border: 1px solid #eee; padding: 20px; margin-top: 1.5rem; background-color: #fdfdfd; border-radius: 4px;
+ }
+    #generateHolidaysForm { background-color: #f0f8ff; } /* Leicht blauer Hintergrund */
+    #generateHolidaysForm input[type="number"] { width: 100px;
+ display: inline-block; vertical-align: middle; margin-right: 10px;}
+
+    /* Nachrichten und Hilfsklassen */
+    .hidden { display: none;
+ }
+    .success-message { color: green; font-weight: bold; margin-top: 10px; }
+    .error-message { color: red;
+ font-weight: bold; margin-top: 10px; }
+    .working-message { color: blue; font-weight: bold; margin-top: 10px;
+ }
+    .positive-diff { color: green; }
+    .negative-diff { color: red;
+ }
+    small { display: block; margin-top: 5px; color: #666;
+ }
+
+    /* Responsive Anpassungen */
+    @media (max-width: 768px) {
+        .container { padding: 15px;
+ }
+        .tabs li { padding: 8px 12px; font-size: 0.9rem;
+ }
+        button { padding: 8px 15px; font-size: 0.9rem;
+ }
+        td button { padding: 4px 8px; font-size: 0.8rem;
+ } /* Kleinere Buttons in Tabellen noch kleiner */
+        input, select { font-size: 0.9rem;
+ padding: 8px; }
+        th, td { padding: 8px;
+ }
+        #workHoursFilterSection { flex-direction: column; align-items: stretch;
+ }
+        #workHoursFilterSection select, #workHoursFilterSection input[type="month"] { width: 100%; margin-bottom: 10px;
+ }
+        .booking-row { flex-direction: column; align-items: flex-start;
+ }
+        .booking-row label { width: auto; margin-bottom: 3px;
+ }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Arbeitszeiterfassung</h1>
+
+    <form id="workHoursForm">
+      <div>
+          <label for="employeeSelect">Mitarbeiter:</label>
+          <select id="employeeSelect" name="employeeSelect" required>
+              <option value="">Bitte auswählen</option>
+          </select>
+        </div>
+      <div><button type="button" id="workTimeBtn" disabled>Aktion wird geladen...</button></div>
+
+
+
+  <div id="bookingDetails" class="booking-details hidden">
+
+        <div class="booking-row">
+             <label for="displayDate">Datum:</label>
+             <input type="text" id="displayDate" readonly>
+         </div>
+         <div class="booking-row">
+             <label for="displayStartTime">Arbeitsbeginn:</label>
+             <input type="text" id="displayStartTime" readonly>
+
+   </div>
+         <div
+ class="booking-row">
+             <label for="displayEndTime">Arbeitsende:</label>
+             <input type="text" id="displayEndTime" readonly>
+         </div>
+         <div id="summaryHours" class="hidden">
+             <div class="booking-row">
+                 <label>Arbeitszeit (Tag):</label>
+
+            <span id="dailyTotalHours">--</span>
+
+              </div>
+             <div class="booking-row">
+                 <label>Arbeitszeit (Monat):</label>
+                 <span id="monthlyTotalHours">--</span>
+             </div>
+         </div>
+
+     </div>
+    </form>
+    <hr>
+    <h2>Admin Login</h2>
+
+   <form id="adminLoginForm">
+      <div>
+          <label for="adminPassword">Passwort:</label>
+          <input type="password" id="adminPassword" name="adminPassword" required>
+        </div>
+      <button type="submit">Anmelden</button>
+    </form>
+    <div id="adminTabs" class="hidden">
+      <ul class="tabs">
+        <li data-tab="workhours" class="active">Arbeitszeiten</li>
+
+   <li data-tab="employees">Mitarbeiter</li>
+        <li data-tab="absences">Abwesenheiten</li>
+        <li data-tab="reports">Auswertungen</li>
+
+      </ul>
+
+      <div id="tab-workhours" class="tab-content">
+        <h2>Arbeitszeiten verwalten</h2>
+
+        <div id="workHoursFilterSection">
+          <label for="filterEmployeeSelect">Mitarbeiter:</label>
+          <select id="filterEmployeeSelect" name="filterEmployeeSelect">
+             <option value="">Alle Mitarbeiter</option>
+
+  </select>
+          <label for="filterMonthInput">Monat:</label>
+          <input type="month" id="filterMonthInput" name="filterMonthInput">
+
+     <button type="button" id="applyWorkHoursFilter">Filter anwenden</button>
+         </div>
+
+        <div class="table-wrapper">
+          <table id="workHoursTable">
+            <thead>
+              <tr>
+
+         <th>ID</th>
+                <th>Name</th>
+
+   <th>Datum</th>
+                <th>Zeitraum</th>
+                 <th>Std.</th>
+                <th>Bemerkungen</th>
+
+     <th>Aktionen</th>
+              </tr>
+            </thead>
+            <tbody>
+
+       <tr><td colspan="7">Bitte Filter auswählen und anwenden.</td></tr>
+            </tbody>
+           </table>
+        </div>
+
+ <button id="adminDownloadCsv">Gefilterte Daten als CSV herunterladen</button>
+        <button id="adminDeleteData" style="color: red;">Alle Arbeits-/Bilanz-/Abwesenheitsdaten löschen (VORSICHT!)</button>
+        <hr>
+
+        <div id="editWorkHoursSection" class="hidden">
+          <h3>Arbeitszeiteintrag bearbeiten</h3>
+
+  <form id="editForm">
+             <input type="hidden" id="editId" name="id">
+             <div><label for="editName">Name:</label><input type="text" id="editName" name="name" required readonly></div>
+
+       <div><label for="editDate">Datum:</label><input type="date" id="editDate" name="date" required></div>
+             <div><label for="editStartTime">Arbeitsbeginn:</label><input type="time" id="editStartTime" name="startTime" required step="60"></div>
+             <div><label for="editEndTime">Arbeitsende:</label><input type="time" id="editEndTime" name="endTime" required step="60"></div>
+
+ <div><label for="editComment">Bemerkungen:</label><input type="text" id="editComment" name="comment"></div>
+             <button type="button" onclick="saveChanges()">Speichern</button>
+             <button type="button" onclick="cancelEditWorkHours()" style="background-color: #6c757d;">Abbrechen</button>
+
+         </form>
+          </div>
+      </div>
+      <div id="tab-employees" class="tab-content hidden">
+        <h2>Mitarbeiterverwaltung</h2>
+        <h3>Aktuelle Mitarbeiter</h3>
+         <div class="table-wrapper">
+            <table id="employeeTable">
+             <thead>
+
+ <tr>
+                        <th>ID</th>
+                        <th>Name</th>
+                        <th>Soll Mo</th>
+
+                    <th>Soll Di</th>
+
+                       <th>Soll Mi</th>
+                        <th>Soll Do</th>
+                        <th>Soll Fr</th>
+
+                     <th>Aktionen</th>
+
+                  </tr>
+                </thead>
+             <tbody id="employeeList">
+                     <tr><td colspan="8">Lade Mitarbeiter...</td></tr>
+
+             </tbody>
+            </table>
+
+        </div>
+         <hr>
+        <div id="addEmployeeSection">
+           <form id="addEmployeeForm">
+             <h3>Neuen Mitarbeiter hinzufügen</h3>
+             <div><label for="employeeName">Name:</label><input type="text" id="employeeName" name="employeeName" required></div>
+
+  <div><label for="mo_hours">Mo (Soll Std.):</label><input type="number" id="mo_hours" name="mo_hours" step="0.01" value="0" min="0" max="24"></div>
+
+       <div><label for="di_hours">Di (Soll Std.):</label><input type="number" id="di_hours" name="di_hours" step="0.01" value="0" min="0" max="24"></div>
+             <div><label for="mi_hours">Mi (Soll Std.):</label><input type="number" id="mi_hours" name="mi_hours" step="0.01" value="0" min="0" max="24"></div>
+             <div><label for="do_hours">Do (Soll Std.):</label><input type="number" id="do_hours" name="do_hours" step="0.01" value="0" min="0" max="24"></div>
+
+             <div><label for="fr_hours">Fr (Soll Std.):</label><input type="number" id="fr_hours" name="fr_hours" step="0.01" value="0" min="0" max="24"></div>
+
+           <button
+ type="submit">Hinzufügen</button>
+           </form>
+        </div>
+        <div id="editEmployeeSection" class="hidden">
+          <form id="editEmployeeForm">
+            <hr><h3>Mitarbeiter bearbeiten</h3>
+              <input type="hidden" id="editEmployeeId" name="id">
+             <div><label for="editEmployeeName">Name:</label><input type="text" id="editEmployeeName" name="name" required></div>
+
+ <div><label
+ for="editMoHours">Mo (Soll Std.):</label><input type="number" id="editMoHours" name="mo_hours" step="0.01" value="0" min="0" max="24"></div>
+             <div><label for="editDiHours">Di (Soll Std.):</label><input type="number" id="editDiHours" name="di_hours" step="0.01" value="0" min="0" max="24"></div>
+             <div><label for="editMiHours">Mi (Soll Std.):</label><input type="number" id="editMiHours" name="mi_hours" step="0.01" value="0" min="0" max="24"></div>
+             <div><label for="editDoHours">Do (Soll Std.):</label><input type="number" id="editDoHours" name="do_hours" step="0.01" value="0"
+ min="0" max="24"></div>
+             <div><label for="editFrHours">Fr (Soll Std.):</label><input type="number" id="editFrHours" name="fr_hours" step="0.01"
+ value="0"
+ min="0" max="24"></div>
+             <button type="button" onclick="saveEmployeeChanges()">Speichern</button>
+             <button type="button" onclick="cancelEditEmployee()" style="background-color: #6c757d;">Abbrechen</button>
+           </form>
+        </div>
+      </div>
+
+      <div id="tab-absences" class="tab-content hidden">
+
+          <h2>Abwesenheiten verwalten</h2>
+
+          <div>
+
+   <label for="absenceEmployeeSelect">Mitarbeiter:</label>
+
+       <select id="absenceEmployeeSelect" name="absenceEmployeeSelect" required>
+                  <option value="">Bitte auswählen...</option>
+              </select>
+            </div>
+
+          <hr>
+          <h3>Erfasste Abwesenheiten für ausgewählten Mitarbeiter</h3>
+
+  <div class="table-wrapper">
+               <table id="absencesTable">
+
+                 <thead>
+                      <tr>
+                          <th>Datum</th>
+
+         <th>Typ</th>
+                          <th>Gutschrift Std.</th>
+
+                          <th>Kommentar</th>
+                          <th>Aktion</th>
+
+          </tr>
+                    </thead>
+                   <tbody>
+
+                      <tr><td colspan="5">Bitte Mitarbeiter auswählen.</td></tr>
+                  </tbody>
+
+     </table>
+            </div>
+
+          <hr>
+
+          <form id="addAbsenceForm">
+
+             <h3>Neue Abwesenheit hinzufügen</h3>
+
+         <input type="hidden" id="addAbsenceEmployeeId" name="employeeId">
+             <div>
+                 <label
+ for="addAbsenceDate">Datum:</label>
+                  <input type="date" id="addAbsenceDate" name="date" required>
+             </div>
+                <div>
+
+                 <label for="addAbsenceType">Typ:</label>
+                   <select id="addAbsenceType" name="absenceType" required>
+
+            <option value="">Bitte auswählen...</option>
+                      <option value="VACATION">Urlaub</option>
+
+                     <option value="SICK">Krank</option>
+
+               <option value="PUBLIC_HOLIDAY">Gesetzl.
+ Feiertag (NRW)</option>
+                   </select>
+              </div>
+              <div>
+                    <label for="addAbsenceComment">Kommentar (optional):</label>
+                    <input type="text" id="addAbsenceComment" name="comment">
+
+
+           </div>
+              <button type="submit" id="addAbsenceSubmitBtn" disabled>Speichern</button>
+              <small id="absenceFormNote" style="display: block; margin-top: 5px;">Bitte zuerst oben einen Mitarbeiter auswählen.</small>
+           </form>
+
+           <hr>
+
+           <form id="generateHolidaysForm">
+
+ <h3>Feiertage automatisch generieren (NRW)</h3>
+                 <div>
+
+
+                   <label for="generateHolidaysYear">Jahr:</label>
+                     <input type="number" id="generateHolidaysYear" name="generateHolidaysYear" min="2020" max="2035" required> <button type="button" id="generateHolidaysBtn">Generieren</button>
+                 </div>
+
+      <div id="generateHolidaysResult"></div>
+                 <small>Erstellt automatisch Feiertagseinträge für alle Mitarbeiter für das gewählte Jahr,
+ sofern sie an dem Tag Soll-Stunden haben und der Tag auf Mo-Fr fällt.
+ Bestehende Einträge für diese Tage werden nicht überschrieben.</small>
+            </form>
+
+            <hr> <div style="margin-top: 1rem;">
+                 <button type="button" id="deleteAllPublicHolidaysBtn" style="background-color: #dc3545; color: white;">
+                     Alle 'Feiertag'-Einträge löschen (Vorsicht!)
+                 </button>
+
+
+
+               <div id="deleteHolidaysResult" style="margin-top: 5px;"></div>
+                 <small>Löscht alle Abwesenheiten vom Typ 'Feiertag' für alle Mitarbeiter.
+ Urlaub/Krank bleibt erhalten. Danach können die korrekten Feiertage oben neu generiert werden.</small>
+            </div>
+      </div>
+      <div id="tab-reports" class="tab-content hidden">
+                <h2>Auswertungen</h2>
+                <form id="balanceForm">
+                  <div>
+
+
+             <label for="balanceName">Mitarbeiter:</label>
+                       <select id="balanceName" name="balanceName" required>
+                          <option value="">Bitte auswählen...</option>
+                       </select>
+
+        </div>
+
+           <div>
+
+                      <label for="balanceYear">Jahr:</label>
+                      <input type="number" id="balanceYear" name="balanceYear" required min="2020" max="2035">
+                  </div>
+
+              <div>
+
+           <label for="periodTypeSelect">Zeitraum:</label>
+
+                  <select id="periodTypeSelect" name="periodType" required>
+                          <option value="MONTH" selected>Monat</option>
+
+                 <option value="QUARTER">Quartal</option>
+
+                 <option value="YEAR">Gesamtjahr</option>
+
+                   </select>
+                  </div>
+
+
+    <div id="monthSelectDiv">
+                      <label for="balanceMonth">Monat:</label>
+                      <input
+ type="number" id="balanceMonth" name="balanceMonth" required min="1" max="12">
+                  </div>
+
+                 <div id="quarterSelectDiv" class="hidden">
+
+                 <label for="balanceQuarter">Quartal:</label>
+                      <select id="balanceQuarter" name="balanceQuarter" required>
+
+             <option value="1">Q1 (Jan-Mrz)</option>
+
+                           <option value="2">Q2 (Apr-Jun)</option>
+
+                          <option value="3">Q3 (Jul-Sep)</option>
+                          <option value="4">Q4 (Okt-Dez)</option>
+
+                      </select>
+                  </div>
+
+
+                <button type="submit">Berechnen</button>
+                </form>
+                <br>
+
+           <button id="downloadPdfBtn" disabled>PDF Herunterladen</button>
+                <div id="balanceResult" style="margin-top: 1rem;
+ padding: 15px; background-color: #f9f9f9; border-radius: 4px;">
+                </div>
+            </div>
+
+    </div> </div> <script>
+    // Globale Variablen
     let currentWorkEntryId = null; // Hält die ID des aktuell offenen Arbeitszeit-Eintrags
     let currentBalanceData = null; // Hält die Daten der letzten Berechnung für PDF
 
     // ==== DOM-Referenzen ====
     // Benutzerseite
     const employeeSelect = document.getElementById('employeeSelect');
-    const workTimeBtn = document.getElementById('workTimeBtn');
+    const
+
+ workTimeBtn = document.getElementById('workTimeBtn');
     const displayDateInput = document.getElementById('displayDate');
     const displayStartTimeInput = document.getElementById('displayStartTime');
     const displayEndTimeInput = document.getElementById('displayEndTime');
@@ -13,63 +534,63 @@
     const summaryHoursDiv = document.getElementById('summaryHours');
     const dailyTotalHoursSpan = document.getElementById('dailyTotalHours');
     const monthlyTotalHoursSpan = document.getElementById('monthlyTotalHours');
-    // Admin Login
+ // Admin Login
     const adminLoginFormElement = document.getElementById('adminLoginForm');
     const adminPasswordInput = document.getElementById('adminPassword');
-    // Admin Tabs & Content
+ // Admin Tabs & Content
     const adminTabsContainer = document.getElementById('adminTabs');
     const workHoursTabContent = document.getElementById('tab-workhours');
     const employeesTabContent = document.getElementById('tab-employees');
-    const absencesTabContent = document.getElementById('tab-absences');
+ const absencesTabContent = document.getElementById('tab-absences');
     const reportsTabContent = document.getElementById('tab-reports');
     // Arbeitszeiten Tab Elemente
     const filterEmployeeSelect = document.getElementById('filterEmployeeSelect');
-    const filterMonthInput = document.getElementById('filterMonthInput');
+ const filterMonthInput = document.getElementById('filterMonthInput');
     const applyWorkHoursFilterBtn = document.getElementById('applyWorkHoursFilter');
     const workHoursTableBody = document.querySelector('#workHoursTable tbody');
     const adminDownloadCsvBtn = document.getElementById('adminDownloadCsv');
-    const adminDeleteDataBtn = document.getElementById('adminDeleteData');
+ const adminDeleteDataBtn = document.getElementById('adminDeleteData');
     const editWorkHoursSection = document.getElementById('editWorkHoursSection');
     const editWorkHoursForm = document.getElementById('editForm');
-    // Mitarbeiter Tab Elemente
+ // Mitarbeiter Tab Elemente
     const employeeListBody = document.querySelector('#employeeTable tbody');
     const addEmployeeFormElement = document.getElementById('addEmployeeForm');
     const editEmployeeSection = document.getElementById('editEmployeeSection');
-    const editEmployeeFormElement = document.getElementById('editEmployeeForm');
+ const editEmployeeFormElement = document.getElementById('editEmployeeForm');
     const addEmployeeSection = document.getElementById('addEmployeeSection');
     // Abwesenheiten Tab Elemente
     const absenceEmployeeSelect = document.getElementById('absenceEmployeeSelect');
-    const absencesTableBody = document.querySelector('#absencesTable tbody');
+ const absencesTableBody = document.querySelector('#absencesTable tbody');
     const addAbsenceForm = document.getElementById('addAbsenceForm');
     const addAbsenceEmployeeIdInput = document.getElementById('addAbsenceEmployeeId');
     const addAbsenceDateInput = document.getElementById('addAbsenceDate');
-    const addAbsenceTypeSelect = document.getElementById('addAbsenceType');
+ const addAbsenceTypeSelect = document.getElementById('addAbsenceType');
     const addAbsenceCommentInput = document.getElementById('addAbsenceComment');
     const addAbsenceSubmitBtn = document.getElementById('addAbsenceSubmitBtn');
     const absenceFormNote = document.getElementById('absenceFormNote');
-    // Feiertagsgenerierung Elemente
+ // Feiertagsgenerierung Elemente
     const generateHolidaysForm = document.getElementById('generateHolidaysForm');
     const generateHolidaysYearInput = document.getElementById('generateHolidaysYear');
     const generateHolidaysBtn = document.getElementById('generateHolidaysBtn');
-    const generateHolidaysResultDiv = document.getElementById('generateHolidaysResult');
+ const generateHolidaysResultDiv = document.getElementById('generateHolidaysResult');
     // NEU: Referenzen für Feiertage löschen Button
     const deleteAllPublicHolidaysBtn = document.getElementById('deleteAllPublicHolidaysBtn');
-    const deleteHolidaysResultDiv = document.getElementById('deleteHolidaysResult');
+ const deleteHolidaysResultDiv = document.getElementById('deleteHolidaysResult');
 
     // Auswertungsformular Elemente
     const balanceForm = document.getElementById('balanceForm');
     const balanceNameSelect = document.getElementById('balanceName');
-    const balanceYearInput = document.getElementById('balanceYear');
+ const balanceYearInput = document.getElementById('balanceYear');
     const periodTypeSelect = document.getElementById('periodTypeSelect');
     const monthSelectDiv = document.getElementById('monthSelectDiv');
     const balanceMonthInput = document.getElementById('balanceMonth');
     const quarterSelectDiv = document.getElementById('quarterSelectDiv');
-    const balanceQuarterSelect = document.getElementById('balanceQuarter');
+ const balanceQuarterSelect = document.getElementById('balanceQuarter');
     const downloadPdfBtn = document.getElementById('downloadPdfBtn');
     const balanceResultDiv = document.getElementById('balanceResult');
-    // Formatierungsoptionen für Datum mit Wochentag
+ // Formatierungsoptionen für Datum mit Wochentag
     const dateDisplayOptions = { weekday: 'short', day: '2-digit', month: '2-digit', year: 'numeric' };
-    const dateDisplayOptionsUTC = { ...dateDisplayOptions, timeZone: 'UTC' };
+ const dateDisplayOptionsUTC = { ...dateDisplayOptions, timeZone: 'UTC' };
 
 
     // ==== Initialisierung ====
@@ -82,7 +603,9 @@
       const currentYear = now.getFullYear();
       const currentMonth = now.getMonth() + 1;
       if(balanceYearInput) balanceYearInput.value = currentYear;
-      if(balanceMonthInput) balanceMonthInput.value = currentMonth;
+      if(balanceMonthInput)
+
+ balanceMonthInput.value = currentMonth;
       if(periodTypeSelect) periodTypeSelect.value = 'MONTH';
       handlePeriodTypeChange(); // Stellt sicher, dass die korrekten Felder angezeigt werden
       if(generateHolidaysYearInput) generateHolidaysYearInput.value = currentYear;
@@ -90,53 +613,54 @@
          filterMonthInput.value = `${currentYear}-${String(currentMonth).padStart(2, '0')}`;
       }
     });
-
-    // ==== Event Listener Setup ====
+        // ==== Event Listener Setup ====
     function setupEventListeners() {
         // Benutzerseite
         if (employeeSelect) employeeSelect.addEventListener('change', handleEmployeeSelection);
-        else console.error("Element not found: employeeSelect");
+ else console.error("Element not found: employeeSelect");
         if (workTimeBtn) workTimeBtn.addEventListener('click', handleWorkTimeToggle); else console.error("Element not found: workTimeBtn");
-        // Admin
+ // Admin
         if (adminLoginFormElement) adminLoginFormElement.addEventListener('submit', handleAdminLogin); else console.error("Element not found: adminLoginForm");
-        // Tabs
+ // Tabs
         document.querySelectorAll('.tabs li').forEach(tab => {
             if(tab) tab.addEventListener('click', handleTabSwitch); else console.error("Element not found: .tabs li");
         });
-        // Arbeitszeiten Tab
+ // Arbeitszeiten Tab
         if (applyWorkHoursFilterBtn) applyWorkHoursFilterBtn.addEventListener('click', loadAdminWorkHours); else console.error("Element not found: applyWorkHoursFilter");
-        if (adminDownloadCsvBtn) adminDownloadCsvBtn.addEventListener('click', downloadAdminCsv); else console.error("Element not found: adminDownloadCsv");
+ if (adminDownloadCsvBtn) adminDownloadCsvBtn.addEventListener('click', downloadAdminCsv); else console.error("Element not found: adminDownloadCsv");
         if (adminDeleteDataBtn) adminDeleteDataBtn.addEventListener('click', deleteAllWorkHours); else console.error("Element not found: adminDeleteData");
-        // Formular im Edit-Bereich wird über Buttons getriggert (onclick)
+ // Formular im Edit-Bereich wird über Buttons getriggert (onclick)
 
         // Mitarbeiter Tab
         if (addEmployeeFormElement) addEmployeeFormElement.addEventListener('submit', handleAddEmployee);
-        else console.error("Element not found: addEmployeeForm");
+ else console.error("Element not found: addEmployeeForm");
         // Edit-Formular wird über Buttons getriggert (onclick)
 
         // Abwesenheiten Tab
         if (absenceEmployeeSelect) absenceEmployeeSelect.addEventListener('change', handleAbsenceEmployeeSelectChange);
-        else console.error("Element not found: absenceEmployeeSelect");
+ else console.error("Element not found: absenceEmployeeSelect");
         if (addAbsenceForm) addAbsenceForm.addEventListener('submit', handleAddAbsence); else console.error("Element not found: addAbsenceForm");
         if (generateHolidaysBtn) generateHolidaysBtn.addEventListener('click', handleGenerateHolidays);
-        else console.error("Element not found: generateHolidaysBtn");
+ else console.error("Element not found: generateHolidaysBtn");
         if (deleteAllPublicHolidaysBtn) deleteAllPublicHolidaysBtn.addEventListener('click', handleDeleteAllPublicHolidays); else console.error("Element not found: deleteAllPublicHolidaysBtn");
-        // Auswertungen Tab
+ // Auswertungen Tab
         if (balanceForm) balanceForm.addEventListener('submit', handleCalculateBalance); else console.error("Element not found: balanceForm");
-        if (periodTypeSelect) periodTypeSelect.addEventListener('change', handlePeriodTypeChange); else console.error("Element not found: periodTypeSelect");
+ if (periodTypeSelect) periodTypeSelect.addEventListener('change', handlePeriodTypeChange); else console.error("Element not found: periodTypeSelect");
         if (downloadPdfBtn) downloadPdfBtn.addEventListener('click', handleDownloadPdf); else console.error("Element not found: downloadPdfBtn");
-    }
+ }
 
     // ==== Allgemeine Hilfsfunktionen ====
     async function fetchEmployees() {
         try {
-            const response = await fetch('/employees'); // Öffentlicher Endpunkt
+            const response = await fetch('/employees');
+ // Öffentlicher Endpunkt
             if (!response.ok) throw new Error(`Laden der Mitarbeiterliste fehlgeschlagen (${response.status}).`);
-            return await response.json();
+ return await response.json();
         } catch (err) {
             console.error("Fehler beim Laden der Mitarbeiterliste:", err);
-            alert("❌ Fehler: Mitarbeiterliste konnte nicht geladen werden. " + err.message);
-            return []; // Leeres Array zurückgeben, um Folgefehler zu vermeiden
+ alert("❌ Fehler: Mitarbeiterliste konnte nicht geladen werden. " + err.message);
+            return [];
+ // Leeres Array zurückgeben, um Folgefehler zu vermeiden
         }
     }
 
@@ -144,17 +668,18 @@
     function populateSelectWithOptions(selectElement, employees, useIdAsValue = false, defaultOptionText = "Bitte auswählen", includeAllOption = false, allOptionValue = "") {
         if (!selectElement) {
             console.error("populateSelectWithOptions: Ungültiges Select-Element übergeben!");
-            return;
+ return;
         }
         // Vorherige Optionen löschen, außer dem Standard-Platzhalter
-        selectElement.innerHTML = `<option value="">${defaultOptionText}</option>`; // Verwende leeren String als Standardwert
+        selectElement.innerHTML = `<option value="">${defaultOptionText}</option>`;
+ // Verwende leeren String als Standardwert
 
         // Option "Alle Mitarbeiter" hinzufügen, falls gewünscht
         if(includeAllOption && filterEmployeeSelect === selectElement) { // Nur für den Filter-Dropdown
              const allOption = document.createElement('option');
-             allOption.value = allOptionValue || "all"; // Wert für "Alle"
+ allOption.value = allOptionValue || "all"; // Wert für "Alle"
              allOption.textContent = "Alle Mitarbeiter";
-             selectElement.appendChild(allOption);
+ selectElement.appendChild(allOption);
         }
 
         // Mitarbeiter-Optionen hinzufügen
@@ -164,101 +689,113 @@
             option.textContent = emp.name; // Text ist immer Name
             selectElement.appendChild(option);
         });
-    }
+ }
 
     // Lädt Mitarbeiter und befüllt ALLE relevanten Dropdowns
     async function loadEmployeeOptions() {
         const employees = await fetchEmployees();
-        // Haupt-Dropdown (Benutzer)
-        populateSelectWithOptions(employeeSelect, employees, false, "Bitte auswählen"); // Wert = Name
+ // Haupt-Dropdown (Benutzer)
+        populateSelectWithOptions(employeeSelect, employees, false, "Bitte auswählen");
+ // Wert = Name
 
         // Admin-Filter-Dropdown (Arbeitszeiten)
-        populateSelectWithOptions(filterEmployeeSelect, employees, true, "Alle Mitarbeiter", true, ""); // Wert = ID, Standardwert leer, "Alle" Option
+        populateSelectWithOptions(filterEmployeeSelect, employees, true, "Alle Mitarbeiter", true, "");
+ // Wert = ID, Standardwert leer, "Alle" Option
 
         // Admin-Dropdown (Abwesenheiten)
-        populateSelectWithOptions(absenceEmployeeSelect, employees, true, "Bitte auswählen..."); // Wert = ID
+        populateSelectWithOptions(absenceEmployeeSelect, employees, true, "Bitte auswählen...");
+ // Wert = ID
 
         // Admin-Dropdown (Auswertungen)
-         populateSelectWithOptions(balanceNameSelect, employees, false, "Bitte auswählen..."); // Wert = Name
+         populateSelectWithOptions(balanceNameSelect, employees, false, "Bitte auswählen...");
+ // Wert = Name
 
         if (employees.length === 0) {
             console.warn("Keine Mitarbeiter gefunden oder Fehler beim Laden.");
-            // Optional: Fehlermeldung in Dropdowns anzeigen
+ // Optional: Fehlermeldung in Dropdowns anzeigen
              const errorMsg = '<option value="">Fehler/Keine MA</option>';
-             if(employeeSelect) employeeSelect.innerHTML = errorMsg;
+ if(employeeSelect) employeeSelect.innerHTML = errorMsg;
              if(filterEmployeeSelect) filterEmployeeSelect.innerHTML = errorMsg;
              if(absenceEmployeeSelect) absenceEmployeeSelect.innerHTML = errorMsg;
              if(balanceNameSelect) balanceNameSelect.innerHTML = errorMsg;
-        }
+ }
     }
 
     // ==== Funktionen Zeiterfassung (Benutzer) ====
      function handleEmployeeSelection() {
-         if(summaryHoursDiv) summaryHoursDiv.classList.add('hidden'); // Summary bei MA-Wechsel ausblenden
-         if(bookingDetailsDiv) bookingDetailsDiv.classList.add('hidden'); // Auch Details ausblenden
-         checkNextBookingAction(); // Prüft Status für neuen MA und zeigt ggf. Details wieder an
+         if(summaryHoursDiv) summaryHoursDiv.classList.add('hidden');
+ // Summary bei MA-Wechsel ausblenden
+         if(bookingDetailsDiv) bookingDetailsDiv.classList.add('hidden');
+ // Auch Details ausblenden
+         checkNextBookingAction();
+ // Prüft Status für neuen MA und zeigt ggf. Details wieder an
      }
 
      async function checkNextBookingAction() {
          const name = employeeSelect.value;
-         resetBookingDetails(); // WICHTIG: resetBookingDetails wird jetzt hier aufgerufen
+ resetBookingDetails(); // WICHTIG: resetBookingDetails wird jetzt hier aufgerufen
          workTimeBtn.disabled = true;
-         currentWorkEntryId = null;
+ currentWorkEntryId = null;
 
          if (!name) {
              workTimeBtn.textContent = 'Bitte Mitarbeiter wählen';
-             return;
+ return;
          }
 
          workTimeBtn.textContent = 'Status wird geprüft...';
-         try {
+ try {
              const response = await fetch(`/next-booking-details?name=${encodeURIComponent(name)}`);
-             if (!response.ok) throw new Error(`Fehler ${response.status} beim Abrufen des Buchungsstatus.`);
+ if (!response.ok) throw new Error(`Fehler ${response.status} beim Abrufen des Buchungsstatus.`);
              const data = await response.json();
-             if (data.nextBooking === 'arbeitsende') {
+ if (data.nextBooking === 'arbeitsende') {
                  workTimeBtn.textContent = 'Arbeitsende buchen';
-                 workTimeBtn.style.backgroundColor = 'orange';
+ workTimeBtn.style.backgroundColor = 'orange';
                  currentWorkEntryId = data.id;
                  workTimeBtn.disabled = false;
-                 if(bookingDetailsDiv) bookingDetailsDiv.classList.remove('hidden'); // Details anzeigen
+                 if(bookingDetailsDiv) bookingDetailsDiv.classList.remove('hidden');
+ // Details anzeigen
                  if (data.startDate) {
                      try {
-                        // Datum kommt als YYYY-MM-DD vom Server
-                        const dateObj = new Date(data.startDate + 'T00:00:00Z'); // Als UTC interpretieren
+                        // Datum kommt als-MM-DD vom Server
+                        const dateObj =
+
+ new Date(data.startDate + 'T00:00:00Z'); // Als UTC interpretieren
                         // ** NEUE FORMATIERUNG **
                         displayDateInput.value = dateObj.toLocaleDateString('de-DE', dateDisplayOptionsUTC);
-                     } catch(e) {
+ } catch(e) {
                          console.error("Fehler beim Formatieren des Startdatums:", e);
-                         displayDateInput.value = data.startDate; // Fallback
+ displayDateInput.value = data.startDate; // Fallback
                      }
                  } else {
                     displayDateInput.value = 'Unbekannt';
-                 }
-                 displayStartTimeInput.value = data.startTime ? data.startTime + " Uhr" : 'Unbekannt';
+ }
+                 displayStartTimeInput.value = data.startTime ?
+ data.startTime + " Uhr" : 'Unbekannt';
                  displayEndTimeInput.value = '---';
              } else {
                  workTimeBtn.textContent = 'Arbeitsbeginn buchen';
-                 workTimeBtn.style.backgroundColor = ''; // Standardfarbe resetten
+ workTimeBtn.style.backgroundColor = ''; // Standardfarbe resetten
                  workTimeBtn.disabled = false;
-             }
+ }
          } catch (error) {
              console.error("Fehler beim Prüfen des nächsten Buchungsschritts:", error);
-             alert("❌ Fehler beim Abrufen des Buchungsstatus: " + error.message);
+ alert("❌ Fehler beim Abrufen des Buchungsstatus: " + error.message);
              workTimeBtn.textContent = 'Fehler beim Laden';
-         }
+ }
      }
-
       async function handleWorkTimeToggle() {
          const name = employeeSelect.value;
-         if (!name) return;
+ if (!name) return;
 
          const action = workTimeBtn.textContent.includes('Arbeitsbeginn') ? 'start' : 'end';
          const now = new Date();
-         const date = now.toISOString().split("T")[0]; // YYYY-MM-DD
-         const time = now.toTimeString().slice(0, 5); // HH:MM
+         const date = now.toISOString().split("T")[0];
+ // YYYY-MM-DD
+         const time = now.toTimeString().slice(0, 5);
+ // HH:MM
          // ** NEUE FORMATIERUNG ** (Lokale Zeit, kein UTC nötig)
          const displayDate = now.toLocaleDateString('de-DE', dateDisplayOptions);
-         workTimeBtn.disabled = true;
+ workTimeBtn.disabled = true;
          workTimeBtn.textContent = 'Buchung wird verarbeitet...';
 
          if (action === 'start') {
@@ -266,117 +803,131 @@
                  const response = await fetch("/log-start", {
                      method: "POST",
                      headers: { "Content-Type": "application/json" },
-                     body: JSON.stringify({ name, date, startTime: time })
+
+
+                 body: JSON.stringify({ name, date, startTime: time })
                  });
-                 const result = await response.json();
+ const result = await response.json();
 
                  if (response.ok) {
                      alert("✅ Arbeitsbeginn erfolgreich gebucht.");
-                     currentWorkEntryId = result.id;
+ currentWorkEntryId = result.id;
                      if(bookingDetailsDiv) bookingDetailsDiv.classList.remove('hidden');
                      displayDateInput.value = displayDate; // Formatiertes Datum anzeigen
                      displayStartTimeInput.value = time + " Uhr";
-                     displayEndTimeInput.value = '---';
+ displayEndTimeInput.value = '---';
                  } else {
                      throw new Error(result.message || `Serverfehler ${response.status}`);
-                 }
+ }
              } catch (err) {
                  console.error("Fehler beim Buchen des Arbeitsbeginns:", err);
-                 alert("❌ Fehler beim Buchen des Arbeitsbeginns: " + err.message);
+ alert("❌ Fehler beim Buchen des Arbeitsbeginns: " + err.message);
              } finally {
-                 checkNextBookingAction(); // Status neu prüfen (setzt Button etc.)
+                 checkNextBookingAction();
+ // Status neu prüfen (setzt Button etc.)
              }
          } else { // action === 'end'
              if (!currentWorkEntryId) {
                  alert("Fehler: Konnte die ID des offenen Eintrags nicht finden. Bitte Seite neu laden.");
-                 checkNextBookingAction();
+ checkNextBookingAction();
                  return;
              }
              try {
-                 const comment = ""; // Kommentarfeld nicht im UI
+                 const comment = "";
+ // Kommentarfeld nicht im UI
                  const response = await fetch(`/log-end/${currentWorkEntryId}`, {
                      method: "PUT",
                      headers: { "Content-Type": "application/json" },
-                     body: JSON.stringify({ endTime: time, comment: comment || null })
+                     body: JSON.stringify({ endTime: time, comment: comment
+
+ || null })
                  });
-                 const result = await response.json();
+ const result = await response.json();
 
                  if (response.ok) {
                      alert("✅ Arbeitsende erfolgreich gebucht.");
-                     displayEndTimeInput.value = time + " Uhr"; // Endzeit eintragen
-                     currentWorkEntryId = null; // ID zurücksetzen
+ displayEndTimeInput.value = time + " Uhr"; // Endzeit eintragen
+                     currentWorkEntryId = null;
+ // ID zurücksetzen
 
                      // Datum für die Zusammenfassung holen (aus Anzeige oder aktuell)
-                     let summaryDate = date; // Fallback auf aktuelles Datum
+                     let summaryDate = date;
+ // Fallback auf aktuelles Datum
                      if(displayDateInput.value && displayDateInput.value !== 'Unbekannt') {
                          // Versuchen, das YYYY-MM-DD aus dem formatierten String zu extrahieren
                          // Annahme: Format "Wochentag. TT.MM.YYYY"
-                         const parts = displayDateInput.value.split(' ');
-                         if (parts.length > 1) {
+
+                  const parts = displayDateInput.value.split(' ');
+ if (parts.length > 1) {
                             const dateParts = parts[1].split('.');
-                            if (dateParts.length === 3) {
+ if (dateParts.length === 3) {
                                 summaryDate = `${dateParts[2]}-${dateParts[1].padStart(2,'0')}-${dateParts[0].padStart(2,'0')}`;
-                            }
+ }
                          }
                      }
                      // ** Stundenzusammenfassung anzeigen **
                      displaySummaryHours(name, summaryDate);
-                 } else {
+ } else {
                      throw new Error(result.message || `Serverfehler ${response.status}`);
-                 }
+ }
              } catch (err) {
                  console.error("Fehler beim Buchen des Arbeitsendes:", err);
-                 alert("❌ Fehler beim Buchen des Arbeitsendes: " + err.message);
+ alert("❌ Fehler beim Buchen des Arbeitsendes: " + err.message);
              } finally {
-                checkNextBookingAction(); // Status neu prüfen (setzt Button zurück etc.)
+                checkNextBookingAction();
+ // Status neu prüfen (setzt Button zurück etc.)
              }
          }
      }
 
      async function displaySummaryHours(employeeName, dayDate) {
          if (!employeeName || !dayDate || !summaryHoursDiv || !dailyTotalHoursSpan || !monthlyTotalHoursSpan) return;
-         // Datum muss im YYYY-MM-DD Format sein für die Abfrage
+ // Datum muss im YYYY-MM-DD Format sein für die Abfrage
          let queryDate = dayDate;
-         if (!/^\d{4}-\d{2}-\d{2}$/.test(dayDate)) {
+ if (!/^\d{4}-\d{2}-\d{2}$/.test(dayDate)) {
             console.error("Ungültiges Datumsformat für Summary-Anfrage:", dayDate);
-            queryDate = new Date().toISOString().split('T')[0]; // Sicherer Fallback
+ queryDate = new Date().toISOString().split('T')[0]; // Sicherer Fallback
          }
 
-         summaryHoursDiv.classList.remove('hidden'); // Zusammenfassung sichtbar machen
+         summaryHoursDiv.classList.remove('hidden');
+ // Zusammenfassung sichtbar machen
          dailyTotalHoursSpan.textContent = 'lade...';
          monthlyTotalHoursSpan.textContent = 'lade...';
-         try {
+ try {
              const response = await fetch(`/summary-hours?name=${encodeURIComponent(employeeName)}&date=${queryDate}`);
-             if (!response.ok) throw new Error(`Fehler ${response.status} beim Laden der Stundenübersicht.`);
+ if (!response.ok) throw new Error(`Fehler ${response.status} beim Laden der Stundenübersicht.`);
              const summary = await response.json();
-             dailyTotalHoursSpan.textContent = `${summary.dailyHours ? summary.dailyHours.toFixed(2) : '0.00'} Std.`;
+             dailyTotalHoursSpan.textContent = `${summary.dailyHours ?
+ summary.dailyHours.toFixed(2) : '0.00'} Std.`;
              monthlyTotalHoursSpan.textContent = `${summary.monthlyHours ? summary.monthlyHours.toFixed(2) : '0.00'} Std.`;
-         } catch (error) {
+ } catch (error) {
              console.error("Fehler beim Anzeigen der Stundenzusammenfassung:", error);
-             dailyTotalHoursSpan.textContent = 'Fehler';
+ dailyTotalHoursSpan.textContent = 'Fehler';
              monthlyTotalHoursSpan.textContent = 'Fehler';
          }
      }
 
      function resetWorkTimeForm() {
          if(employeeSelect) employeeSelect.value = '';
-         if(workTimeBtn) {
+ if(workTimeBtn) {
              workTimeBtn.textContent = 'Bitte Mitarbeiter wählen';
-             workTimeBtn.style.backgroundColor = '';
+ workTimeBtn.style.backgroundColor = '';
              workTimeBtn.disabled = true;
          }
          resetBookingDetails();
          if(bookingDetailsDiv) bookingDetailsDiv.classList.add('hidden');
-         if(summaryHoursDiv) summaryHoursDiv.classList.add('hidden'); // Beim kompletten Reset auch Summary verstecken
+         if(summaryHoursDiv) summaryHoursDiv.classList.add('hidden');
+ // Beim kompletten Reset auch Summary verstecken
      }
 
      function resetBookingDetails() {
          if(displayDateInput) displayDateInput.value = '';
-         if(displayStartTimeInput) displayStartTimeInput.value = '';
+ if(displayStartTimeInput) displayStartTimeInput.value = '';
          if(displayEndTimeInput) displayEndTimeInput.value = '';
-         // if(summaryHoursDiv) summaryHoursDiv.classList.add('hidden'); // <-- Auskommentiert, damit Summary sichtbar bleibt
+         // if(summaryHoursDiv) summaryHoursDiv.classList.add('hidden');
+ // <-- Auskommentiert, damit Summary sichtbar bleibt
          if(dailyTotalHoursSpan) dailyTotalHoursSpan.textContent = '--';
-         if(monthlyTotalHoursSpan) monthlyTotalHoursSpan.textContent = '--';
+ if(monthlyTotalHoursSpan) monthlyTotalHoursSpan.textContent = '--';
          currentWorkEntryId = null;
      }
 
@@ -471,7 +1022,7 @@
                     if(balanceResultDiv) balanceResultDiv.innerHTML = ''; // Ergebnisbereich leeren
                     if(downloadPdfBtn) downloadPdfBtn.disabled = true; // PDF-Button deaktivieren
                     handlePeriodTypeChange(); // Korrekte Monats/Quartalsfelder anzeigen
-                    currentBalanceData = null; // Keine Daten für PDF verfügbar
+                    currentBalanceData = null; // Keine Daten mehr für PDF verfügbar
                     break;
             }
         } else {
