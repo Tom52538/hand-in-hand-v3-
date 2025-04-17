@@ -1,0 +1,12 @@
+# nixpacks.toml
+
+[phases.setup]
+# Fügt das DejaVu Font-Paket hinzu, das viele Standard-Schriftarten enthält.
+# Diese sind oft ein guter Ersatz für Helvetica/Arial etc.
+# Paketname von https://search.nixos.org/packages überprüft.
+nixPkgs = ["dejavu_fonts"]
+
+# Optional: Wenn du absolut sicher sein willst, dass auch CJK (Chinesisch/Japanisch/Koreanisch)
+# Schriftarten dabei sind (falls dein Text solche Zeichen enthalten könnte), kannst du auch
+# "noto-fonts-cjk-sans" hinzufügen:
+# nixPkgs = ["dejavu_fonts", "noto-fonts-cjk-sans"]
