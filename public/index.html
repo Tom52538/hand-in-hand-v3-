@@ -167,7 +167,8 @@
 
 
   <div id="bookingDetails" class="booking-details hidden">
-         <div class="booking-row">
+
+        <div class="booking-row">
              <label for="displayDate">Datum:</label>
              <input type="text" id="displayDate" readonly>
          </div>
@@ -176,7 +177,8 @@
              <input type="text" id="displayStartTime" readonly>
 
    </div>
-         <div class="booking-row">
+         <div
+ class="booking-row">
              <label for="displayEndTime">Arbeitsende:</label>
              <input type="text" id="displayEndTime" readonly>
          </div>
@@ -185,6 +187,7 @@
                  <label>Arbeitszeit (Tag):</label>
 
             <span id="dailyTotalHours">--</span>
+
              </div>
              <div class="booking-row">
                  <label>Arbeitszeit (Monat):</label>
@@ -196,7 +199,8 @@
     </form>
     <hr>
     <h2>Admin Login</h2>
-    <form id="adminLoginForm">
+
+   <form id="adminLoginForm">
       <div>
           <label for="adminPassword">Passwort:</label>
           <input type="password" id="adminPassword" name="adminPassword" required>
@@ -210,7 +214,8 @@
    <li data-tab="employees">Mitarbeiter</li>
         <li data-tab="absences">Abwesenheiten</li>
         <li data-tab="reports">Auswertungen</li>
-      </ul>
+
+     </ul>
 
       <div id="tab-workhours" class="tab-content">
         <h2>Arbeitszeiten verwalten</h2>
@@ -223,7 +228,8 @@
   </select>
           <label for="filterMonthInput">Monat:</label>
           <input type="month" id="filterMonthInput" name="filterMonthInput">
-          <button type="button" id="applyWorkHoursFilter">Filter anwenden</button>
+
+     <button type="button" id="applyWorkHoursFilter">Filter anwenden</button>
         </div>
 
         <div class="table-wrapper">
@@ -233,7 +239,8 @@
 
          <th>ID</th>
                 <th>Name</th>
-                <th>Datum</th>
+
+   <th>Datum</th>
                 <th>Zeitraum</th>
                 <th>Std.</th>
                 <th>Bemerkungen</th>
@@ -242,7 +249,8 @@
               </tr>
             </thead>
             <tbody>
-              <tr><td colspan="7">Bitte Filter auswählen und anwenden.</td></tr>
+
+       <tr><td colspan="7">Bitte Filter auswählen und anwenden.</td></tr>
             </tbody>
           </table>
         </div>
@@ -253,21 +261,23 @@
 
         <div id="editWorkHoursSection" class="hidden">
           <h3>Arbeitszeiteintrag bearbeiten</h3>
-          <form id="editForm">
+
+  <form id="editForm">
              <input type="hidden" id="editId" name="id">
              <div><label for="editName">Name:</label><input type="text" id="editName" name="name" required readonly></div>
 
        <div><label for="editDate">Datum:</label><input type="date" id="editDate" name="date" required></div>
              <div><label for="editStartTime">Arbeitsbeginn:</label><input type="time" id="editStartTime" name="startTime" required step="60"></div>
              <div><label for="editEndTime">Arbeitsende:</label><input type="time" id="editEndTime" name="endTime" required step="60"></div>
-             <div><label for="editComment">Bemerkungen:</label><input type="text" id="editComment" name="comment"></div>
+
+ <div><label for="editComment">Bemerkungen:</label><input type="text" id="editComment" name="comment"></div>
              <button type="button" onclick="saveChanges()">Speichern</button>
              <button type="button" onclick="cancelEditWorkHours()" style="background-color: #6c757d;">Abbrechen</button>
 
          </form>
         </div>
       </div>
-      <div id="tab-employees" class="tab-content hidden">
+<div id="tab-employees" class="tab-content hidden">
         <h2>Mitarbeiterverwaltung</h2>
         <h3>Aktuelle Mitarbeiter</h3>
          <div class="table-wrapper">
@@ -278,18 +288,21 @@
                         <th>ID</th>
                         <th>Name</th>
                         <th>Soll Mo</th>
-                        <th>Soll Di</th>
+
+                    <th>Soll Di</th>
 
                        <th>Soll Mi</th>
                         <th>Soll Do</th>
                         <th>Soll Fr</th>
-                        <th>Aktionen</th>
+
+                     <th>Aktionen</th>
 
                   </tr>
                 </thead>
              <tbody id="employeeList">
                      <tr><td colspan="8">Lade Mitarbeiter...</td></tr>
-                </tbody>
+
+             </tbody>
             </table>
 
         </div>
@@ -298,13 +311,15 @@
            <form id="addEmployeeForm">
              <h3>Neuen Mitarbeiter hinzufügen</h3>
              <div><label for="employeeName">Name:</label><input type="text" id="employeeName" name="employeeName" required></div>
-             <div><label for="mo_hours">Mo (Soll Std.):</label><input type="number" id="mo_hours" name="mo_hours" step="0.01" value="0" min="0" max="24"></div>
+
+  <div><label for="mo_hours">Mo (Soll Std.):</label><input type="number" id="mo_hours" name="mo_hours" step="0.01" value="0" min="0" max="24"></div>
 
        <div><label for="di_hours">Di (Soll Std.):</label><input type="number" id="di_hours" name="di_hours" step="0.01" value="0" min="0" max="24"></div>
              <div><label for="mi_hours">Mi (Soll Std.):</label><input type="number" id="mi_hours" name="mi_hours" step="0.01" value="0" min="0" max="24"></div>
              <div><label for="do_hours">Do (Soll Std.):</label><input type="number" id="do_hours" name="do_hours" step="0.01" value="0" min="0" max="24"></div>
              <div><label for="fr_hours">Fr (Soll Std.):</label><input type="number" id="fr_hours" name="fr_hours" step="0.01" value="0" min="0" max="24"></div>
-             <button
+
+           <button
  type="submit">Hinzufügen</button>
            </form>
         </div>
@@ -314,12 +329,14 @@
              <input type="hidden" id="editEmployeeId" name="id">
              <div><label for="editEmployeeName">Name:</label><input type="text" id="editEmployeeName" name="name" required></div>
 
- <div><label for="editMoHours">Mo (Soll Std.):</label><input type="number" id="editMoHours" name="mo_hours" step="0.01" value="0" min="0" max="24"></div>
+ <div><label
+ for="editMoHours">Mo (Soll Std.):</label><input type="number" id="editMoHours" name="mo_hours" step="0.01" value="0" min="0" max="24"></div>
              <div><label for="editDiHours">Di (Soll Std.):</label><input type="number" id="editDiHours" name="di_hours" step="0.01" value="0" min="0" max="24"></div>
              <div><label for="editMiHours">Mi (Soll Std.):</label><input type="number" id="editMiHours" name="mi_hours" step="0.01" value="0" min="0" max="24"></div>
              <div><label for="editDoHours">Do (Soll Std.):</label><input type="number" id="editDoHours" name="do_hours" step="0.01" value="0" min="0" max="24"></div>
              <div><label for="editFrHours">Fr (Soll Std.):</label><input type="number" id="editFrHours" name="fr_hours" step="0.01"
- value="0" min="0" max="24"></div>
+ value="0"
+ min="0" max="24"></div>
              <button type="button" onclick="saveEmployeeChanges()">Speichern</button>
              <button type="button" onclick="cancelEditEmployee()" style="background-color: #6c757d;">Abbrechen</button>
            </form>
@@ -332,7 +349,8 @@
           <div>
 
    <label for="absenceEmployeeSelect">Mitarbeiter:</label>
-              <select id="absenceEmployeeSelect" name="absenceEmployeeSelect" required>
+
+       <select id="absenceEmployeeSelect" name="absenceEmployeeSelect" required>
                   <option value="">Bitte auswählen...</option>
               </select>
             </div>
@@ -342,18 +360,21 @@
 
   <div class="table-wrapper">
               <table id="absencesTable">
-                  <thead>
+
+                 <thead>
                       <tr>
                           <th>Datum</th>
 
          <th>Typ</th>
                           <th>Gutschrift Std.</th>
+
                           <th>Kommentar</th>
                           <th>Aktion</th>
 
           </tr>
                     </thead>
                   <tbody>
+
                       <tr><td colspan="5">Bitte Mitarbeiter auswählen.</td></tr>
                   </tbody>
 
@@ -364,20 +385,23 @@
 
           <form id="addAbsenceForm">
              <h3>Neue Abwesenheit hinzufügen</h3>
-             <input type="hidden" id="addAbsenceEmployeeId" name="employeeId">
+
+         <input type="hidden" id="addAbsenceEmployeeId" name="employeeId">
              <div>
                  <label
  for="addAbsenceDate">Datum:</label>
                   <input type="date" id="addAbsenceDate" name="date" required>
              </div>
               <div>
-                  <label for="addAbsenceType">Typ:</label>
+
+                 <label for="addAbsenceType">Typ:</label>
                    <select id="addAbsenceType" name="absenceType" required>
 
             <option value="">Bitte auswählen...</option>
                       <option value="VACATION">Urlaub</option>
                       <option value="SICK">Krank</option>
-                      <option value="PUBLIC_HOLIDAY">Gesetzl.
+
+               <option value="PUBLIC_HOLIDAY">Gesetzl.
  Feiertag (NRW)</option>
                    </select>
               </div>
@@ -385,7 +409,8 @@
                     <label for="addAbsenceComment">Kommentar (optional):</label>
                     <input type="text" id="addAbsenceComment" name="comment">
 
-        </div>
+
+         </div>
               <button type="submit" id="addAbsenceSubmitBtn" disabled>Speichern</button>
               <small id="absenceFormNote" style="display: block; margin-top: 5px;">Bitte zuerst oben einen Mitarbeiter auswählen.</small>
            </form>
@@ -396,12 +421,14 @@
 
  <h3>Feiertage automatisch generieren (NRW)</h3>
                  <div>
-                     <label for="generateHolidaysYear">Jahr:</label>
+
+                   <label for="generateHolidaysYear">Jahr:</label>
                      <input type="number" id="generateHolidaysYear" name="generateHolidaysYear" min="2020" max="2035" required> <button type="button" id="generateHolidaysBtn">Generieren</button>
                  </div>
 
       <div id="generateHolidaysResult"></div>
-                 <small>Erstellt automatisch Feiertagseinträge für alle Mitarbeiter für das gewählte Jahr, sofern sie an dem Tag Soll-Stunden haben und der Tag auf Mo-Fr fällt.
+                 <small>Erstellt automatisch Feiertagseinträge für alle Mitarbeiter für das gewählte Jahr,
+ sofern sie an dem Tag Soll-Stunden haben und der Tag auf Mo-Fr fällt.
  Bestehende Einträge für diese Tage werden nicht überschrieben.</small>
             </form>
 
@@ -409,6 +436,7 @@
                  <button type="button" id="deleteAllPublicHolidaysBtn" style="background-color: #dc3545; color: white;">
                      Alle 'Feiertag'-Einträge löschen (Vorsicht!)
                  </button>
+
 
                <div id="deleteHolidaysResult" style="margin-top: 5px;"></div>
                  <small>Löscht alle Abwesenheiten vom Typ 'Feiertag' für alle Mitarbeiter.
@@ -420,47 +448,56 @@
                 <form id="balanceForm">
                   <div>
 
-            <label for="balanceName">Mitarbeiter:</label>
+
+             <label for="balanceName">Mitarbeiter:</label>
                        <select id="balanceName" name="balanceName" required>
                           <option value="">Bitte auswählen...</option>
                        </select>
 
         </div>
-                  <div>
+
+           <div>
                       <label for="balanceYear">Jahr:</label>
                       <input type="number" id="balanceYear" name="balanceYear" required min="2020" max="2035">
                   </div>
 
               <div>
-                      <label for="periodTypeSelect">Zeitraum:</label>
+
+           <label for="periodTypeSelect">Zeitraum:</label>
                       <select id="periodTypeSelect" name="periodType" required>
                           <option value="MONTH" selected>Monat</option>
 
                  <option value="QUARTER">Quartal</option>
-                          <option value="YEAR">Gesamtjahr</option>
+
+                 <option value="YEAR">Gesamtjahr</option>
                       </select>
                   </div>
 
+
     <div id="monthSelectDiv">
                       <label for="balanceMonth">Monat:</label>
-                      <input type="number" id="balanceMonth" name="balanceMonth" required min="1" max="12">
+                      <input
+ type="number" id="balanceMonth" name="balanceMonth" required min="1" max="12">
                   </div>
                   <div id="quarterSelectDiv" class="hidden">
 
                  <label for="balanceQuarter">Quartal:</label>
                       <select id="balanceQuarter" name="balanceQuarter" required>
-                          <option value="1">Q1 (Jan-Mrz)</option>
+
+             <option value="1">Q1 (Jan-Mrz)</option>
                           <option value="2">Q2 (Apr-Jun)</option>
 
                           <option value="3">Q3 (Jul-Sep)</option>
                           <option value="4">Q4 (Okt-Dez)</option>
+
                       </select>
                   </div>
 
                <button type="submit">Berechnen</button>
                 </form>
                 <br>
-                <button id="downloadPdfBtn" disabled>PDF Herunterladen</button>
+
+           <button id="downloadPdfBtn" disabled>PDF Herunterladen</button>
                 <div id="balanceResult" style="margin-top: 1rem;
  padding: 15px; background-color: #f9f9f9; border-radius: 4px;">
                 </div>
@@ -475,6 +512,7 @@
     // Benutzerseite
     const employeeSelect = document.getElementById('employeeSelect');
     const
+
  workTimeBtn = document.getElementById('workTimeBtn');
     const displayDateInput = document.getElementById('displayDate');
     const displayStartTimeInput = document.getElementById('displayStartTime');
@@ -553,6 +591,7 @@
       const currentMonth = now.getMonth() + 1;
       if(balanceYearInput) balanceYearInput.value = currentYear;
       if(balanceMonthInput)
+
  balanceMonthInput.value = currentMonth;
       if(periodTypeSelect) periodTypeSelect.value = 'MONTH';
       handlePeriodTypeChange(); // Stellt sicher, dass die korrekten Felder angezeigt werden
@@ -561,7 +600,7 @@
          filterMonthInput.value = `${currentYear}-${String(currentMonth).padStart(2, '0')}`;
       }
     });
-      // ==== Event Listener Setup ====
+// ==== Event Listener Setup ====
     function setupEventListeners() {
         // Benutzerseite
         if (employeeSelect) employeeSelect.addEventListener('change', handleEmployeeSelection);
@@ -704,8 +743,9 @@
  // Details anzeigen
                  if (data.startDate) {
                      try {
-                        // Datum kommt als yyyy-MM-DD vom Server
+                        // Datum kommt als YYYY-MM-DD vom Server
                         const dateObj =
+
  new Date(data.startDate + 'T00:00:00Z'); // Als UTC interpretieren
                         // ** NEUE FORMATIERUNG **
                         displayDateInput.value = dateObj.toLocaleDateString('de-DE', dateDisplayOptionsUTC);
@@ -737,7 +777,7 @@
          const action = workTimeBtn.textContent.includes('Arbeitsbeginn') ? 'start' : 'end';
          const now = new Date();
          const date = now.toISOString().split("T")[0];
- // yyyy-MM-dd
+ // YYYY-MM-dd
          const time = now.toTimeString().slice(0, 5);
  // HH:MM
          // ** NEUE FORMATIERUNG ** (Lokale Zeit, kein UTC nötig)
@@ -750,6 +790,7 @@
                  const response = await fetch("/log-start", {
                      method: "POST",
                      headers: { "Content-Type": "application/json" },
+
 
                  body: JSON.stringify({ name, date, startTime: time })
                  });
@@ -785,6 +826,7 @@
                      method: "PUT",
                      headers: { "Content-Type": "application/json" },
                      body: JSON.stringify({ endTime: time, comment: comment
+
  || null })
                  });
  const result = await response.json();
@@ -797,13 +839,15 @@
 
                      // Datum für die Zusammenfassung holen (aus Anzeige oder aktuell)
                      // Das Datum im Input ist bereits formatiert (inkl. Wochentag)
-                     // Wir brauchen das yyyy-MM-dd Format für die Server-Abfrage
+                     // Wir brauchen das YYYY-MM-dd Format für die Server-Abfrage
+
 
              let summaryDate = date;
  // Fallback auf aktuelles Datum
                      if(displayDateInput.value && displayDateInput.value !== 'Unbekannt') {
-                         // Versuchen, das yyyy-MM-dd aus dem formatierten String zu extrahieren
-                         // Annahme: Format "Wochentag. TT.MM.YYYY"
+                         // Versuchen, das YYYY-MM-dd aus dem formatierten String zu extrahieren
+                         // Annahme: Format
+ "Wochentag. TT.MM.YYYY"
 
                   const parts = displayDateInput.value.split(' ');
  if (parts.length > 1) {
@@ -830,7 +874,7 @@
 
      async function displaySummaryHours(employeeName, dayDate) {
          if (!employeeName || !dayDate || !summaryHoursDiv || !dailyTotalHoursSpan || !monthlyTotalHoursSpan) return;
- // Datum muss im yyyy-MM-dd Format sein für die Abfrage
+ // Datum muss im YYYY-MM-DD Format sein für die Abfrage
          let queryDate = dayDate;
  if (!/^\d{4}-\d{2}-\d{2}$/.test(dayDate)) {
             console.error("Ungültiges Datumsformat für Summary-Anfrage:", dayDate);
@@ -910,7 +954,7 @@
         applyWorkHoursFilterBtn.disabled = true; applyWorkHoursFilterBtn.textContent = 'Lade...'; workHoursTableBody.innerHTML = "<tr><td colspan='7'>Lade Daten...</td></tr>";
  let year = '', month = ''; if (monthValue) { const parts = monthValue.split('-');
  if (parts.length === 2 && parts[0].length === 4 && parts[1].length === 2) { year = parts[0]; month = parts[1];
- } else if (monthValue !== '') { workHoursTableBody.innerHTML = "<tr><td colspan='7' style='color:orange;'>Ungültiges Monatsformat. Bitte yyyy-MM verwenden.</td></tr>"; applyWorkHoursFilterBtn.disabled = false;
+ } else if (monthValue !== '') { workHoursTableBody.innerHTML = "<tr><td colspan='7' style='color:orange;'>Ungültiges Monatsformat. Bitte YYYY-MM verwenden.</td></tr>"; applyWorkHoursFilterBtn.disabled = false;
  applyWorkHoursFilterBtn.textContent = 'Filter anwenden'; return; } }
         let fetchUrl = '/admin-work-hours?';
  const params = []; if (employeeId && employeeId !== 'all' && employeeId !== '') params.push(`employeeId=${encodeURIComponent(employeeId)}`);
@@ -929,10 +973,12 @@
                     const row = workHoursTableBody.insertRow();
                     const hours = parseFloat(entry.hours) || 0;
                     let
+
  displayDate = 'N/A';
                      if (entry.date) {
                          try {
-                            // Datum kommt als yyyy-MM-dd String oder Date Objekt
+                            // Datum kommt als YYYY-MM-dd String oder Date Objekt
+
 
                 const dateStr = (entry.date instanceof Date) ? entry.date.toISOString().split('T')[0] : String(entry.date).split('T')[0];
                             const dateObj = new Date(dateStr + 'T00:00:00Z');
@@ -1070,7 +1116,8 @@
                     let displayDate = absence.date;
                     try {
 
-                       // Datum kommt als yyyy-MM-dd String oder Date Objekt
+
+                       // Datum kommt als YYYY-MM-DD String oder Date Objekt
                         const dateStr = (absence.date instanceof Date) ? absence.date.toISOString().split('T')[0] : String(absence.date).split('T')[0];
                         const dateObj = new Date(dateStr + 'T00:00:00Z');
 
@@ -1079,6 +1126,7 @@
                     } catch(e) { console.warn("Fehler Datumskonvertierung Abwesenheit:", absence.date, e); }
 
                     let typeText = absence.absence_type;
+
 
                     switch(absence.absence_type) { case 'VACATION': typeText = 'Urlaub'; break; case 'SICK': typeText = 'Krank'; break; case 'PUBLIC_HOLIDAY': typeText = 'Feiertag';
  break; default: typeText = absence.absence_type; }
@@ -1236,7 +1284,7 @@
  } catch (error) { console.error(`Fehler bei der ${selectedType}-Auswertung:`, error); balanceResultDiv.innerHTML = `<p class="error-message">Fehler bei der Berechnung: ${error.message}</p>`; balanceResultDiv.className = 'error-message';
  downloadPdfBtn.disabled = true; currentBalanceData = null; }
     }
-      function handleDownloadPdf() {
+function handleDownloadPdf() {
         if (!currentBalanceData) {
             alert("Bitte zuerst eine Auswertung berechnen, bevor das PDF heruntergeladen werden kann.");
             return;
@@ -1282,8 +1330,9 @@
             return;
         }
 
-        // --- START DER ÄNDERUNG ---
-        // ALT: console.log("Öffne PDF Download URL:", pdfUrl); window.open(pdfUrl, '_blank');
+        // --- START DER KORREKTUR ---
+        // Die alte Zeile "console.log(...); window.open(...);" wurde entfernt.
+        // Nur der neue fetch-Code bleibt übrig:
 
         // NEU: PDF mit fetch holen und Download auslösen
         console.log("Versuche PDF herunterzuladen von:", pdfUrl); // Zusätzliches Logging
@@ -1293,22 +1342,25 @@
                 if (!response.ok) {
                     // Fehler vom Server (z.B. 404, 500)
                     // Versuchen, eine genauere Fehlermeldung aus dem Body zu lesen
-                    return response.text().then(text => {
+                     return response.text().then(text => {
                         let errorMsg = `Netzwerkantwort war nicht ok: ${response.status} ${response.statusText}`;
                         if (text) {
+
                             errorMsg += ` - Servermeldung: ${text}`;
                         }
                          throw new Error(errorMsg);
                     });
                 }
+
                 // Versuche, den Dateinamen aus dem Header zu bekommen, sonst Fallback
                 const contentDisposition = response.headers.get('content-disposition');
                 let filename = 'download.pdf'; // Fallback-Name
                 if (contentDisposition) {
-                    const filenameMatch = contentDisposition.match(/filename="?(.+?)"?$/i); // case-insensitive match
+
+                   const filenameMatch = contentDisposition.match(/filename="?(.+?)"?$/i); // case-insensitive match
                     if (filenameMatch && filenameMatch.length > 1) {
                         filename = filenameMatch[1];
-                    }
+ }
                 }
                 console.log(`Server antwortete OK. Erwarteter Dateiname: ${filename}`);
                 return response.blob().then(blob => ({ blob, filename })); // Beides weitergeben
@@ -1317,25 +1369,28 @@
                 // Einen temporären Link erstellen
                 const url = window.URL.createObjectURL(blob);
                 const link = document.createElement('a');
-                link.href = url;
+
+                 link.href = url;
                 link.setAttribute('download', filename); // Den Dateinamen setzen
 
                 // Den Link zum DOM hinzufügen (nötig für manche Browser), klicken und wieder entfernen
                 document.body.appendChild(link);
                 link.click();
-                link.parentNode.removeChild(link);
+
+                 link.parentNode.removeChild(link);
 
                 // Den Object-URL wieder freigeben, nachdem der Klick verarbeitet wurde (mit kleiner Verzögerung)
                 setTimeout(() => window.URL.revokeObjectURL(url), 100);
 
                 console.log("Download wurde ausgelöst für:", filename);
             })
-            .catch(error => {
+
+             .catch(error => {
                 // Fehler beim fetch oder bei der Verarbeitung
                 console.error('Fehler beim Herunterladen oder Verarbeiten des PDFs:', error);
                 alert(`Fehler beim PDF-Download: ${error.message}`);
             });
-        // --- ENDE DER ÄNDERUNG ---
+        // --- ENDE DER KORREKTUR ---
     }
     // --- ENDE Auswertungen ---
 
