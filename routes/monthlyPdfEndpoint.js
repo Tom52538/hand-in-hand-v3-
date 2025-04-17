@@ -1,17 +1,14 @@
-// monthlyPdfEndpoint.js - V16: Mehr Zeilenabstand + Zentrierte Ausrichtung
-// *** KORREKTUR SCHRITT 2: Vertikale Datenverteilung in Tabelle korrigiert (OK) ***
-// *** OPTIMIERUNG: Look & Feel näher an Ziel.pdf angepasst (OK) ***
-// *** FEATURE: Korrekte Darstellung von Abwesenheiten (OK) ***
-// *** NEU: Zeilenabstand erhöht und Zeit/Diff-Spalten zentriert ***
+// monthlyPdfEndpoint.js - V17: Perioden-PDF Route hinzugefügt
+// *** NEU: Route /create-period-pdf für Quartals-/Jahresberichte ***
 const express = require('express');
 const PDFDocument = require('pdfkit');
 const path = require('path');
 const router = express.Router();
 
 // Berechnungsfunktionen importieren
-const { calculateMonthlyData, getExpectedHours } = require('../utils/calculationUtils');
+const { calculateMonthlyData, calculatePeriodData, getExpectedHours } = require('../utils/calculationUtils'); // calculatePeriodData hinzugefügt
 
-// --- Konstanten & Hilfsfunktionen ---
+// --- Konstanten & Hilfsfunktionen (größtenteils wiederverwendet) ---
 const FONT_NORMAL = 'Times-Roman';
 const FONT_BOLD   = 'Times-Bold';
 const PAGE_OPTIONS = {
@@ -19,20 +16,24 @@ const PAGE_OPTIONS = {
   autoFirstPage: false,
   margins: { top: 25, bottom: 35, left: 40, right: 40 }
 };
-const V_SPACE = { TINY: 0.5, SMALL: 3, MEDIUM: 8, LARGE: 15, SIGNATURE_GAP: 35 };
+const V_SPACE = { TINY: 0.5, SMALL: 3, MEDIUM: 8, LARGE: 15, XLARGE: 25, SIGNATURE_GAP: 35 }; // XLARGE hinzugefügt
 const FONT_SIZE = {
   HEADER: 16, SUB_HEADER: 11,
   TABLE_HEADER: 8.5, TABLE_CONTENT: 8.5,
-  SUMMARY: 8.5, SUMMARY_DETAIL: 7.5, FOOTER: 8, PAGE_NUMBER: 8
+  SUMMARY_TITLE: 10, SUMMARY: 9, SUMMARY_DETAIL: 8, FOOTER: 8, PAGE_NUMBER: 8 // Angepasste Größen für Zusammenfassung
 };
-// Zeilenhöhe wieder etwas erhöht für mehr Abstand
-const TABLE_ROW_HEIGHT = 13; // Erhöht von 11 auf 13
+const TABLE_ROW_HEIGHT = 13; // Wird nur für Monatsbericht benötigt
 const FOOTER_CONTENT_HEIGHT = FONT_SIZE.FOOTER + V_SPACE.SMALL;
 const SIGNATURE_AREA_HEIGHT = V_SPACE.SIGNATURE_GAP + FONT_SIZE.FOOTER + V_SPACE.SMALL;
 const FOOTER_TOTAL_HEIGHT = FOOTER_CONTENT_HEIGHT + SIGNATURE_AREA_HEIGHT + V_SPACE.MEDIUM;
-const SUMMARY_LINE_HEIGHT = FONT_SIZE.SUMMARY + V_SPACE.TINY + 0.5;
-const SUMMARY_DETAIL_LINE_HEIGHT = FONT_SIZE.SUMMARY_DETAIL + V_SPACE.TINY;
-const SUMMARY_TOTAL_HEIGHT = (5 * SUMMARY_LINE_HEIGHT) + SUMMARY_DETAIL_LINE_HEIGHT + V_SPACE.MEDIUM + V_SPACE.SMALL;
+// Höhenberechnung für Zusammenfassungen (grobe Schätzung, kann variieren)
+const MONTHLY_SUMMARY_LINE_HEIGHT = FONT_SIZE.SUMMARY + V_SPACE.TINY + 0.5;
+const MONTHLY_SUMMARY_DETAIL_LINE_HEIGHT = FONT_SIZE.SUMMARY_DETAIL + V_SPACE.TINY;
+const MONTHLY_SUMMARY_TOTAL_HEIGHT = (5 * MONTHLY_SUMMARY_LINE_HEIGHT) + MONTHLY_SUMMARY_DETAIL_LINE_HEIGHT + V_SPACE.MEDIUM + V_SPACE.SMALL;
+const PERIOD_SUMMARY_LINE_HEIGHT = FONT_SIZE.SUMMARY + V_SPACE.TINY + 0.5;
+const PERIOD_SUMMARY_DETAIL_LINE_HEIGHT = FONT_SIZE.SUMMARY_DETAIL + V_SPACE.TINY;
+const PERIOD_SUMMARY_TOTAL_HEIGHT = (5 * PERIOD_SUMMARY_LINE_HEIGHT) + PERIOD_SUMMARY_DETAIL_LINE_HEIGHT + V_SPACE.MEDIUM + V_SPACE.SMALL;
+
 
 // Hilfsfunktion zur Übersetzung von Abwesenheitstypen
 function translateAbsenceType(type) {
@@ -71,7 +72,7 @@ function formatDateGermanWithWeekday(dateInput) {
     return isNaN(d) ? String(dateInput) : d.toLocaleDateString('de-DE', { weekday: 'short', day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'UTC' }).replace(/.$/, '.');
 }
 
-// Zeichnet den Dokumentenkopf (Titel, Name, Zeitraum, Logo)
+// Zeichnet den Dokumentenkopf (Titel, Name, Zeitraum, Logo) - Wiederverwendet
 function drawDocumentHeader(doc, title, name, startDate, endDate) {
     const left = doc.page.margins.left;
     const right = doc.page.margins.right;
@@ -94,10 +95,10 @@ function drawDocumentHeader(doc, title, name, startDate, endDate) {
     y += FONT_SIZE.SUB_HEADER + V_SPACE.SMALL;
     doc.text(`Zeitraum: ${formatDateGerman(startDate)} - ${formatDateGerman(endDate)}`, left, y);
 
-    return y + FONT_SIZE.SUB_HEADER + V_SPACE.LARGE;
+    return y + FONT_SIZE.SUB_HEADER + V_SPACE.LARGE; // Gibt Y-Position nach dem Header zurück
 }
 
-// Zeichnet den Tabellenkopf
+// Zeichnet den Tabellenkopf (Nur für Monatsbericht relevant)
 function drawTableHeader(doc, startY, usableWidth) {
     const left = doc.page.margins.left;
     const cols = { date: 95, start: 60, end: 75, expected: 70, actual: 70 };
@@ -120,11 +121,11 @@ function drawTableHeader(doc, startY, usableWidth) {
     doc.font(FONT_BOLD).fontSize(FONT_SIZE.TABLE_HEADER).fillColor('black');
     const yText = startY + V_SPACE.TINY;
     doc.text('Datum',             pos.date,     yText, { width: cols.date });
-    doc.text('Arbeits-\nbeginn',    pos.start,    yText, { width: cols.start, align: 'center' }); // Header bleiben zentriert
-    doc.text('Arbeits-\nende',     pos.end,      yText, { width: cols.end, align: 'center' });   // Header bleiben zentriert
-    doc.text('Soll-Zeit\n(HH:MM)', pos.expected, yText, { width: cols.expected, align: 'center' }); // Header bleiben zentriert
-    doc.text('Ist-Zeit\n(HH:MM)',  pos.actual,   yText, { width: cols.actual, align: 'center' });   // Header bleiben zentriert
-    doc.text('Mehr/Minder\nStd.(HH:MM)', pos.diff, yText, { width: cols.diff, align: 'center' });   // Header bleiben zentriert
+    doc.text('Arbeits-\nbeginn',    pos.start,    yText, { width: cols.start, align: 'center' });
+    doc.text('Arbeits-\nende',     pos.end,      yText, { width: cols.end, align: 'center' });
+    doc.text('Soll-Zeit\n(HH:MM)', pos.expected, yText, { width: cols.expected, align: 'center' });
+    doc.text('Ist-Zeit\n(HH:MM)',  pos.actual,   yText, { width: cols.actual, align: 'center' });
+    doc.text('Mehr/Minder\nStd.(HH:MM)', pos.diff, yText, { width: cols.diff, align: 'center' });
 
     return {
         headerBottomY: startY + headerHeight + V_SPACE.SMALL,
@@ -134,7 +135,7 @@ function drawTableHeader(doc, startY, usableWidth) {
     };
 }
 
-// Zeichnet die Seitennummer unten zentriert
+// Zeichnet die Seitennummer unten zentriert (Optional, falls doch gewünscht)
 function drawPageNumber(doc, pageNum) {
     const left = doc.page.margins.left;
     const bottomY = doc.page.height - doc.page.margins.bottom + V_SPACE.MEDIUM;
@@ -143,12 +144,22 @@ function drawPageNumber(doc, pageNum) {
         .text(`Seite ${pageNum}`, left, bottomY, { width, align: 'center' });
 }
 
-// Zeichnet den Fußzeilenbereich
+// Zeichnet den Fußzeilenbereich (Wiederverwendet)
 function drawSignatureFooter(doc, startY) {
     const left = doc.page.margins.left;
     const width = doc.page.width - left - doc.page.margins.right;
     doc.font(FONT_NORMAL).fontSize(FONT_SIZE.FOOTER).fillColor('black');
     const text = 'Ich bestätige hiermit, dass die oben genannten Arbeits-/Gutschriftstunden erbracht wurden und rechtmäßig berücksichtigt werden.';
+    // Stelle sicher, dass genügend Platz für den Footer ist, ggf. neue Seite beginnen
+    const requiredHeight = doc.heightOfString(text, { width }) + V_SPACE.SIGNATURE_GAP + FONT_SIZE.FOOTER + V_SPACE.SMALL + V_SPACE.MEDIUM;
+    if (startY + requiredHeight > doc.page.height - doc.page.margins.bottom) {
+        console.log("[PDF] Seitenumbruch vor Footer");
+        doc.addPage();
+        startY = doc.page.margins.top; // StartY auf neuer Seite zurücksetzen
+        // Optional: Header auf neuer Seite wiederholen? Eher nicht für Footer.
+        // drawPageNumber(doc, doc.bufferedPageRange().count); // Seitenzahl aktualisieren
+    }
+
     doc.text(text, left, startY, { width });
     let y = startY + doc.heightOfString(text, { width }) + V_SPACE.SIGNATURE_GAP;
     doc.moveTo(left, y).lineTo(left + 200, y).stroke();
@@ -164,10 +175,13 @@ function isAdmin(req, res, next) {
     }
 }
 
+
+// ======================================================
+// ROUTER DEFINITION
+// ======================================================
 module.exports = function(db) {
 
-    router.get('/test', (req, res) => res.send('PDF Route Test OK'));
-
+    // --- Route für Monats-PDF ---
     router.get('/create-monthly-pdf', isAdmin, async (req, res) => {
         try {
             const { name, year, month } = req.query;
@@ -176,13 +190,13 @@ module.exports = function(db) {
             }
             const y = +year; const m = +month;
 
-            console.log(`[PDF] Anforderung für ${name}, ${String(m).padStart(2, '0')}/${y}`);
+            console.log(`[PDF Monthly] Anforderung für ${name}, ${String(m).padStart(2, '0')}/${y}`);
             const data = await calculateMonthlyData(db, name, y, m);
             if (!data) {
-                console.error(`[PDF] Keine Daten für ${name}, ${String(m).padStart(2, '0')}/${y} gefunden.`);
+                console.error(`[PDF Monthly] Keine Daten für ${name}, ${String(m).padStart(2, '0')}/${y} gefunden.`);
                 throw new Error('Daten für PDF konnten nicht abgerufen werden.');
             }
-            console.log(`[PDF] Daten für ${name} erhalten. Beginne PDF-Generierung.`);
+            console.log(`[PDF Monthly] Daten für ${name} erhalten. Beginne PDF-Generierung.`);
 
             const doc = new PDFDocument(PAGE_OPTIONS);
             doc.pipe(res);
@@ -194,7 +208,7 @@ module.exports = function(db) {
 
             let page = 0;
             page++;
-            doc.addPage();
+            doc.addPage(); // Erste Seite explizit hinzufügen
 
             const uW = doc.page.width - doc.page.margins.left - doc.page.margins.right;
 
@@ -204,12 +218,11 @@ module.exports = function(db) {
                 new Date(Date.UTC(y, m - 1, 1)),
                 new Date(Date.UTC(y, m, 0))
             );
-            // drawPageNumber(doc, page);
+            // drawPageNumber(doc, page); // Auskommentiert
 
             const table = drawTableHeader(doc, yPos, uW);
             yPos = table.headerBottomY;
-            // Schrift für Tabelleninhalt, lineGap entfernt für Standardabstand
-            doc.font(FONT_NORMAL).fontSize(FONT_SIZE.TABLE_CONTENT).fillColor('black'); // .lineGap(0.5) entfernt
+            doc.font(FONT_NORMAL).fontSize(FONT_SIZE.TABLE_CONTENT).fillColor('black');
             doc.y = yPos;
 
             const allDays = [];
@@ -225,25 +238,26 @@ module.exports = function(db) {
 
             allDays.forEach((d, i) => {
                 // Seitenumbruch-Logik
-                if (i > 0 && (doc.y + TABLE_ROW_HEIGHT > doc.page.height - doc.page.margins.bottom - FOOTER_TOTAL_HEIGHT - SUMMARY_TOTAL_HEIGHT)) {
-                    console.log(`[PDF] Seitenumbruch vor Zeile ${i + 1} (Datum: ${d.date}) bei Y=${doc.y}`);
+                // ACHTUNG: Die Höhenabschätzung hier ist kritisch!
+                const neededHeightForRest = MONTHLY_SUMMARY_TOTAL_HEIGHT + FOOTER_TOTAL_HEIGHT + V_SPACE.LARGE;
+                if (i > 0 && (doc.y + TABLE_ROW_HEIGHT > doc.page.height - doc.page.margins.bottom - neededHeightForRest)) {
+                    console.log(`[PDF Monthly] Seitenumbruch vor Zeile ${i + 1} bei Y=${doc.y}`);
                     page++;
                     doc.addPage();
                     // drawPageNumber(doc, page);
                     const nextTable = drawTableHeader(doc, doc.page.margins.top, uW);
                     doc.y = nextTable.headerBottomY;
-                    doc.font(FONT_NORMAL).fontSize(FONT_SIZE.TABLE_CONTENT).fillColor('black'); // Schrift zurücksetzen
+                    doc.font(FONT_NORMAL).fontSize(FONT_SIZE.TABLE_CONTENT).fillColor('black');
                 }
 
-                // Werte für die aktuelle Zeile
+                // Werte und Ausrichtung für Zeile
                 const expH = getExpectedHours(data.employeeData, d.date);
                 const actH = d.actual;
                 const diffH = actH - expH;
                 const sDate = formatDateGermanWithWeekday(d.date);
                 let sStart = '--:--';
                 let sEnd = '--:--';
-                let endAlign = 'left'; // Standard für Abwesenheit
-                // *** NEU: Ausrichtung für Zeitspalten standardmäßig auf 'center' ***
+                let endAlign = 'left';
                 let startAlign = 'center';
                 let expectedAlign = 'center';
                 let actualAlign = 'center';
@@ -252,10 +266,9 @@ module.exports = function(db) {
                 if (d.type === 'WORK') {
                     sStart = d.start || '--:--';
                     sEnd = d.end || '--:--';
-                    endAlign = 'center'; // Zeiten zentriert
+                    endAlign = 'center';
                 } else {
                     sEnd = translateAbsenceType(d.type);
-                    // Bei Abwesenheit bleiben Soll/Ist/Diff zentriert, Start bleibt '----'
                 }
 
                 const sExp = decimalHoursToHHMM(expH);
@@ -265,60 +278,59 @@ module.exports = function(db) {
                 const w = table.colWidths;
                 const currentLineY = doc.y;
 
-                // *** Zellen zeichnen mit ZENTRIERTER Ausrichtung für Zeit/Diff-Spalten ***
-                doc.text(sDate,    p.date,     currentLineY, { width: w.date }); // Datum bleibt linksbündig
-                doc.text(sStart,   p.start,    currentLineY, { width: w.start,    align: startAlign }); // Zentriert
-                doc.text(sEnd,     p.end,      currentLineY, { width: w.end,      align: endAlign });   // Zentriert (Zeit) oder Links (Abwesenheitstyp)
-                doc.text(sExp,     p.expected, currentLineY, { width: w.expected, align: expectedAlign }); // Zentriert
-                doc.text(sAct,     p.actual,   currentLineY, { width: w.actual,   align: actualAlign });   // Zentriert
-                doc.text(sDiff,    p.diff,     currentLineY, { width: w.diff,     align: diffAlign });     // Zentriert
+                // Zellen zeichnen
+                doc.text(sDate,    p.date,     currentLineY, { width: w.date });
+                doc.text(sStart,   p.start,    currentLineY, { width: w.start,    align: startAlign });
+                doc.text(sEnd,     p.end,      currentLineY, { width: w.end,      align: endAlign });
+                doc.text(sExp,     p.expected, currentLineY, { width: w.expected, align: expectedAlign });
+                doc.text(sAct,     p.actual,   currentLineY, { width: w.actual,   align: actualAlign });
+                doc.text(sDiff,    p.diff,     currentLineY, { width: w.diff,     align: diffAlign });
 
-                // Y-Position für die nächste Zeile setzen (berücksichtigt erhöhte TABLE_ROW_HEIGHT)
                 doc.y = currentLineY + TABLE_ROW_HEIGHT;
 
-                // Horizontale Trennlinie
+                // Trennlinie
                 doc.save().lineWidth(0.25).strokeColor('#dddddd')
-                    .moveTo(left, doc.y - V_SPACE.SMALL).lineTo(left + uW, doc.y - V_SPACE.SMALL).stroke().restore(); // Linie mit etwas mehr Abstand nach oben
+                    .moveTo(left, doc.y - V_SPACE.SMALL).lineTo(left + uW, doc.y - V_SPACE.SMALL).stroke().restore();
             });
 
             // Rahmen um Tabelle
             const tableTopY = table.headerBottomY - table.headerHeight - V_SPACE.SMALL;
-            const tableBottomY = doc.y - V_SPACE.SMALL; // Endet bei der letzten Linie
+            const tableBottomY = doc.y - V_SPACE.SMALL;
             doc.save().lineWidth(0.5).strokeColor('#999999')
                 .rect(left, tableTopY, uW, tableBottomY - tableTopY).stroke().restore();
 
-            // Zusammenfassung & Footer
-            if (doc.y + SUMMARY_TOTAL_HEIGHT + FOOTER_TOTAL_HEIGHT > doc.page.height - doc.page.margins.bottom) {
-                console.log(`[PDF] Seitenumbruch vor Zusammenfassung bei Y=${doc.y}`);
-                page++;
-                doc.addPage();
-                // drawPageNumber(doc, page);
-                doc.y = doc.page.margins.top;
+            // --- Zusammenfassung & Footer für Monatsbericht ---
+            // Prüfen, ob Seitenumbruch vor Zusammenfassung nötig
+            if (doc.y + MONTHLY_SUMMARY_TOTAL_HEIGHT + FOOTER_TOTAL_HEIGHT > doc.page.height - doc.page.margins.bottom) {
+               console.log(`[PDF Monthly] Seitenumbruch vor Zusammenfassung bei Y=${doc.y}`);
+               page++;
+               doc.addPage();
+               // drawPageNumber(doc, page);
+               doc.y = doc.page.margins.top; // Oben auf neuer Seite beginnen
             } else {
-                doc.y += V_SPACE.LARGE;
+               doc.y += V_SPACE.LARGE; // Abstand nach Tabelle
             }
 
-            // Zusammenfassung
+            // Zusammenfassung zeichnen
             const summaryYStart = doc.y;
             doc.font(FONT_BOLD).fontSize(FONT_SIZE.SUMMARY).fillColor('black');
             const lblW = table.colWidths.date + table.colWidths.start + table.colWidths.end + table.colWidths.expected - V_SPACE.SMALL;
-            const valX = table.colPositions.actual;
-            const valW = table.colWidths.actual + table.colWidths.diff;
+            const valX = table.colPositions.actual; // X-Pos für Werte
+            const valW = table.colWidths.actual + table.colWidths.diff; // Breite für Werte
 
             doc.text('Übertrag Vormonat (+/-):', left, doc.y, { width: lblW });
             doc.text(decimalHoursToHHMM(data.previousCarryOver), valX, doc.y, { width: valW, align: 'right' });
             doc.moveDown(0.5);
             doc.text('Gesamt Soll-Zeit (Monat):', left, doc.y, { width: lblW });
             doc.text(decimalHoursToHHMM(data.totalExpected), valX, doc.y, { width: valW, align: 'right' });
-            const yAfterSoll = doc.y;
             doc.moveDown(0.5);
             doc.text('Gesamt Ist-Zeit (Monat):', left, doc.y, { width: lblW });
             doc.text(decimalHoursToHHMM(data.totalActual), valX, doc.y, { width: valW, align: 'right' });
             doc.moveDown(0.1);
-            const gearbStd = decimalHoursToHHMM(data.workedHours);
-            const abwesStd = decimalHoursToHHMM(data.absenceHours);
+            const gearbStdM = decimalHoursToHHMM(data.workedHours);
+            const abwesStdM = decimalHoursToHHMM(data.absenceHours);
             doc.font(FONT_NORMAL).fontSize(FONT_SIZE.SUMMARY_DETAIL).fillColor('black');
-            doc.text(`(davon gearb.: ${gearbStd}, Abwesenh.: ${abwesStd})`, left + V_SPACE.MEDIUM, doc.y, { width: lblW });
+            doc.text(`(davon gearb.: ${gearbStdM}, Abwesenh.: ${abwesStdM})`, left + V_SPACE.MEDIUM, doc.y, { width: lblW });
             doc.moveDown(0.5);
             doc.font(FONT_BOLD).fontSize(FONT_SIZE.SUMMARY).fillColor('black');
             doc.text('Gesamt Mehr/Minderstunden:', left, doc.y, { width: lblW });
@@ -326,21 +338,138 @@ module.exports = function(db) {
             doc.moveDown(0.5);
             doc.text('Neuer Übertrag (Saldo Ende):', left, doc.y, { width: lblW });
             doc.text(decimalHoursToHHMM(data.newCarryOver), valX, doc.y, { width: valW, align: 'right' });
-            doc.moveDown(0.5);
 
-            // Signatur-Footer
-            drawSignatureFooter(doc, doc.y + V_SPACE.LARGE);
+            // Footer zeichnen
+            drawSignatureFooter(doc, doc.y + V_SPACE.LARGE); // Y-Pos dynamisch
 
             doc.end();
-            console.log(`[PDF] Generierung für ${name} abgeschlossen und gesendet.`);
+            console.log(`[PDF Monthly] Generierung für ${name} abgeschlossen und gesendet.`);
 
         } catch (err) {
-            console.error('[PDF] Kritischer Fehler bei PDF-Erstellung:', err);
+            console.error('[PDF Monthly] Kritischer Fehler:', err);
             if (!res.headersSent) {
                 res.status(500).send(`Fehler bei der PDF-Erstellung auf dem Server. (${err.message || 'Unbekannter interner Fehler'})`);
             }
         }
     });
 
-    return router;
+
+    // --- NEUE Route für Perioden-PDF (Quartal/Jahr) ---
+    router.get('/create-period-pdf', isAdmin, async (req, res) => {
+        try {
+            const { name, year, periodType, periodValue } = req.query;
+            // Validierung
+            if (!name || !year || isNaN(+year) || !periodType || !['QUARTER', 'YEAR'].includes(periodType.toUpperCase())) {
+                return res.status(400).send('Parameter fehlen oder ungültig (name, year, periodType [QUARTER/YEAR] erforderlich).');
+            }
+            const y = +year;
+            const pType = periodType.toUpperCase();
+            let pValue = periodValue ? parseInt(periodValue) : null;
+
+            if (pType === 'QUARTER' && (isNaN(pValue) || pValue < 1 || pValue > 4)) {
+                return res.status(400).send('Ungültiger periodValue (1-4) für QUARTER erforderlich.');
+            }
+
+            console.log(`[PDF Period] Anforderung für ${name}, ${year}, ${pType}${pValue ? ' '+pValue : ''}`);
+            const data = await calculatePeriodData(db, name, y, pType, pValue);
+            if (!data) {
+                console.error(`[PDF Period] Keine Daten für ${name}, ${year}, ${pType}${pValue ? ' '+pValue : ''} gefunden.`);
+                throw new Error('Daten für Perioden-PDF konnten nicht abgerufen werden.');
+            }
+            console.log(`[PDF Period] Daten für ${name} erhalten. Beginne PDF-Generierung.`);
+
+            const doc = new PDFDocument(PAGE_OPTIONS);
+            doc.pipe(res);
+
+            // Dateiname generieren
+            const safeName = (data.employeeName || 'Unbekannt').replace(/[^a-z0-9_\-]/gi, '_');
+            let periodDesc = '';
+            let titleDesc = '';
+            if (pType === 'QUARTER') {
+                periodDesc = `Q${pValue}_${y}`;
+                titleDesc = `Quartalsübersicht ${data.periodIdentifier}/${y}`;
+            } else {
+                periodDesc = `Jahr_${y}`;
+                titleDesc = `Jahresübersicht ${y}`;
+            }
+            const filename = `Bericht_${periodDesc}_${safeName}.pdf`;
+            res.setHeader('Content-Type', 'application/pdf');
+            res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+
+            doc.addPage();
+            const uW = doc.page.width - doc.page.margins.left - doc.page.margins.right;
+            const left = doc.page.margins.left; // Linker Rand
+
+            // Header zeichnen
+            let yPos = drawDocumentHeader(doc,
+                titleDesc,
+                data.employeeName,
+                new Date(data.periodStartDate + 'T00:00:00Z'), // Startdatum der Periode
+                new Date(data.periodEndDate + 'T00:00:00Z')   // Enddatum der Periode
+            );
+
+            // --- Zusammenfassung für Periode ---
+            yPos += V_SPACE.XLARGE; // Größerer Abstand nach Header
+            doc.y = yPos;
+
+            doc.font(FONT_BOLD).fontSize(FONT_SIZE.SUMMARY_TITLE).fillColor('black');
+            doc.text(`Zusammenfassung für ${data.periodIdentifier} ${y}`, left, doc.y, { align: 'left' });
+            doc.moveDown(1.5); // Abstand nach Titel
+
+            // Breite für Labels und Werte definieren (etwas anders als in Tabelle)
+            const periodLblW = 250; // Feste Breite für Labels
+            const periodValX = left + periodLblW + V_SPACE.MEDIUM; // X-Pos für Werte
+            const periodValW = uW - periodLblW - V_SPACE.MEDIUM; // Breite für Werte
+
+            doc.font(FONT_BOLD).fontSize(FONT_SIZE.SUMMARY).fillColor('black');
+
+            // Zeile 1: Übertrag Periodenbeginn
+            doc.text('Übertrag Periodenbeginn:', left, doc.y, { width: periodLblW });
+            doc.text(decimalHoursToHHMM(data.startingBalance), periodValX, doc.y, { width: periodValW, align: 'right' });
+            doc.moveDown(0.7);
+
+            // Zeile 2: Gesamt Soll
+            doc.text(`Gesamt Soll-Stunden (${data.periodIdentifier}):`, left, doc.y, { width: periodLblW });
+            doc.text(decimalHoursToHHMM(data.totalExpectedPeriod), periodValX, doc.y, { width: periodValW, align: 'right' });
+            doc.moveDown(0.7);
+
+            // Zeile 3: Gesamt Ist
+            doc.text(`Gesamt Ist-Stunden (${data.periodIdentifier}):`, left, doc.y, { width: periodLblW });
+            doc.text(decimalHoursToHHMM(data.totalActualPeriod), periodValX, doc.y, { width: periodValW, align: 'right' });
+            doc.moveDown(0.1);
+
+            // Zeile 3a: Detail Ist (kleinere Schrift)
+            const gearbStdP = decimalHoursToHHMM(data.workedHoursPeriod);
+            const abwesStdP = decimalHoursToHHMM(data.absenceHoursPeriod);
+            doc.font(FONT_NORMAL).fontSize(FONT_SIZE.SUMMARY_DETAIL).fillColor('black');
+            doc.text(`(davon gearb.: ${gearbStdP}, Abwesenh.: ${abwesStdP})`, left + V_SPACE.MEDIUM, doc.y, { width: periodLblW });
+            doc.moveDown(0.7);
+
+            // Zeile 4: Differenz
+            doc.font(FONT_BOLD).fontSize(FONT_SIZE.SUMMARY).fillColor('black');
+            doc.text(`Differenz (${data.periodIdentifier}):`, left, doc.y, { width: periodLblW });
+            doc.text(decimalHoursToHHMM(data.periodDifference), periodValX, doc.y, { width: periodValW, align: 'right' });
+            doc.moveDown(0.7);
+
+            // Zeile 5: Saldo Periodenende
+            doc.text('Neuer Übertrag (Saldo Periodenende):', left, doc.y, { width: periodLblW });
+            doc.text(decimalHoursToHHMM(data.endingBalancePeriod), periodValX, doc.y, { width: periodValW, align: 'right' });
+
+
+            // Footer zeichnen (mit großem Abstand zur Zusammenfassung)
+            drawSignatureFooter(doc, doc.y + V_SPACE.XLARGE + V_SPACE.LARGE); // Y-Pos dynamisch
+
+            doc.end();
+            console.log(`[PDF Period] Generierung für ${name} abgeschlossen und gesendet.`);
+
+        } catch (err) {
+            console.error('[PDF Period] Kritischer Fehler:', err);
+            if (!res.headersSent) {
+                res.status(500).send(`Fehler bei der PDF-Erstellung auf dem Server. (${err.message || 'Unbekannter interner Fehler'})`);
+            }
+        }
+    });
+
+
+    return router; // Router mit beiden Routen zurückgeben
 };
