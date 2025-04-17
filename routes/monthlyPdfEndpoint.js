@@ -84,7 +84,7 @@ function drawDocumentHeader(doc, title, name, startDate, endDate) {
 
     try {
         const logoPath = path.join(process.cwd(), 'public', 'icons', 'Hand-in-Hand-Logo-192x192.png');
-        doc.image(logoPath, doc.page.width - right - 90, y, { width: 90, height: 90 });
+        doc.image(logoPath, doc.page.width - right - 90, 2, { width: 90, height: 90 });
     } catch (e) { console.warn("Logo konnte nicht geladen/gezeichnet werden:", e.message); }
 
     doc.font(FONT_BOLD).fontSize(FONT_SIZE.HEADER).fillColor('black');
