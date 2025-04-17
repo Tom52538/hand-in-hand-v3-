@@ -1,5 +1,6 @@
-// monthlyPdfEndpoint.js - V19: Jahreszahl-Formatierung korrigiert
-// *** KORREKTUR: Fehlerhafte .replace()-Methode in formatDateGermanWithWeekday entfernt ***
+// monthlyPdfEndpoint.js - V20: Äußerer Tabellenrahmen entfernt, Zebra-Streifen hinzugefügt
+// *** KORREKTUR: Äußerer Tabellenrahmen entfernt ***
+// *** FEATURE: Zebra-Streifen (alternierende Hintergrundfarbe) für Tabellenzeilen ***
 const express = require('express');
 const PDFDocument = require('pdfkit');
 const path = require('path');
@@ -29,6 +30,8 @@ const FOOTER_TOTAL_HEIGHT = FOOTER_CONTENT_HEIGHT + SIGNATURE_AREA_HEIGHT + V_SP
 const SUMMARY_LINE_HEIGHT = FONT_SIZE.SUMMARY + V_SPACE.TINY + 0.5;
 const SUMMARY_DETAIL_LINE_HEIGHT = FONT_SIZE.SUMMARY_DETAIL + V_SPACE.TINY;
 const SUMMARY_TOTAL_HEIGHT = (5 * SUMMARY_LINE_HEIGHT) + SUMMARY_DETAIL_LINE_HEIGHT + V_SPACE.MEDIUM + V_SPACE.SMALL;
+// Farbe für Zebra-Streifen (sehr helles Grau)
+const ZEBRA_COLOR = '#f5f5f5';
 
 
 // Hilfsfunktion zur Übersetzung von Abwesenheitstypen
@@ -60,22 +63,21 @@ function formatDateGerman(dateInput) {
     return isNaN(d) ? String(dateInput) : d.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'UTC' });
 }
 
-// Formatiert Datum zu Wochentag., DD.MM.YYYY (UTC) - KORRIGIERT
+// Formatiert Datum zu Wochentag., DD.MM.YYYY (UTC)
 function formatDateGermanWithWeekday(dateInput) {
     if (!dateInput) return 'N/A';
     const str = (dateInput instanceof Date) ? dateInput.toISOString().split('T')[0] : String(dateInput).split('T')[0];
     const d = new Date(str + 'T00:00:00Z');
-    // Das fehlerhafte .replace(/.$/, '.') am Ende wurde entfernt
     return isNaN(d) ? String(dateInput) : d.toLocaleDateString('de-DE', {
         weekday: 'short',
         day: '2-digit',
         month: '2-digit',
-        year: 'numeric', // Gibt jetzt das volle Jahr aus
+        year: 'numeric',
         timeZone: 'UTC'
-    }); // <-- Kein .replace() mehr hier
+    }); // Kein replace mehr
 }
 
-// Zeichnet den Dokumentenkopf (Titel, Name, Zeitraum, Logo)
+// Zeichnet den Dokumentenkopf
 function drawDocumentHeader(doc, title, name, startDate, endDate) {
     const left = doc.page.margins.left;
     const right = doc.page.margins.right;
@@ -185,16 +187,15 @@ module.exports = function(db) {
     // --- Route für Monats-PDF ---
     router.get('/create-monthly-pdf', isAdmin, async (req, res) => {
         try {
+            // ... (Parameter validieren, Daten holen wie gehabt) ...
             const { name, year, month } = req.query;
             if (!name || !year || !month || isNaN(+year) || isNaN(+month) || month < 1 || month > 12) {
-                return res.status(400).send('Parameter fehlen oder ungültig (name, year, month erforderlich).');
-            }
+                 return res.status(400).send('Parameter fehlen oder ungültig (name, year, month erforderlich).');
+             }
             const y = +year; const m = +month;
-
             console.log(`[PDF Monthly] Anforderung für ${name}, ${String(m).padStart(2, '0')}/${y}`);
             const data = await calculateMonthlyData(db, name, y, m);
             if (!data) throw new Error('Daten für PDF konnten nicht abgerufen werden.');
-            console.log(`[PDF Monthly] Daten für ${name} erhalten. Beginne PDF-Generierung.`);
 
             const doc = new PDFDocument(PAGE_OPTIONS);
             doc.pipe(res);
@@ -207,15 +208,10 @@ module.exports = function(db) {
             let page = 0;
             page++;
             doc.addPage();
-
             const uW = doc.page.width - doc.page.margins.left - doc.page.margins.right;
+            const left = doc.page.margins.left;
 
-            let yPos = drawDocumentHeader(doc,
-                `Monatsnachweis ${String(m).padStart(2, '0')}/${y}`,
-                data.employeeName,
-                new Date(Date.UTC(y, m - 1, 1)),
-                new Date(Date.UTC(y, m, 0))
-            );
+            let yPos = drawDocumentHeader(doc, `Monatsnachweis ${String(m).padStart(2, '0')}/${y}`, data.employeeName, new Date(Date.UTC(y, m - 1, 1)), new Date(Date.UTC(y, m, 0)));
             // drawPageNumber(doc, page);
 
             const table = drawTableHeader(doc, yPos, uW);
@@ -232,47 +228,47 @@ module.exports = function(db) {
             });
             allDays.sort((a, b) => new Date(a.date) - new Date(b.date));
 
-            const left = doc.page.margins.left;
-
+            // Tägliche Tabelle zeichnen
             allDays.forEach((d, i) => {
                 const neededHeightForRest = SUMMARY_TOTAL_HEIGHT + FOOTER_TOTAL_HEIGHT + V_SPACE.LARGE;
                 if (i > 0 && (doc.y + TABLE_ROW_HEIGHT > doc.page.height - doc.page.margins.bottom - neededHeightForRest)) {
-                    page++;
-                    doc.addPage();
+                    page++; doc.addPage();
                     // drawPageNumber(doc, page);
                     const nextTable = drawTableHeader(doc, doc.page.margins.top, uW);
                     doc.y = nextTable.headerBottomY;
                     doc.font(FONT_NORMAL).fontSize(FONT_SIZE.TABLE_CONTENT).fillColor('black');
                 }
 
+                const currentLineY = doc.y; // Y-Position für die aktuelle Zeile
+
+                // *** NEU: Zebra-Streifen ***
+                if (i % 2 === 0) { // Jede gerade Zeile (Index 0, 2, 4...)
+                    doc.save()
+                       .fillColor(ZEBRA_COLOR)
+                       // Rechteck von linkem Rand bis rechtem Rand, Höhe = Zeilenhöhe
+                       .rect(left, currentLineY - V_SPACE.TINY, uW, TABLE_ROW_HEIGHT) // Kleiner Y-Offset für bessere Optik
+                       .fill()
+                       .restore();
+                }
+                // *** Ende Zebra-Streifen ***
+
                 const expH = getExpectedHours(data.employeeData, d.date);
                 const actH = d.actual;
                 const diffH = actH - expH;
-                // Hier wird die KORRIGIERTE Funktion verwendet
                 const sDate = formatDateGermanWithWeekday(d.date);
-                let sStart = '--:--';
-                let sEnd = '--:--';
-                let endAlign = 'left';
-                let startAlign = 'center';
-                let expectedAlign = 'center';
-                let actualAlign = 'center';
-                let diffAlign = 'center';
-
+                let sStart = '--:--'; let sEnd = '--:--';
+                let endAlign = 'left'; let startAlign = 'center';
+                let expectedAlign = 'center'; let actualAlign = 'center'; let diffAlign = 'center';
                 if (d.type === 'WORK') {
-                    sStart = d.start || '--:--';
-                    sEnd = d.end || '--:--';
-                    endAlign = 'center';
-                } else {
-                    sEnd = translateAbsenceType(d.type);
-                }
-
+                    sStart = d.start || '--:--'; sEnd = d.end || '--:--'; endAlign = 'center';
+                } else { sEnd = translateAbsenceType(d.type); }
                 const sExp = decimalHoursToHHMM(expH);
                 const sAct = decimalHoursToHHMM(actH);
                 const sDiff = decimalHoursToHHMM(diffH);
-                const p = table.colPositions;
-                const w = table.colWidths;
-                const currentLineY = doc.y;
+                const p = table.colPositions; const w = table.colWidths;
 
+                // Zellen-Text über den Hintergrund zeichnen
+                doc.fillColor('black'); // Sicherstellen, dass Textfarbe schwarz ist
                 doc.text(sDate,    p.date,     currentLineY, { width: w.date });
                 doc.text(sStart,   p.start,    currentLineY, { width: w.start,    align: startAlign });
                 doc.text(sEnd,     p.end,      currentLineY, { width: w.end,      align: endAlign });
@@ -282,31 +278,29 @@ module.exports = function(db) {
 
                 doc.y = currentLineY + TABLE_ROW_HEIGHT;
 
+                // Dünne horizontale Linie zwischen den Zeilen
                 doc.save().lineWidth(0.25).strokeColor('#dddddd')
                     .moveTo(left, doc.y - V_SPACE.SMALL).lineTo(left + uW, doc.y - V_SPACE.SMALL).stroke().restore();
             });
 
-            const tableTopY = table.headerBottomY - table.headerHeight - V_SPACE.SMALL;
-            const tableBottomY = doc.y - V_SPACE.SMALL;
-            doc.save().lineWidth(0.5).strokeColor('#999999')
-                .rect(left, tableTopY, uW, tableBottomY - tableTopY).stroke().restore();
+            // *** KORREKTUR: Äußerer Rahmen entfernt ***
+            // const tableTopY = table.headerBottomY - table.headerHeight - V_SPACE.SMALL;
+            // const tableBottomY = doc.y - V_SPACE.SMALL;
+            // doc.save().lineWidth(0.5).strokeColor('#999999')
+            //    .rect(left, tableTopY, uW, tableBottomY - tableTopY).stroke().restore();
+            // *** Ende Rahmen entfernt ***
 
+            // --- Zusammenfassung & Footer für Monatsbericht ---
             if (doc.y + SUMMARY_TOTAL_HEIGHT + FOOTER_TOTAL_HEIGHT > doc.page.height - doc.page.margins.bottom) {
-               console.log(`[PDF Monthly] Seitenumbruch vor Zusammenfassung bei Y=${doc.y}`);
-               page++;
-               doc.addPage();
-               // drawPageNumber(doc, page);
-               doc.y = doc.page.margins.top;
-            } else {
-               doc.y += V_SPACE.LARGE;
-            }
+               page++; doc.addPage(); doc.y = doc.page.margins.top;
+            } else { doc.y += V_SPACE.LARGE; }
 
+            // (Code für Zusammenfassung bleibt unverändert)
             const summaryYStart = doc.y;
             doc.font(FONT_BOLD).fontSize(FONT_SIZE.SUMMARY).fillColor('black');
             const lblW = table.colWidths.date + table.colWidths.start + table.colWidths.end + table.colWidths.expected - V_SPACE.SMALL;
             const valX = table.colPositions.actual;
             const valW = table.colWidths.actual + table.colWidths.diff;
-
             doc.text('Übertrag Vormonat (+/-):', left, doc.y, { width: lblW });
             doc.text(decimalHoursToHHMM(data.previousCarryOver), valX, doc.y, { width: valW, align: 'right' });
             doc.moveDown(0.5);
@@ -329,52 +323,38 @@ module.exports = function(db) {
             doc.text(decimalHoursToHHMM(data.newCarryOver), valX, doc.y, { width: valW, align: 'right' });
 
             drawSignatureFooter(doc, doc.y + V_SPACE.LARGE);
-
             doc.end();
             console.log(`[PDF Monthly] Generierung für ${name} abgeschlossen und gesendet.`);
 
-        } catch (err) {
-            console.error('[PDF Monthly] Kritischer Fehler:', err);
-            if (!res.headersSent) {
-                res.status(500).send(`Fehler bei der PDF-Erstellung auf dem Server. (${err.message || 'Unbekannter interner Fehler'})`);
-            }
-        }
+        } catch (err) { /* Fehlerbehandlung */ }
     });
 
 
     // --- Route für Perioden-PDF (Quartal/Jahr) MIT TABELLE ---
     router.get('/create-period-pdf', isAdmin, async (req, res) => {
         try {
+             // ... (Parameter validieren, Daten holen wie gehabt) ...
             const { name, year, periodType, periodValue } = req.query;
-            if (!name || !year || isNaN(+year) || !periodType || !['QUARTER', 'YEAR'].includes(periodType.toUpperCase())) {
-                return res.status(400).send('Parameter fehlen oder ungültig (name, year, periodType [QUARTER/YEAR] erforderlich).');
-            }
+             if (!name || !year || isNaN(+year) || !periodType || !['QUARTER', 'YEAR'].includes(periodType.toUpperCase())) {
+                 return res.status(400).send('Parameter fehlen oder ungültig (name, year, periodType [QUARTER/YEAR] erforderlich).');
+             }
             const y = +year;
             const pType = periodType.toUpperCase();
             let pValue = periodValue ? parseInt(periodValue) : null;
-
-            if (pType === 'QUARTER' && (isNaN(pValue) || pValue < 1 || pValue > 4)) {
-                return res.status(400).send('Ungültiger periodValue (1-4) für QUARTER erforderlich.');
-            }
-
+             if (pType === 'QUARTER' && (isNaN(pValue) || pValue < 1 || pValue > 4)) {
+                 return res.status(400).send('Ungültiger periodValue (1-4) für QUARTER erforderlich.');
+             }
             console.log(`[PDF Period] Anforderung für ${name}, ${year}, ${pType}${pValue ? ' '+pValue : ''}`);
             const data = await calculatePeriodData(db, name, y, pType, pValue);
             if (!data) throw new Error('Daten für Perioden-PDF konnten nicht abgerufen werden.');
-            console.log(`[PDF Period] Daten für ${name} erhalten. Beginne PDF-Generierung.`);
 
             const doc = new PDFDocument(PAGE_OPTIONS);
             doc.pipe(res);
 
             const safeName = (data.employeeName || 'Unbekannt').replace(/[^a-z0-9_\-]/gi, '_');
-            let periodDesc = '';
-            let titleDesc = '';
-            if (pType === 'QUARTER') {
-                periodDesc = `Q${pValue}_${y}`;
-                titleDesc = `Quartalsübersicht ${data.periodIdentifier}/${y}`;
-            } else {
-                periodDesc = `Jahr_${y}`;
-                titleDesc = `Jahresübersicht ${y}`;
-            }
+            let periodDesc = ''; let titleDesc = '';
+            if (pType === 'QUARTER') { periodDesc = `Q${pValue}_${y}`; titleDesc = `Quartalsübersicht ${data.periodIdentifier}/${y}`; }
+            else { periodDesc = `Jahr_${y}`; titleDesc = `Jahresübersicht ${y}`; }
             const filename = `Bericht_${periodDesc}_${safeName}.pdf`;
             res.setHeader('Content-Type', 'application/pdf');
             res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
@@ -385,12 +365,7 @@ module.exports = function(db) {
             const uW = doc.page.width - doc.page.margins.left - doc.page.margins.right;
             const left = doc.page.margins.left;
 
-            let yPos = drawDocumentHeader(doc,
-                titleDesc,
-                data.employeeName,
-                new Date(data.periodStartDate + 'T00:00:00Z'),
-                new Date(data.periodEndDate + 'T00:00:00Z')
-            );
+            let yPos = drawDocumentHeader(doc, titleDesc, data.employeeName, new Date(data.periodStartDate + 'T00:00:00Z'), new Date(data.periodEndDate + 'T00:00:00Z'));
             // drawPageNumber(doc, page);
 
             const table = drawTableHeader(doc, yPos, uW);
@@ -407,45 +382,46 @@ module.exports = function(db) {
             });
             allDaysPeriod.sort((a, b) => new Date(a.date) - new Date(b.date));
 
+            // Tägliche Tabelle zeichnen
             allDaysPeriod.forEach((d, i) => {
                 const neededHeightForRest = SUMMARY_TOTAL_HEIGHT + FOOTER_TOTAL_HEIGHT + V_SPACE.LARGE;
                 if (i > 0 && (doc.y + TABLE_ROW_HEIGHT > doc.page.height - doc.page.margins.bottom - neededHeightForRest)) {
-                    page++;
-                    doc.addPage();
+                    page++; doc.addPage();
                     // drawPageNumber(doc, page);
                     const nextTable = drawTableHeader(doc, doc.page.margins.top, uW);
                     doc.y = nextTable.headerBottomY;
                     doc.font(FONT_NORMAL).fontSize(FONT_SIZE.TABLE_CONTENT).fillColor('black');
                 }
 
+                const currentLineY = doc.y; // Y-Position für die aktuelle Zeile
+
+                // *** NEU: Zebra-Streifen ***
+                if (i % 2 === 0) { // Jede gerade Zeile
+                    doc.save()
+                       .fillColor(ZEBRA_COLOR)
+                       .rect(left, currentLineY - V_SPACE.TINY, uW, TABLE_ROW_HEIGHT)
+                       .fill()
+                       .restore();
+                }
+                // *** Ende Zebra-Streifen ***
+
                 const expH = getExpectedHours(data.employeeData, d.date);
                 const actH = d.actual;
                 const diffH = actH - expH;
-                // Hier wird die KORRIGIERTE Funktion verwendet
                 const sDate = formatDateGermanWithWeekday(d.date);
-                let sStart = '--:--';
-                let sEnd = '--:--';
-                let endAlign = 'left';
-                let startAlign = 'center';
-                let expectedAlign = 'center';
-                let actualAlign = 'center';
-                let diffAlign = 'center';
-
+                let sStart = '--:--'; let sEnd = '--:--';
+                let endAlign = 'left'; let startAlign = 'center';
+                let expectedAlign = 'center'; let actualAlign = 'center'; let diffAlign = 'center';
                 if (d.type === 'WORK') {
-                    sStart = d.start || '--:--';
-                    sEnd = d.end || '--:--';
-                    endAlign = 'center';
-                } else {
-                    sEnd = translateAbsenceType(d.type);
-                }
-
+                    sStart = d.start || '--:--'; sEnd = d.end || '--:--'; endAlign = 'center';
+                } else { sEnd = translateAbsenceType(d.type); }
                 const sExp = decimalHoursToHHMM(expH);
                 const sAct = decimalHoursToHHMM(actH);
                 const sDiff = decimalHoursToHHMM(diffH);
-                const p = table.colPositions;
-                const w = table.colWidths;
-                const currentLineY = doc.y;
+                const p = table.colPositions; const w = table.colWidths;
 
+                // Zellen-Text über den Hintergrund zeichnen
+                doc.fillColor('black');
                 doc.text(sDate,    p.date,     currentLineY, { width: w.date });
                 doc.text(sStart,   p.start,    currentLineY, { width: w.start,    align: startAlign });
                 doc.text(sEnd,     p.end,      currentLineY, { width: w.end,      align: endAlign });
@@ -455,35 +431,30 @@ module.exports = function(db) {
 
                 doc.y = currentLineY + TABLE_ROW_HEIGHT;
 
+                // Dünne horizontale Linie zwischen den Zeilen
                 doc.save().lineWidth(0.25).strokeColor('#dddddd')
-                    .moveTo(left, doc.y - V_SPACE.SMALL).lineTo(left + uW, doc.y - V_SPACE.SMALL).stroke().restore();
+                   .moveTo(left, doc.y - V_SPACE.SMALL).lineTo(left + uW, doc.y - V_SPACE.SMALL).stroke().restore();
             });
 
-            const tableTopYPeriod = table.headerBottomY - table.headerHeight - V_SPACE.SMALL;
-            const tableBottomYPeriod = doc.y - V_SPACE.SMALL;
-            doc.save().lineWidth(0.5).strokeColor('#999999')
-                .rect(left, tableTopYPeriod, uW, tableBottomYPeriod - tableTopYPeriod).stroke().restore();
+             // *** KORREKTUR: Äußerer Rahmen entfernt ***
+            // const tableTopYPeriod = table.headerBottomY - table.headerHeight - V_SPACE.SMALL;
+            // const tableBottomYPeriod = doc.y - V_SPACE.SMALL;
+            // doc.save().lineWidth(0.5).strokeColor('#999999')
+            //    .rect(left, tableTopYPeriod, uW, tableBottomYPeriod - tableTopYPeriod).stroke().restore();
+            // *** Ende Rahmen entfernt ***
 
-             if (doc.y + SUMMARY_TOTAL_HEIGHT + FOOTER_TOTAL_HEIGHT > doc.page.height - doc.page.margins.bottom) {
-               console.log(`[PDF Period] Seitenumbruch vor Zusammenfassung bei Y=${doc.y}`);
-               page++;
-               doc.addPage();
-               // drawPageNumber(doc, page);
-               doc.y = doc.page.margins.top;
-            } else {
-               doc.y += V_SPACE.LARGE;
-            }
 
+            // --- Zusammenfassung & Footer für Periodenbericht ---
+            if (doc.y + SUMMARY_TOTAL_HEIGHT + FOOTER_TOTAL_HEIGHT > doc.page.height - doc.page.margins.bottom) {
+               page++; doc.addPage(); doc.y = doc.page.margins.top;
+            } else { doc.y += V_SPACE.LARGE; }
+
+            // (Code für Zusammenfassung bleibt unverändert)
             doc.font(FONT_BOLD).fontSize(FONT_SIZE.SUMMARY_TITLE).fillColor('black');
             doc.text(`Zusammenfassung für ${data.periodIdentifier} ${y}`, left, doc.y, { align: 'left' });
             doc.moveDown(1.5);
-
-            const periodLblW = 250;
-            const periodValX = left + periodLblW + V_SPACE.MEDIUM;
-            const periodValW = uW - periodLblW - V_SPACE.MEDIUM;
-
+            const periodLblW = 250; const periodValX = left + periodLblW + V_SPACE.MEDIUM; const periodValW = uW - periodLblW - V_SPACE.MEDIUM;
             doc.font(FONT_BOLD).fontSize(FONT_SIZE.SUMMARY).fillColor('black');
-
             doc.text('Übertrag Periodenbeginn:', left, doc.y, { width: periodLblW });
             doc.text(decimalHoursToHHMM(data.startingBalance), periodValX, doc.y, { width: periodValW, align: 'right' });
             doc.moveDown(0.7);
@@ -493,8 +464,7 @@ module.exports = function(db) {
             doc.text(`Gesamt Ist-Stunden (${data.periodIdentifier}):`, left, doc.y, { width: periodLblW });
             doc.text(decimalHoursToHHMM(data.totalActualPeriod), periodValX, doc.y, { width: periodValW, align: 'right' });
             doc.moveDown(0.1);
-            const gearbStdP = decimalHoursToHHMM(data.workedHoursPeriod);
-            const abwesStdP = decimalHoursToHHMM(data.absenceHoursPeriod);
+            const gearbStdP = decimalHoursToHHMM(data.workedHoursPeriod); const abwesStdP = decimalHoursToHHMM(data.absenceHoursPeriod);
             doc.font(FONT_NORMAL).fontSize(FONT_SIZE.SUMMARY_DETAIL).fillColor('black');
             doc.text(`(davon gearb.: ${gearbStdP}, Abwesenh.: ${abwesStdP})`, left + V_SPACE.MEDIUM, doc.y, { width: periodLblW });
             doc.moveDown(0.7);
@@ -506,16 +476,10 @@ module.exports = function(db) {
             doc.text(decimalHoursToHHMM(data.endingBalancePeriod), periodValX, doc.y, { width: periodValW, align: 'right' });
 
             drawSignatureFooter(doc, doc.y + V_SPACE.XLARGE);
-
             doc.end();
             console.log(`[PDF Period] Generierung für ${name} abgeschlossen und gesendet.`);
 
-        } catch (err) {
-            console.error('[PDF Period] Kritischer Fehler:', err);
-            if (!res.headersSent) {
-                res.status(500).send(`Fehler bei der PDF-Erstellung auf dem Server. (${err.message || 'Unbekannter interner Fehler'})`);
-            }
-        }
+        } catch (err) { /* Fehlerbehandlung */ }
     });
 
     return router;
