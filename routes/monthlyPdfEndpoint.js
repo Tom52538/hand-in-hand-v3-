@@ -1,5 +1,6 @@
 // monthlyPdfEndpoint.js - V14: Vollständig mit Layout-Optimierung
-// *** KORREKTUR SCHRITT 1: Leere erste Seite verhindern ***
+// *** KORREKTUR SCHRITT 1: Leere erste Seite verhindern (behoben) ***
+// *** KORREKTUR nach 500 Server Error: uW Berechnung verschoben ***
 const express = require('express');
 const PDFDocument = require('pdfkit');
 const path = require('path');
@@ -45,7 +46,7 @@ function decimalHoursToHHMM(decimalHours) {
 // Formatiert Datum zu DD.MM.YYYY (UTC)
 function formatDateGerman(dateInput) {
   if (!dateInput) return 'N/A';
-  // Sicherstellen, dass wir einen String im Format YYYY-MM-DD haben
+  // Sicherstellen, dass wir einen String im FormatPrintNumConst-MM-DD haben
   const str = (dateInput instanceof Date) ? dateInput.toISOString().split('T')[0] : String(dateInput).split('T')[0];
   // Als UTC-Datum parsen, um Zeitzonenprobleme bei der Formatierung zu vermeiden
   const d = new Date(str + 'T00:00:00Z');
@@ -64,7 +65,8 @@ function formatDateGermanWithWeekday(dateInput) {
 function drawDocumentHeader(doc, title, name, startDate, endDate) {
   const left = doc.page.margins.left;
   const right = doc.page.margins.right;
-  const width = doc.page.width - left - right;
+  // Breite wird erst NACH dem Zeichnen benötigt, wenn die Seite existiert
+  // const width = doc.page.width - left - right; // <-- Wird hier nicht mehr berechnet
   let y = doc.page.margins.top; // Startet am oberen Rand
 
   // Logo rechts oben platzieren (ignoriert Fehler, falls Logo nicht da)
@@ -76,8 +78,10 @@ function drawDocumentHeader(doc, title, name, startDate, endDate) {
       console.warn("Logo konnte nicht geladen/gezeichnet werden:", e.message);
   }
 
-  // Titel zentriert
+  // Titel zentriert (Hier wird die Seite implizit erstellt!)
   doc.font(FONT_BOLD).fontSize(FONT_SIZE.HEADER).fillColor('black');
+  // Die Breite wird hier direkt berechnet, da doc.page jetzt existiert
+  const width = doc.page.width - left - right; // <-- Berechnung hierhin verschoben
   doc.text(title, left, y + V_SPACE.SMALL, { align:'center', width });
   y += V_SPACE.SMALL + doc.heightOfString(title, { width, align:'center' }) + V_SPACE.LARGE; // Vertikaler Abstand nach Titel
 
@@ -222,19 +226,14 @@ module.exports = function(db) {
       res.setHeader('Content-Type','application/pdf');
       res.setHeader('Content-Disposition',`attachment; filename="${filename}"`);
 
-      // *** KORREKTUR SCHRITT 1: ***
-      // Die erste Seite wird nicht mehr explizit hier hinzugefügt.
-      // PDFKit fügt sie implizit hinzu, wenn der erste Inhalt gezeichnet wird,
-      // da autoFirstPage: false gesetzt ist.
-      // let page = 0; // Initialisierung bleibt
-      // // page++; doc.addPage(); // <--- DIESE ZEILE WURDE ENTFERNT/AUSKOMMENTIERT
+      // Erste Seite wird implizit beim ersten Zeichnen erstellt
+      // const uW = doc.page.width - doc.page.margins.left - doc.page.margins.right; // <-- Berechnung hier entfernt
 
-      const uW = doc.page.width - doc.page.margins.left - doc.page.margins.right; // Nutzbare Breite
       let page = 0; // Zählvariable für Seitennummer
 
       // === SEITE 1 (oder nächste Seite nach Umbruch) ===
 
-      // Dokumenten-Header zeichnen (wird auf die erste Seite gezeichnet)
+      // Dokumenten-Header zeichnen (erstellt implizit Seite 1)
       let yPos = drawDocumentHeader(doc,
                                    `Monatsnachweis ${String(m).padStart(2,'0')}/${y}`,
                                    data.employeeName,
@@ -242,6 +241,9 @@ module.exports = function(db) {
                                    new Date(Date.UTC(y,m,0))    // Letzter Tag des Monats (UTC)
                                   );
       page = 1; // Nachdem der Header auf Seite 1 ist, setzen wir den Zähler
+
+      // *** NEU: Berechnung der nutzbaren Breite NACHDEM die erste Seite existiert ***
+      const uW = doc.page.width - doc.page.margins.left - doc.page.margins.right;
 
       // Seitennummer zeichnen (TODO: In Schritt 3 entfernen, falls gewünscht)
       // drawPageNumber(doc, page);
@@ -379,7 +381,8 @@ module.exports = function(db) {
       console.error('[PDF] Kritischer Fehler bei PDF-Erstellung:', err);
       // Sicherstellen, dass kein halbfertiges PDF gesendet wird
       if (!res.headersSent) {
-        res.status(500).send('Fehler bei der PDF-Erstellung auf dem Server.');
+        // Sende die spezifische Fehlermeldung, wenn möglich, oder eine generische
+        res.status(500).send(`Fehler bei der PDF-Erstellung auf dem Server. (${err.message || ''})`);
       }
     }
   });
