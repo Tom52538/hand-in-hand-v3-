@@ -1,5 +1,5 @@
-// monthlyPdfEndpoint.js - V18: Tägliche Einträge zur Perioden-PDF hinzugefügt
-// *** FEATURE: Perioden-PDFs (/create-period-pdf) zeigen jetzt auch die Tabelle der täglichen Einträge an ***
+// monthlyPdfEndpoint.js - V19: Jahreszahl-Formatierung korrigiert
+// *** KORREKTUR: Fehlerhafte .replace()-Methode in formatDateGermanWithWeekday entfernt ***
 const express = require('express');
 const PDFDocument = require('pdfkit');
 const path = require('path');
@@ -26,7 +26,6 @@ const TABLE_ROW_HEIGHT = 13;
 const FOOTER_CONTENT_HEIGHT = FONT_SIZE.FOOTER + V_SPACE.SMALL;
 const SIGNATURE_AREA_HEIGHT = V_SPACE.SIGNATURE_GAP + FONT_SIZE.FOOTER + V_SPACE.SMALL;
 const FOOTER_TOTAL_HEIGHT = FOOTER_CONTENT_HEIGHT + SIGNATURE_AREA_HEIGHT + V_SPACE.MEDIUM;
-// Höhenberechnung für Zusammenfassungen (grobe Schätzung) - Wird jetzt für beide Routen verwendet
 const SUMMARY_LINE_HEIGHT = FONT_SIZE.SUMMARY + V_SPACE.TINY + 0.5;
 const SUMMARY_DETAIL_LINE_HEIGHT = FONT_SIZE.SUMMARY_DETAIL + V_SPACE.TINY;
 const SUMMARY_TOTAL_HEIGHT = (5 * SUMMARY_LINE_HEIGHT) + SUMMARY_DETAIL_LINE_HEIGHT + V_SPACE.MEDIUM + V_SPACE.SMALL;
@@ -61,12 +60,19 @@ function formatDateGerman(dateInput) {
     return isNaN(d) ? String(dateInput) : d.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'UTC' });
 }
 
-// Formatiert Datum zu Wochentag., DD.MM.YYYY (UTC)
+// Formatiert Datum zu Wochentag., DD.MM.YYYY (UTC) - KORRIGIERT
 function formatDateGermanWithWeekday(dateInput) {
     if (!dateInput) return 'N/A';
     const str = (dateInput instanceof Date) ? dateInput.toISOString().split('T')[0] : String(dateInput).split('T')[0];
     const d = new Date(str + 'T00:00:00Z');
-    return isNaN(d) ? String(dateInput) : d.toLocaleDateString('de-DE', { weekday: 'short', day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'UTC' }).replace(/.$/, '.');
+    // Das fehlerhafte .replace(/.$/, '.') am Ende wurde entfernt
+    return isNaN(d) ? String(dateInput) : d.toLocaleDateString('de-DE', {
+        weekday: 'short',
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric', // Gibt jetzt das volle Jahr aus
+        timeZone: 'UTC'
+    }); // <-- Kein .replace() mehr hier
 }
 
 // Zeichnet den Dokumentenkopf (Titel, Name, Zeitraum, Logo)
@@ -95,7 +101,7 @@ function drawDocumentHeader(doc, title, name, startDate, endDate) {
     return y + FONT_SIZE.SUB_HEADER + V_SPACE.LARGE;
 }
 
-// Zeichnet den Tabellenkopf (Wiederverwendet)
+// Zeichnet den Tabellenkopf
 function drawTableHeader(doc, startY, usableWidth) {
     const left = doc.page.margins.left;
     const cols = { date: 95, start: 60, end: 75, expected: 70, actual: 70 };
@@ -153,7 +159,6 @@ function drawSignatureFooter(doc, startY) {
         console.log("[PDF] Seitenumbruch vor Footer");
         doc.addPage();
         startY = doc.page.margins.top;
-        // drawPageNumber(doc, doc.bufferedPageRange().count); // Optional
     }
 
     doc.text(text, left, startY, { width });
@@ -187,7 +192,7 @@ module.exports = function(db) {
             const y = +year; const m = +month;
 
             console.log(`[PDF Monthly] Anforderung für ${name}, ${String(m).padStart(2, '0')}/${y}`);
-            const data = await calculateMonthlyData(db, name, y, m); // MONATS-Daten holen
+            const data = await calculateMonthlyData(db, name, y, m);
             if (!data) throw new Error('Daten für PDF konnten nicht abgerufen werden.');
             console.log(`[PDF Monthly] Daten für ${name} erhalten. Beginne PDF-Generierung.`);
 
@@ -218,7 +223,6 @@ module.exports = function(db) {
             doc.font(FONT_NORMAL).fontSize(FONT_SIZE.TABLE_CONTENT).fillColor('black');
             doc.y = yPos;
 
-            // TÄGLICHE Daten für Tabelle vorbereiten (aus Monatsdaten)
             const allDays = [];
             data.workEntries.forEach(e => allDays.push({ date: e.date, type: 'WORK', start: e.startTime, end: e.endTime, actual: +e.hours || 0 }));
             data.absenceEntries.forEach(a => {
@@ -230,7 +234,6 @@ module.exports = function(db) {
 
             const left = doc.page.margins.left;
 
-            // Tägliche Tabelle zeichnen
             allDays.forEach((d, i) => {
                 const neededHeightForRest = SUMMARY_TOTAL_HEIGHT + FOOTER_TOTAL_HEIGHT + V_SPACE.LARGE;
                 if (i > 0 && (doc.y + TABLE_ROW_HEIGHT > doc.page.height - doc.page.margins.bottom - neededHeightForRest)) {
@@ -245,6 +248,7 @@ module.exports = function(db) {
                 const expH = getExpectedHours(data.employeeData, d.date);
                 const actH = d.actual;
                 const diffH = actH - expH;
+                // Hier wird die KORRIGIERTE Funktion verwendet
                 const sDate = formatDateGermanWithWeekday(d.date);
                 let sStart = '--:--';
                 let sEnd = '--:--';
@@ -287,7 +291,6 @@ module.exports = function(db) {
             doc.save().lineWidth(0.5).strokeColor('#999999')
                 .rect(left, tableTopY, uW, tableBottomY - tableTopY).stroke().restore();
 
-            // --- Zusammenfassung & Footer für Monatsbericht ---
             if (doc.y + SUMMARY_TOTAL_HEIGHT + FOOTER_TOTAL_HEIGHT > doc.page.height - doc.page.margins.bottom) {
                console.log(`[PDF Monthly] Seitenumbruch vor Zusammenfassung bei Y=${doc.y}`);
                page++;
@@ -355,7 +358,7 @@ module.exports = function(db) {
             }
 
             console.log(`[PDF Period] Anforderung für ${name}, ${year}, ${pType}${pValue ? ' '+pValue : ''}`);
-            const data = await calculatePeriodData(db, name, y, pType, pValue); // PERIODEN-Daten holen
+            const data = await calculatePeriodData(db, name, y, pType, pValue);
             if (!data) throw new Error('Daten für Perioden-PDF konnten nicht abgerufen werden.');
             console.log(`[PDF Period] Daten für ${name} erhalten. Beginne PDF-Generierung.`);
 
@@ -382,7 +385,6 @@ module.exports = function(db) {
             const uW = doc.page.width - doc.page.margins.left - doc.page.margins.right;
             const left = doc.page.margins.left;
 
-            // Header zeichnen
             let yPos = drawDocumentHeader(doc,
                 titleDesc,
                 data.employeeName,
@@ -391,15 +393,12 @@ module.exports = function(db) {
             );
             // drawPageNumber(doc, page);
 
-            // *** NEU: Tabelle für Periodenbericht ***
-            const table = drawTableHeader(doc, yPos, uW); // Dieselbe Header-Funktion verwenden
+            const table = drawTableHeader(doc, yPos, uW);
             yPos = table.headerBottomY;
             doc.font(FONT_NORMAL).fontSize(FONT_SIZE.TABLE_CONTENT).fillColor('black');
             doc.y = yPos;
 
-            // TÄGLICHE Daten für Tabelle vorbereiten (aus Periodendaten)
             const allDaysPeriod = [];
-            // Verwende workEntriesPeriod und absenceEntriesPeriod aus dem data-Objekt
             data.workEntriesPeriod.forEach(e => allDaysPeriod.push({ date: e.date, type: 'WORK', start: e.startTime, end: e.endTime, actual: +e.hours || 0 }));
             data.absenceEntriesPeriod.forEach(a => {
                 if (!allDaysPeriod.find(d => d.date === a.date)) {
@@ -408,22 +407,21 @@ module.exports = function(db) {
             });
             allDaysPeriod.sort((a, b) => new Date(a.date) - new Date(b.date));
 
-            // Tägliche Tabelle zeichnen (Logik kopiert und angepasst von Monatsbericht)
             allDaysPeriod.forEach((d, i) => {
-                const neededHeightForRest = SUMMARY_TOTAL_HEIGHT + FOOTER_TOTAL_HEIGHT + V_SPACE.LARGE; // Höhe der Perioden-Zusammenfassung
+                const neededHeightForRest = SUMMARY_TOTAL_HEIGHT + FOOTER_TOTAL_HEIGHT + V_SPACE.LARGE;
                 if (i > 0 && (doc.y + TABLE_ROW_HEIGHT > doc.page.height - doc.page.margins.bottom - neededHeightForRest)) {
                     page++;
                     doc.addPage();
                     // drawPageNumber(doc, page);
-                    const nextTable = drawTableHeader(doc, doc.page.margins.top, uW); // Kopf wiederholen
+                    const nextTable = drawTableHeader(doc, doc.page.margins.top, uW);
                     doc.y = nextTable.headerBottomY;
                     doc.font(FONT_NORMAL).fontSize(FONT_SIZE.TABLE_CONTENT).fillColor('black');
                 }
 
-                // Werte und Ausrichtung (wie im Monatsbericht)
                 const expH = getExpectedHours(data.employeeData, d.date);
                 const actH = d.actual;
                 const diffH = actH - expH;
+                // Hier wird die KORRIGIERTE Funktion verwendet
                 const sDate = formatDateGermanWithWeekday(d.date);
                 let sStart = '--:--';
                 let sEnd = '--:--';
@@ -461,26 +459,21 @@ module.exports = function(db) {
                     .moveTo(left, doc.y - V_SPACE.SMALL).lineTo(left + uW, doc.y - V_SPACE.SMALL).stroke().restore();
             });
 
-            // Rahmen um Tabelle
             const tableTopYPeriod = table.headerBottomY - table.headerHeight - V_SPACE.SMALL;
             const tableBottomYPeriod = doc.y - V_SPACE.SMALL;
             doc.save().lineWidth(0.5).strokeColor('#999999')
                 .rect(left, tableTopYPeriod, uW, tableBottomYPeriod - tableTopYPeriod).stroke().restore();
-            // *** Ende Tabelle für Periodenbericht ***
 
-            // --- Zusammenfassung & Footer für Periodenbericht ---
-            // Seitenumbruch-Check VOR der Zusammenfassung
              if (doc.y + SUMMARY_TOTAL_HEIGHT + FOOTER_TOTAL_HEIGHT > doc.page.height - doc.page.margins.bottom) {
                console.log(`[PDF Period] Seitenumbruch vor Zusammenfassung bei Y=${doc.y}`);
                page++;
                doc.addPage();
                // drawPageNumber(doc, page);
-               doc.y = doc.page.margins.top; // Oben auf neuer Seite beginnen
+               doc.y = doc.page.margins.top;
             } else {
-               doc.y += V_SPACE.LARGE; // Abstand nach Tabelle
+               doc.y += V_SPACE.LARGE;
             }
 
-            // Zusammenfassung zeichnen (verwendet Perioden-Daten)
             doc.font(FONT_BOLD).fontSize(FONT_SIZE.SUMMARY_TITLE).fillColor('black');
             doc.text(`Zusammenfassung für ${data.periodIdentifier} ${y}`, left, doc.y, { align: 'left' });
             doc.moveDown(1.5);
@@ -512,8 +505,7 @@ module.exports = function(db) {
             doc.text('Neuer Übertrag (Saldo Periodenende):', left, doc.y, { width: periodLblW });
             doc.text(decimalHoursToHHMM(data.endingBalancePeriod), periodValX, doc.y, { width: periodValW, align: 'right' });
 
-            // Footer zeichnen
-            drawSignatureFooter(doc, doc.y + V_SPACE.XLARGE); // Y-Pos dynamisch, etwas mehr Abstand
+            drawSignatureFooter(doc, doc.y + V_SPACE.XLARGE);
 
             doc.end();
             console.log(`[PDF Period] Generierung für ${name} abgeschlossen und gesendet.`);
