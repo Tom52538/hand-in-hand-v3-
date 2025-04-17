@@ -1,28 +1,67 @@
 // utils/calculationUtils.js - MIT DIAGNOSE-LOGGING
+// *** KORREKTUR V2: Robustere Datumsbehandlung in getExpectedHours ***
 
-// KORRIGIERTE Funktion getExpectedHours (unverändert)
-function getExpectedHours(employeeData, dateStr) {
-    // console.log(`DEBUG: getExpectedHours called for date: ${dateStr}`); // Kann bei Bedarf aktiviert werden
-    if (!employeeData || !dateStr) return 0;
+function getExpectedHours(employeeData, dateInput) {
+    // console.log(`DEBUG: getExpectedHours called for date: ${dateInput} (Type: ${typeof dateInput})`); // Optional: Zum Debuggen aktivieren
+    if (!employeeData || !dateInput) {
+        // console.warn("getExpectedHours: Fehlende employeeData oder dateInput.");
+        return 0;
+    }
+
     try {
-        const dateOnly = String(dateStr).split(' ')[0];
-        const d = new Date(dateOnly + 'T00:00:00Z');
-        if (isNaN(d.getTime())) {
-             console.warn(`Ungültiges Datum in getExpectedHours nach Bereinigung: Input='${dateStr}', Verwendet='${dateOnly}'`);
+        let dateOnlyStr;
+
+        // Prüfen, ob dateInput bereits ein Date-Objekt ist
+        if (dateInput instanceof Date) {
+            // Konvertiere Date-Objekt sicher in YYYY-MM-DD (UTC)
+            dateOnlyStr = dateInput.toISOString().split('T')[0];
+        }
+        // Prüfen, ob dateInput bereits ein String im korrekten Format ist
+        else if (typeof dateInput === 'string' && /^\d{4}-\d{2}-\d{2}/.test(dateInput)) {
+             // Nimm den Teil vor einem eventuellen Leerzeichen (falls Zeit angehängt ist)
+            dateOnlyStr = dateInput.split(' ')[0];
+        }
+        // Versuch, einen String in ein Datum umzuwandeln (Fallback)
+        else if (typeof dateInput === 'string') {
+            console.warn(`getExpectedHours: Unerwartetes String-Format erhalten: '${dateInput}'. Versuche Parsing...`);
+            const parsedDate = new Date(dateInput);
+            if (!isNaN(parsedDate.getTime())) {
+                dateOnlyStr = parsedDate.toISOString().split('T')[0];
+                 console.log(`  -> Fallback-Parsing erfolgreich: ${dateOnlyStr}`);
+            } else {
+                console.error(`getExpectedHours: Konnte String '${dateInput}' nicht als Datum parsen.`);
+                return 0; // Datum nicht verarbeitbar
+            }
+        }
+        // Fallback für andere unerwartete Typen
+        else {
+             console.error(`getExpectedHours: Unerwarteter Typ für dateInput erhalten: ${typeof dateInput}`);
              return 0;
         }
-        const day = d.getUTCDay(); // 0=So, 1=Mo, ..., 6=Sa
+
+        // Ab hier haben wir hoffentlich einen gültigen dateOnlyStr im Format YYYY-MM-DD
+        const d = new Date(dateOnlyStr + 'T00:00:00Z'); // Als UTC Mitternacht parsen
+
+        if (isNaN(d.getTime())) {
+             // Sollte jetzt nicht mehr oft vorkommen
+             console.error(`getExpectedHours: Konnte Datum NACH Konvertierung nicht parsen: Verwendet='${dateOnlyStr}', Original-Input='${dateInput}'`);
+             return 0;
+        }
+
+        const day = d.getUTCDay(); // UTC Wochentag (0=So, 1=Mo, ..., 6=Sa)
+
+        // Soll-Stunden basierend auf Wochentag zurückgeben
         switch (day) {
             case 1: return employeeData.mo_hours || 0;
             case 2: return employeeData.di_hours || 0;
             case 3: return employeeData.mi_hours || 0;
             case 4: return employeeData.do_hours || 0;
             case 5: return employeeData.fr_hours || 0;
-            default: return 0; // Samstag, Sonntag
+            default: return 0; // Samstag (6), Sonntag (0)
         }
     } catch (e) {
-        console.error(`Fehler in getExpectedHours für Datum: ${dateStr}`, e);
-        return 0;
+        console.error(`Fehler in getExpectedHours für Datum: ${dateInput}`, e);
+        return 0; // Im Fehlerfall 0 zurückgeben
     }
 }
 
@@ -30,13 +69,11 @@ function getExpectedHours(employeeData, dateStr) {
 function forEachDayBetween(startDate, endDate, callback) {
     let current = new Date(startDate.getTime());
     const end = new Date(endDate.getTime());
-    // console.log(`DEBUG: forEachDayBetween - Start: ${startDate.toISOString()}, End: ${endDate.toISOString()}`); // Debug Log
-    let iterations = 0; // Schutz gegen Endlosschleifen
-    while (current < end && iterations < 367) { // Sicherheitslimit
-        const dateStr = current.toISOString().split('T')[0];
-        const dayOfWeek = current.getUTCDay();
-        // console.log(`DEBUG: forEachDayBetween - Iteration: ${dateStr}, Day: ${dayOfWeek}`); // Sehr detailreich, nur bei Bedarf
-        callback(dateStr, dayOfWeek);
+    // console.log(`DEBUG: forEachDayBetween - Start: ${startDate.toISOString()}, End: ${endDate.toISOString()}`);
+    let iterations = 0;
+    while (current < end && iterations < 367) { // Sicherheitslimit von ~1 Jahr
+        // Wichtig: Hier wird ein Date-Objekt an die Callback übergeben!
+        callback(new Date(current.getTime()), current.getUTCDay()); // Übergibt Date-Objekt und Wochentag
         current.setUTCDate(current.getUTCDate() + 1);
         iterations++;
     }
@@ -45,20 +82,8 @@ function forEachDayBetween(startDate, endDate, callback) {
      }
 }
 
-// isStandardWorkday (unverändert)
-function isStandardWorkday(dayOfWeek) {
-    return dayOfWeek >= 1 && dayOfWeek <= 5;
-}
 
-/**
- * Berechnet für einen Mitarbeiter die Monatsdaten unter Berücksichtigung von Abwesenheiten.
- * NEUE LOGIK FÜR totalExpected: Basiert auf Standard-Arbeitstagen minus Abwesenheiten.
- * @param {Object} db - Die PostgreSQL-Datenbankverbindung (Pool).
- * @param {string} name - Name des Mitarbeiters.
- * @param {string|number} year - Jahr.
- * @param {string|number} month - Monat.
- * @returns {Object} - Ein Objekt mit den ermittelten Monatsdaten inkl. Abwesenheitsinfos und employeeData.
- */
+// calculateMonthlyData (unverändert - verwendet bereits korrekte Datumsobjekte intern)
 async function calculateMonthlyData(db, name, year, month) {
     // +++ LOGGING START +++
     console.log(`[LOG] calculateMonthlyData: START - MA: ${name}, Monat: ${month}/${year}`);
@@ -99,21 +124,27 @@ async function calculateMonthlyData(db, name, year, month) {
              ORDER BY date ASC`,
             [name.toLowerCase(), startDateStr, endDateStr]
         );
+        // Wichtig: Die 'date' Spalte kommt hier als JS Date Objekt von der DB!
         const workEntries = workResult.rows;
         console.log(`[LOG] calculateMonthlyData: ${workEntries.length} work hour entries found.`);
 
         // Abwesenheiten holen
         console.log(`[LOG] calculateMonthlyData: Fetching absences...`);
         const absenceResult = await db.query(
-            `SELECT date, absence_type, credited_hours
+            `SELECT date, absence_type, credited_hours, comment
              FROM absences
              WHERE employee_id = $1 AND date >= $2 AND date < $3`,
             [employee.id, startDateStr, endDateStr]
         );
+        // Auch hier kommt 'date' als JS Date Objekt!
         const absenceMap = new Map();
+        const absenceDetails = []; // Für die Rückgabe im PDF
         absenceResult.rows.forEach(a => {
-            const dateKey = (a.date instanceof Date) ? a.date.toISOString().split('T')[0] : String(a.date).split(' ')[0];
-            absenceMap.set(dateKey, { type: a.absence_type, hours: parseFloat(a.credited_hours) || 0 });
+            const dateKey = (a.date instanceof Date) ? a.date.toISOString().split('T')[0] : String(a.date).split('T')[0]; // Konvertierung für Map-Key
+            const absenceInfo = { type: a.absence_type, hours: parseFloat(a.credited_hours) || 0, comment: a.comment };
+            absenceMap.set(dateKey, absenceInfo);
+            // Speichere Details mit dem Original-Date-Objekt für die PDF-Generierung
+            absenceDetails.push({ date: a.date, ...absenceInfo });
         });
         console.log(`[LOG] calculateMonthlyData: ${absenceMap.size} absence entries found and mapped.`);
 
@@ -124,25 +155,23 @@ async function calculateMonthlyData(db, name, year, month) {
             workedHoursTotal += parseFloat(entry.hours) || 0;
         });
         let absenceHoursTotal = 0;
-        for (const [dateKey, absenceInfo] of absenceMap.entries()) {
-             if (dateKey >= startDateStr && dateKey < endDateStr) {
-                  absenceHoursTotal += absenceInfo.hours;
-             }
+        for (const absence of absenceResult.rows) { // Iteriere über die DB-Ergebnisse
+             absenceHoursTotal += parseFloat(absence.credited_hours) || 0;
         }
         const totalActual = workedHoursTotal + absenceHoursTotal;
         console.log(`[LOG] calculateMonthlyData: Actual hours calculated - Worked: ${workedHoursTotal.toFixed(2)}, Absence: ${absenceHoursTotal.toFixed(2)}, Total: ${totalActual.toFixed(2)}`);
 
-        // ----- NEUE Berechnung Soll-Stunden (totalExpected) -----
+        // ----- Berechnung Soll-Stunden (totalExpected) -----
         console.log(`[LOG] calculateMonthlyData: Calculating expected hours (iterating days)...`);
         let totalExpected = 0;
-        forEachDayBetween(startDate, endDate, (dateStr, dayOfWeek) => {
-            // Nutzt die korrigierte getExpectedHours Funktion
-            const standardHoursForDay = getExpectedHours(employee, dateStr);
+        forEachDayBetween(startDate, endDate, (currentDateObj, dayOfWeek) => { // Callback erhält jetzt Date-Objekt
+            const currentDateStr = currentDateObj.toISOString().split('T')[0]; // String-Version für Map-Lookup
+            // Nutzt die KORRIGIERTE getExpectedHours Funktion
+            const standardHoursForDay = getExpectedHours(employee, currentDateObj); // Übergibt Date-Objekt
             if (standardHoursForDay > 0) { // Nur Wochentage mit Soll > 0 berücksichtigen
-                if (!absenceMap.has(dateStr)) { // Nur addieren, wenn KEINE Abwesenheit an diesem Tag
-                    totalExpected += standardHoursForDay;
+                if (!absenceMap.has(currentDateStr)) { // Nur addieren, wenn KEINE Abwesenheit an diesem Tag
+                     totalExpected += standardHoursForDay;
                 }
-                // Wenn Abwesenheit vorhanden, werden die Sollstunden für diesen Tag nicht addiert
             }
         });
         console.log(`[LOG] calculateMonthlyData: Expected hours calculated: ${totalExpected.toFixed(2)}`);
@@ -154,18 +183,17 @@ async function calculateMonthlyData(db, name, year, month) {
         // Übertrag & Saldo speichern
         console.log(`[LOG] calculateMonthlyData: Fetching previous carry over...`);
         const prevMonthDate = new Date(Date.UTC(parsedYear, parsedMonth - 2, 1));
-        // Wichtig: Format für year_month muss stimmen (YYYY-MM-DD)
-        const prevMonthDateStr = prevMonthDate.toISOString().split('T')[0];
+        const prevMonthDateStr = prevMonthDate.toISOString().split('T')[0]; // Format YYYY-MM-DD für DB
         const prevResult = await db.query(
             `SELECT carry_over FROM monthly_balance WHERE employee_id = $1 AND year_month = $2`,
-            [employee.id, prevMonthDateStr] // year_month ist der erste des Vormonats
+            [employee.id, prevMonthDateStr]
         );
         const previousCarry = prevResult.rows.length > 0 ? (parseFloat(prevResult.rows[0].carry_over) || 0) : 0;
         const newCarry = previousCarry + totalDifference;
         console.log(`[LOG] calculateMonthlyData: Carry over - Previous: ${previousCarry.toFixed(2)}, New: ${newCarry.toFixed(2)}`);
 
         console.log(`[LOG] calculateMonthlyData: Upserting monthly balance...`);
-        const currentMonthDateStr = startDateStr; // year_month ist der erste des aktuellen Monats
+        const currentMonthDateStr = startDateStr; // Format YYYY-MM-DD für DB
         const upsertQuery = `
             INSERT INTO monthly_balance (employee_id, year_month, difference, carry_over)
             VALUES ($1, $2, $3, $4)
@@ -174,8 +202,6 @@ async function calculateMonthlyData(db, name, year, month) {
         `;
         await db.query(upsertQuery, [employee.id, currentMonthDateStr, totalDifference, newCarry]);
         console.log(`[LOG] calculateMonthlyData: Monthly balance upserted.`);
-
-        const absenceDetails = Array.from(absenceMap.entries()).map(([date, info]) => ({ date, ...info }));
 
         // +++ LOGGING START +++
         const duration = (Date.now() - startTime) / 1000;
@@ -194,29 +220,18 @@ async function calculateMonthlyData(db, name, year, month) {
             absenceHours: parseFloat(absenceHoursTotal.toFixed(2)),
             totalDifference: parseFloat(totalDifference.toFixed(2)),
             newCarryOver: parseFloat(newCarry.toFixed(2)),
+            // Wichtig: Gib die Einträge mit den Original-Date-Objekten zurück!
             workEntries: workEntries,
             absenceEntries: absenceDetails
         };
     } catch (error) {
-        // +++ LOGGING START +++
         console.error(`[LOG] calculateMonthlyData: CRITICAL ERROR - MA: ${name}, Monat: ${month}/${year}. Error: ${error.message}`, error.stack);
-        // +++ LOGGING ENDE +++
-        // Werfe den Fehler weiter, damit die Route ihn behandeln kann
         throw error;
     }
 }
 
 
-/**
- * Berechnet für einen Mitarbeiter die Daten für ein Quartal oder Jahr.
- * NEUE LOGIK FÜR totalExpectedPeriod: Basiert auf Standard-Arbeitstagen minus Abwesenheiten.
- * @param {Object} db - DB Pool.
- * @param {string} name - Mitarbeitername.
- * @param {string|number} year - Jahr.
- * @param {'QUARTER'|'YEAR'} periodType - Zeitraumtyp.
- * @param {number} [periodValue] - Quartalsnummer (1-4).
- * @returns {Object} - Periodendaten inkl. Abwesenheitsinfos und employeeData.
- */
+// calculatePeriodData (unverändert - verwendet bereits korrekte Datumsobjekte intern)
 async function calculatePeriodData(db, name, year, periodType, periodValue) {
      // +++ LOGGING START +++
     const logPrefix = `[LOG] calculatePeriodData: MA: ${name}, Year: ${year}, Type: ${periodType}, Val: ${periodValue || 'N/A'} -`;
@@ -266,8 +281,8 @@ async function calculatePeriodData(db, name, year, periodType, periodValue) {
 
         // Startsaldo holen (Übertrag VOR dem ersten Monat der Periode)
         console.log(`${logPrefix} Fetching starting balance...`);
-        const balanceStartDate = new Date(Date.UTC(parsedYear, startMonth - 2, 1)); // Erster Tag des Vormonats
-        const balanceStartDateStr = balanceStartDate.toISOString().split('T')[0];
+        const balanceStartDate = new Date(Date.UTC(parsedYear, startMonth - 2, 1));
+        const balanceStartDateStr = balanceStartDate.toISOString().split('T')[0]; // YYYY-MM-DD
         const prevResult = await db.query(
             `SELECT carry_over FROM monthly_balance WHERE employee_id = $1 AND year_month = $2`,
             [employee.id, balanceStartDateStr]
@@ -282,19 +297,26 @@ async function calculatePeriodData(db, name, year, periodType, periodValue) {
              FROM work_hours WHERE LOWER(name) = LOWER($1) AND date >= $2 AND date < $3 ORDER BY date ASC`,
             [name.toLowerCase(), periodStartDateStr, periodEndDateStr]
         );
+        // 'date' kommt als JS Date Objekt!
         const workEntriesPeriod = workResult.rows;
         console.log(`${logPrefix} ${workEntriesPeriod.length} work hour entries found for period.`);
 
         // Abwesenheiten für Periode
         console.log(`${logPrefix} Fetching absences for period...`);
         const absenceResult = await db.query(
-            `SELECT date, absence_type, credited_hours FROM absences WHERE employee_id = $1 AND date >= $2 AND date < $3`,
+            `SELECT date, absence_type, credited_hours, comment
+             FROM absences WHERE employee_id = $1 AND date >= $2 AND date < $3`,
             [employee.id, periodStartDateStr, periodEndDateStr]
         );
+        // 'date' kommt als JS Date Objekt!
         const absenceMapPeriod = new Map();
+        const absenceDetailsPeriod = []; // Für Rückgabe im PDF
         absenceResult.rows.forEach(a => {
-            const dateKey = (a.date instanceof Date) ? a.date.toISOString().split('T')[0] : String(a.date).split(' ')[0];
-            absenceMapPeriod.set(dateKey, { type: a.absence_type, hours: parseFloat(a.credited_hours) || 0 });
+            const dateKey = (a.date instanceof Date) ? a.date.toISOString().split('T')[0] : String(a.date).split('T')[0]; // Für Map Key
+            const absenceInfo = { type: a.absence_type, hours: parseFloat(a.credited_hours) || 0, comment: a.comment };
+            absenceMapPeriod.set(dateKey, absenceInfo);
+            // Original-Date-Objekt für PDF speichern
+            absenceDetailsPeriod.push({ date: a.date, ...absenceInfo });
         });
         console.log(`${logPrefix} ${absenceMapPeriod.size} absence entries found and mapped for period.`);
 
@@ -303,21 +325,21 @@ async function calculatePeriodData(db, name, year, periodType, periodValue) {
         let workedHoursTotalPeriod = 0;
         workEntriesPeriod.forEach(entry => { workedHoursTotalPeriod += parseFloat(entry.hours) || 0; });
         let absenceHoursTotalPeriod = 0;
-        for (const [dateKey, absenceInfo] of absenceMapPeriod.entries()) {
-             if (dateKey >= periodStartDateStr && dateKey < periodEndDateStr) {
-                 absenceHoursTotalPeriod += absenceInfo.hours;
-             }
+        for (const absence of absenceResult.rows) { // Iteriere über DB-Ergebnisse
+            absenceHoursTotalPeriod += parseFloat(absence.credited_hours) || 0;
         }
         const totalActualPeriod = workedHoursTotalPeriod + absenceHoursTotalPeriod;
         console.log(`${logPrefix} Actual hours calculated - Worked: ${workedHoursTotalPeriod.toFixed(2)}, Absence: ${absenceHoursTotalPeriod.toFixed(2)}, Total: ${totalActualPeriod.toFixed(2)}`);
 
-        // ----- NEUE Berechnung Soll-Stunden (totalExpectedPeriod) -----
+        // ----- Berechnung Soll-Stunden (totalExpectedPeriod) -----
         console.log(`${logPrefix} Calculating expected hours for period (iterating days)...`);
         let totalExpectedPeriod = 0;
-        forEachDayBetween(periodStartDate, periodEndDate, (dateStr, dayOfWeek) => {
-            const standardHoursForDay = getExpectedHours(employee, dateStr);
+        forEachDayBetween(periodStartDate, periodEndDate, (currentDateObj, dayOfWeek) => { // Erhält Date-Objekt
+            const currentDateStr = currentDateObj.toISOString().split('T')[0]; // String für Map-Lookup
+            // Nutzt KORRIGIERTE getExpectedHours
+            const standardHoursForDay = getExpectedHours(employee, currentDateObj); // Übergibt Date-Objekt
             if (standardHoursForDay > 0) {
-                if (!absenceMapPeriod.has(dateStr)) { // Nur addieren, wenn KEINE Abwesenheit
+                if (!absenceMapPeriod.has(currentDateStr)) { // Nur addieren, wenn KEINE Abwesenheit
                     totalExpectedPeriod += standardHoursForDay;
                 }
             }
@@ -329,9 +351,7 @@ async function calculatePeriodData(db, name, year, periodType, periodValue) {
         const endingBalancePeriod = startingBalance + periodDifference;
         console.log(`${logPrefix} Period difference: ${periodDifference.toFixed(2)}, Ending balance: ${endingBalancePeriod.toFixed(2)}`);
 
-        const absenceDetailsPeriod = Array.from(absenceMapPeriod.entries()).map(([date, info]) => ({ date, ...info }));
-
-         // +++ LOGGING START +++
+        // +++ LOGGING START +++
         const duration = (Date.now() - startTime) / 1000;
         console.log(`${logPrefix} END - Duration: ${duration.toFixed(2)}s`);
         // +++ LOGGING ENDE +++
@@ -344,7 +364,6 @@ async function calculatePeriodData(db, name, year, periodType, periodValue) {
             periodValue: periodType === 'QUARTER' ? parseInt(periodValue) : null,
             periodIdentifier: periodIdentifier,
             periodStartDate: periodStartDateStr,
-            // Korrektur: Enddatum für Anzeige ist der letzte Tag der Periode
             periodEndDate: new Date(periodEndDate.getTime() - 86400000).toISOString().split('T')[0], // Letzter Tag
             startingBalance: parseFloat(startingBalance.toFixed(2)),
             totalExpectedPeriod: parseFloat(totalExpectedPeriod.toFixed(2)),
@@ -353,14 +372,13 @@ async function calculatePeriodData(db, name, year, periodType, periodValue) {
             absenceHoursPeriod: parseFloat(absenceHoursTotalPeriod.toFixed(2)),
             periodDifference: parseFloat(periodDifference.toFixed(2)),
             endingBalancePeriod: parseFloat(endingBalancePeriod.toFixed(2)),
+            // Wichtig: Gib die Einträge mit den Original-Date-Objekten zurück!
             workEntriesPeriod: workEntriesPeriod,
             absenceEntriesPeriod: absenceDetailsPeriod
         };
     } catch (error) {
-         // +++ LOGGING START +++
          console.error(`${logPrefix} CRITICAL ERROR - Error: ${error.message}`, error.stack);
-         // +++ LOGGING ENDE +++
-         throw error; // Fehler weiterwerfen
+         throw error;
     }
 }
 
