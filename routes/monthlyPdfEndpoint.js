@@ -1,6 +1,6 @@
 // monthlyPdfEndpoint.js - V14: Vollständig mit Layout-Optimierung
-// *** KORREKTUR SCHRITT 1: Leere erste Seite verhindern (behoben) ***
-// *** KORREKTUR nach 500 Server Error: uW Berechnung verschoben ***
+// *** KORREKTUR nach 500 Server Error ('margins' of null): Explizites addPage wieder eingefügt ***
+// *** KORREKTUR gegen leere erste Seite: Seitenumbruch vor erster Zeile verhindert ***
 const express = require('express');
 const PDFDocument = require('pdfkit');
 const path = require('path');
@@ -14,7 +14,7 @@ const FONT_NORMAL = 'Times-Roman';
 const FONT_BOLD   = 'Times-Bold';
 const PAGE_OPTIONS = {
   size: 'A4',
-  autoFirstPage: false, // Wichtig: PDFKit soll nicht automatisch die erste Seite erstellen
+  autoFirstPage: false, // Beibehalten, aber wir fügen jetzt wieder explizit hinzu
   margins: { top: 25, bottom: 35, left: 40, right: 40 }
 };
 const V_SPACE = { TINY: 1, SMALL: 4, MEDIUM: 10, LARGE: 18, SIGNATURE_GAP: 45 };
@@ -46,9 +46,7 @@ function decimalHoursToHHMM(decimalHours) {
 // Formatiert Datum zu DD.MM.YYYY (UTC)
 function formatDateGerman(dateInput) {
   if (!dateInput) return 'N/A';
-  // Sicherstellen, dass wir einen String im FormatPrintNumConst-MM-DD haben
   const str = (dateInput instanceof Date) ? dateInput.toISOString().split('T')[0] : String(dateInput).split('T')[0];
-  // Als UTC-Datum parsen, um Zeitzonenprobleme bei der Formatierung zu vermeiden
   const d = new Date(str + 'T00:00:00Z');
   return isNaN(d) ? String(dateInput) : d.toLocaleDateString('de-DE', { day:'2-digit', month:'2-digit', year:'numeric', timeZone:'UTC' });
 }
@@ -62,89 +60,67 @@ function formatDateGermanWithWeekday(dateInput) {
 }
 
 // Zeichnet den Dokumentenkopf (Titel, Name, Zeitraum, Logo)
+// Benötigt jetzt keine Änderung mehr, da doc.page beim Aufruf existiert
 function drawDocumentHeader(doc, title, name, startDate, endDate) {
   const left = doc.page.margins.left;
   const right = doc.page.margins.right;
-  // Breite wird erst NACH dem Zeichnen benötigt, wenn die Seite existiert
-  // const width = doc.page.width - left - right; // <-- Wird hier nicht mehr berechnet
-  let y = doc.page.margins.top; // Startet am oberen Rand
+  const width = doc.page.width - left - right;
+  let y = doc.page.margins.top;
 
-  // Logo rechts oben platzieren (ignoriert Fehler, falls Logo nicht da)
   try {
     const logoPath = path.join(process.cwd(),'public','icons','Hand-in-Hand-Logo-192x192.png');
-    // Logo-Größe festlegen
     doc.image(logoPath, doc.page.width - right - 70, y, { width:70, height:70 });
   } catch (e) {
       console.warn("Logo konnte nicht geladen/gezeichnet werden:", e.message);
   }
 
-  // Titel zentriert (Hier wird die Seite implizit erstellt!)
   doc.font(FONT_BOLD).fontSize(FONT_SIZE.HEADER).fillColor('black');
-  // Die Breite wird hier direkt berechnet, da doc.page jetzt existiert
-  const width = doc.page.width - left - right; // <-- Berechnung hierhin verschoben
   doc.text(title, left, y + V_SPACE.SMALL, { align:'center', width });
-  y += V_SPACE.SMALL + doc.heightOfString(title, { width, align:'center' }) + V_SPACE.LARGE; // Vertikaler Abstand nach Titel
+  y += V_SPACE.SMALL + doc.heightOfString(title, { width, align:'center' }) + V_SPACE.LARGE;
 
-  // Sub-Header (Name, Zeitraum) linksbündig
   doc.font(FONT_NORMAL).fontSize(FONT_SIZE.SUB_HEADER);
   doc.text(`Name: ${name||'Unbekannt'}`, left, y);
-  y += FONT_SIZE.SUB_HEADER + V_SPACE.SMALL; // Vertikaler Abstand
+  y += FONT_SIZE.SUB_HEADER + V_SPACE.SMALL;
   doc.text(`Zeitraum: ${formatDateGerman(startDate)} - ${formatDateGerman(endDate)}`, left, y);
 
-  // Gibt die Y-Position NACH dem Header zurück für den nächsten Inhalt
   return y + FONT_SIZE.SUB_HEADER + V_SPACE.LARGE;
 }
 
 // Zeichnet den Tabellenkopf
 function drawTableHeader(doc, startY, usableWidth) {
   const left = doc.page.margins.left;
-
-  // Spaltenbreiten definieren (können angepasst werden)
   const cols = { date:105, start:65, end:85, expected:75, actual:75 };
-  // Die letzte Spalte ('diff') nimmt den Restplatz ein, aber mindestens 30 breit
   cols.diff = Math.max(30, usableWidth - Object.values(cols).reduce((a,b)=>a+b,0));
-
-  // X-Positionen der Spalten berechnen
   const pos = { date:left };
   pos.start    = pos.date + cols.date;
   pos.end      = pos.start + cols.start;
   pos.expected = pos.end + cols.end;
   pos.actual   = pos.expected + cols.expected;
   pos.diff     = pos.actual + cols.actual;
-
-  // Höhe des Headers berechnen (2 Zeilen Text + Abstände)
   const headerHeight = (FONT_SIZE.TABLE_HEADER*2) + V_SPACE.TINY + V_SPACE.SMALL;
 
-  // Hintergrundfarbe für Header
   doc.save()
-     .fillColor('#eeeeee') // Hellgrau
+     .fillColor('#eeeeee')
      .rect(left, startY, usableWidth, headerHeight)
      .fill()
      .restore();
-
-  // Linien für Header
-  doc.save().lineWidth(0.5).strokeColor('#cccccc'); // Hellgraue Linien
-  // Obere und untere Linie des Headers
+  doc.save().lineWidth(0.5).strokeColor('#cccccc');
   doc.moveTo(left,startY).lineTo(left+usableWidth,startY).stroke();
   doc.moveTo(left,startY+headerHeight).lineTo(left+usableWidth,startY+headerHeight).stroke();
-  // Vertikale Trennlinien
   Object.values(pos).forEach(x=> doc.moveTo(x,startY).lineTo(x,startY+headerHeight).stroke());
   doc.restore();
 
-  // Text für Header
   doc.font(FONT_BOLD).fontSize(FONT_SIZE.TABLE_HEADER).fillColor('black');
-  const yText = startY + V_SPACE.TINY; // Y-Position für den Text im Header
-  // Texte mit Zeilenumbruch (\n) und Zentrierung wo nötig
-  doc.text('Datum',     pos.date,     yText, { width:cols.date }); // Links ausgerichtet
+  const yText = startY + V_SPACE.TINY;
+  doc.text('Datum',     pos.date,     yText, { width:cols.date });
   doc.text('Arbeits-\nbeginn', pos.start,    yText, { width:cols.start,align:'center' });
   doc.text('Arbeits-\nende',  pos.end,      yText, { width:cols.end,  align:'center' });
-  doc.text('Soll-Zeit', pos.expected, yText, { width:cols.expected,align:'center' }); // TODO: Ggf. (HH:MM) hinzufügen
-  doc.text('Ist-Zeit',  pos.actual,   yText, { width:cols.actual, align:'center' }); // TODO: Ggf. (HH:MM) hinzufügen
-  doc.text('Diff',      pos.diff,     yText, { width:cols.diff,   align:'center' }); // TODO: Ggf. anpassen zu 'Mehr/Minder Std.(HH:MM)'
+  doc.text('Soll-Zeit', pos.expected, yText, { width:cols.expected,align:'center' });
+  doc.text('Ist-Zeit',  pos.actual,   yText, { width:cols.actual, align:'center' });
+  doc.text('Diff',      pos.diff,     yText, { width:cols.diff,   align:'center' });
 
-  // Gibt relevante Infos zurück: Y-Position nach dem Header, Spaltenbreiten/-positionen
   return {
-    headerBottomY: startY + headerHeight + V_SPACE.SMALL, // Wo der nächste Inhalt beginnt
+    headerBottomY: startY + headerHeight + V_SPACE.SMALL,
     colWidths: cols,
     colPositions: pos,
     headerHeight: headerHeight
@@ -154,7 +130,6 @@ function drawTableHeader(doc, startY, usableWidth) {
 // Zeichnet die Seitennummer unten zentriert
 function drawPageNumber(doc, pageNum) {
   const left = doc.page.margins.left;
-  // Positioniert die Seitenzahl etwas über dem unteren Rand
   const bottomY = doc.page.height - doc.page.margins.bottom + V_SPACE.MEDIUM;
   const width = doc.page.width - left - doc.page.margins.right;
   doc.font(FONT_NORMAL).fontSize(FONT_SIZE.PAGE_NUMBER).fillColor('black')
@@ -166,47 +141,35 @@ function drawSignatureFooter(doc, startY) {
   const left = doc.page.margins.left;
   const width = doc.page.width - left - doc.page.margins.right;
   doc.font(FONT_NORMAL).fontSize(FONT_SIZE.FOOTER).fillColor('black');
-
-  // Bestätigungstext (TODO: Ggf. Text an Ziel.pdf anpassen)
   const text = 'Ich bestätige hiermit, dass die oben genannten Arbeits-/Gutschriftstunden erbracht wurden.';
   doc.text(text, left, startY, { width });
-
-  // Y-Position für die Unterschriftslinie
   let y = startY + doc.heightOfString(text, { width }) + V_SPACE.SIGNATURE_GAP;
-  // Linie zeichnen
   doc.moveTo(left,y).lineTo(left+200,y).stroke();
-  // Text unter der Linie
   doc.text('Datum, Unterschrift', left, y + V_SPACE.SMALL);
 }
 
-// Middleware zur Prüfung von Admin-Rechten (aus server.js kopiert/angepasst für Konsistenz)
+// Middleware zur Prüfung von Admin-Rechten
 function isAdmin(req,res,next){
-  // Prüft, ob die Session existiert und isAdmin gesetzt ist
   if(req.session && req.session.isAdmin === true) {
-      next(); // Zugriff erlaubt
+      next();
   } else {
-      res.status(403).send('Zugriff verweigert. Admin-Login erforderlich.'); // Zugriff verweigert
+      res.status(403).send('Zugriff verweigert. Admin-Login erforderlich.');
   }
 }
 
-
 module.exports = function(db) {
 
-  // Test-Route (optional)
   router.get('/test', (req,res) => res.send('PDF Route Test OK'));
 
-  // Hauptroute zur Erstellung des Monats-PDFs
   router.get('/create-monthly-pdf', isAdmin, async (req,res) => {
     try {
       const { name, year, month } = req.query;
-      // Eingabeprüfung
       if (!name || !year || !month || isNaN(+year)||isNaN(+month)||month<1||month>12) {
         return res.status(400).send('Parameter fehlen oder ungültig (name, year, month erforderlich).');
       }
       const y = +year; const m = +month;
 
       console.log(`[PDF] Anforderung für ${name}, ${String(m).padStart(2,'0')}/${y}`);
-      // Daten aus der Datenbank holen und berechnen lassen
       const data = await calculateMonthlyData(db, name, y, m);
       if (!data) {
           console.error(`[PDF] Keine Daten für ${name}, ${String(m).padStart(2,'0')}/${y} gefunden.`);
@@ -214,98 +177,85 @@ module.exports = function(db) {
       }
       console.log(`[PDF] Daten für ${name} erhalten. Beginne PDF-Generierung.`);
 
-      // PDF-Dokument initialisieren
       const doc = new PDFDocument(PAGE_OPTIONS);
-
-      // PDF an den Response streamen
       doc.pipe(res);
 
-      // Dateiname für den Download festlegen
       const safeName = (data.employeeName||'Unbekannt').replace(/[^a-z0-9_\-]/gi,'_');
       const filename = `Monatsnachweis_${safeName}_${String(m).padStart(2,'0')}_${y}.pdf`;
       res.setHeader('Content-Type','application/pdf');
       res.setHeader('Content-Disposition',`attachment; filename="${filename}"`);
 
-      // Erste Seite wird implizit beim ersten Zeichnen erstellt
-      // const uW = doc.page.width - doc.page.margins.left - doc.page.margins.right; // <-- Berechnung hier entfernt
+      // *** KORREKTUR: Explizites addPage wieder eingefügt ***
+      // Dies stellt sicher, dass doc.page existiert, bevor drawDocumentHeader darauf zugreift.
+      let page = 0;
+      page++;
+      doc.addPage(); // Fügt die erste Seite hinzu
 
-      let page = 0; // Zählvariable für Seitennummer
+      const uW = doc.page.width - doc.page.margins.left - doc.page.margins.right;
 
-      // === SEITE 1 (oder nächste Seite nach Umbruch) ===
-
-      // Dokumenten-Header zeichnen (erstellt implizit Seite 1)
+      // === SEITE 1 ===
+      // Dokumenten-Header zeichnen
       let yPos = drawDocumentHeader(doc,
                                    `Monatsnachweis ${String(m).padStart(2,'0')}/${y}`,
                                    data.employeeName,
-                                   new Date(Date.UTC(y,m-1,1)), // Erster Tag des Monats (UTC)
-                                   new Date(Date.UTC(y,m,0))    // Letzter Tag des Monats (UTC)
+                                   new Date(Date.UTC(y,m-1,1)),
+                                   new Date(Date.UTC(y,m,0))
                                   );
-      page = 1; // Nachdem der Header auf Seite 1 ist, setzen wir den Zähler
-
-      // *** NEU: Berechnung der nutzbaren Breite NACHDEM die erste Seite existiert ***
-      const uW = doc.page.width - doc.page.margins.left - doc.page.margins.right;
+      // Seitenzähler ist jetzt korrekt auf 1
 
       // Seitennummer zeichnen (TODO: In Schritt 3 entfernen, falls gewünscht)
       // drawPageNumber(doc, page);
 
       // Tabellen-Header zeichnen
       const table = drawTableHeader(doc, yPos, uW);
-      yPos = table.headerBottomY; // Y-Position nach dem Tabellen-Header
-      doc.font(FONT_NORMAL).fontSize(FONT_SIZE.TABLE_CONTENT).fillColor('black').lineGap(1.5); // Schrift für Tabelleninhalt
-      doc.y = yPos; // Setze die Startposition für die erste Zeile
+      yPos = table.headerBottomY;
+      doc.font(FONT_NORMAL).fontSize(FONT_SIZE.TABLE_CONTENT).fillColor('black').lineGap(1.5);
+      doc.y = yPos; // Startposition für die erste Zeile
 
-      // Daten für die Tabelle vorbereiten und sortieren
       const allDays = [];
-      // Arbeitseinträge hinzufügen
       data.workEntries.forEach(e => allDays.push({date:e.date,type:'WORK',start:e.startTime,end:e.endTime,actual:+e.hours||0}));
-      // Abwesenheitseinträge hinzufügen (nur wenn kein Arbeitseintrag am selben Tag)
       data.absenceEntries.forEach(a => {
-          if(!allDays.find(d=>d.date===a.date)) { // Verhindert doppelte Tage
+          if(!allDays.find(d=>d.date===a.date)) {
              allDays.push({date:a.date,type:a.type,actual:+a.hours||0,comment:a.comment});
           }
       });
-      // Nach Datum sortieren
       allDays.sort((a,b)=>new Date(a.date)-new Date(b.date));
 
-      const left = doc.page.margins.left; // Linker Rand für Linien
+      const left = doc.page.margins.left;
 
       // Tabellenzeilen zeichnen
       allDays.forEach((d,i) => {
-        // Prüfen, ob ein Seitenumbruch nötig ist, BEVOR die Zeile gezeichnet wird
-        // Berücksichtigt Platz für die Zeile selbst, die Zusammenfassung und die Fußzeile
-        if (doc.y + TABLE_ROW_HEIGHT > doc.page.height - doc.page.margins.bottom - FOOTER_TOTAL_HEIGHT - SUMMARY_TOTAL_HEIGHT) {
+
+        // *** KORREKTUR: Seitenumbruch nicht vor der allerersten Zeile prüfen (i > 0) ***
+        // Prüfen, ob ein Seitenumbruch nötig ist, aber nur NACH der ersten Zeile.
+        if (i > 0 && (doc.y + TABLE_ROW_HEIGHT > doc.page.height - doc.page.margins.bottom - FOOTER_TOTAL_HEIGHT - SUMMARY_TOTAL_HEIGHT)) {
           console.log(`[PDF] Seitenumbruch vor Zeile ${i+1} (Datum: ${d.date}) bei Y=${doc.y}`);
           page++;
-          doc.addPage(); // Neue Seite hinzufügen
-          // drawPageNumber(doc,page); // Seitennummer für neue Seite (TODO: In Schritt 3 entfernen)
-          // Tabellenkopf auf neuer Seite wiederholen
+          doc.addPage();
+          // drawPageNumber(doc,page); // (TODO: In Schritt 3 entfernen)
           const nextTable = drawTableHeader(doc, doc.page.margins.top, uW);
-          doc.y = nextTable.headerBottomY; // Y-Position auf neuer Seite setzen
-          doc.font(FONT_NORMAL).fontSize(FONT_SIZE.TABLE_CONTENT).fillColor('black').lineGap(1.5); // Schrift zurücksetzen
+          doc.y = nextTable.headerBottomY;
+          doc.font(FONT_NORMAL).fontSize(FONT_SIZE.TABLE_CONTENT).fillColor('black').lineGap(1.5);
         }
 
         // Werte für die aktuelle Zeile berechnen/formatieren
-        const expH = getExpectedHours(data.employeeData, d.date); // Soll-Stunden holen
-        const actH = d.actual; // Ist-Stunden (aus Arbeit oder Abwesenheit)
-        const diffH= actH-expH; // Differenz berechnen
-
+        const expH = getExpectedHours(data.employeeData, d.date);
+        const actH = d.actual;
+        const diffH= actH-expH;
         const sDate = formatDateGermanWithWeekday(d.date);
-        // Start/Ende nur bei Arbeit anzeigen, sonst "--:--" (TODO: An Ziel.pdf anpassen für Abwesenheitstypen)
         const sStart= d.type==='WORK'?d.start:'--:--';
-        const sEnd  = d.type==='WORK'?d.end:'--:--'; // Hier könnte man d.type (Urlaub, Krank) anzeigen
+        const sEnd  = d.type==='WORK'?d.end:'--:--';
         const sExp  = decimalHoursToHHMM(expH);
         const sAct  = decimalHoursToHHMM(actH);
         const sDiff = decimalHoursToHHMM(diffH);
-
-        const p = table.colPositions; // Spaltenpositionen
-        const w = table.colWidths;   // Spaltenbreiten
+        const p = table.colPositions;
+        const w = table.colWidths;
 
         // *** KORREKTUR SCHRITT 2 (Platzhalter - noch nicht implementiert): ***
-        // const currentLineY = doc.y; // Y-Position für diese Zeile speichern
-        // doc.text(sDate,p.date,currentLineY,{width:w.date}); // Gespeicherte Y-Pos verwenden
-        // doc.text(sStart,p.start,currentLineY,{width:w.start,align:'right'}); // Gespeicherte Y-Pos verwenden
+        // const currentLineY = doc.y;
+        // doc.text(sDate,p.date,currentLineY,{width:w.date});
         // ... etc. für alle Zellen ...
-        // doc.y = currentLineY + TABLE_ROW_HEIGHT; // Y-Position für nächste Zeile setzen
+        // doc.y = currentLineY + TABLE_ROW_HEIGHT;
 
         // *** Aktueller Code (führt zu vertikaler Verteilung - wird in Schritt 2 korrigiert): ***
         doc.text(sDate,p.date,doc.y,{width:w.date});
@@ -314,8 +264,7 @@ module.exports = function(db) {
         doc.text(sExp,p.expected,doc.y,{width:w.expected,align:'right'});
         doc.text(sAct,p.actual,doc.y,{width:w.actual,align:'right'});
         doc.text(sDiff,p.diff,doc.y,{width:w.diff,align:'right'});
-        // Aktueller Code erhöht y nach jedem Text. Nur die letzte Zeile braucht y explizit zu erhöhen
-        // doc.y += TABLE_ROW_HEIGHT; // Diese Zeile wird in Schritt 2 angepasst/verschoben
+        // doc.y += TABLE_ROW_HEIGHT; // (Wird in Schritt 2 angepasst)
 
         // Horizontale Trennlinie nach jeder Zeile
         doc.save().lineWidth(0.25).strokeColor('#dddddd')
@@ -323,9 +272,9 @@ module.exports = function(db) {
       });
 
       // Rahmen um den gesamten Tabelleninhalt zeichnen
-      const tableTopY = table.headerBottomY - table.headerHeight - V_SPACE.SMALL; // Y-Pos des Tabellenkopfes
-      const tableBottomY = doc.y; // Y-Pos nach der letzten Zeile
-      doc.save().lineWidth(0.5).strokeColor('#999999') // Dunkelgrauer Rahmen
+      const tableTopY = table.headerBottomY - table.headerHeight - V_SPACE.SMALL;
+      const tableBottomY = doc.y;
+      doc.save().lineWidth(0.5).strokeColor('#999999')
          .rect(left, tableTopY, uW, tableBottomY-tableTopY).stroke().restore();
 
       // Zusammenfassung & Footer zeichnen
@@ -334,43 +283,34 @@ module.exports = function(db) {
            console.log(`[PDF] Seitenumbruch vor Zusammenfassung bei Y=${doc.y}`);
            page++;
            doc.addPage();
-           // drawPageNumber(doc,page); // Seitennummer (TODO: In Schritt 3 entfernen)
-           doc.y = doc.page.margins.top; // Y-Position auf neuer Seite oben setzen
+           // drawPageNumber(doc,page); // (TODO: In Schritt 3 entfernen)
+           doc.y = doc.page.margins.top;
        } else {
-           // Wenn kein Umbruch, etwas Abstand nach der Tabelle
            doc.y += V_SPACE.LARGE;
        }
 
       // Zusammenfassung zeichnen
       doc.font(FONT_BOLD).fontSize(FONT_SIZE.SUMMARY).fillColor('black');
-      // Breite für die Labels (passt ungefähr bis zur Soll-Zeit Spalte)
       const lblW = table.colWidths.date + table.colWidths.start + table.colWidths.end + table.colWidths.expected - V_SPACE.SMALL;
-      // X-Position für die Werte (beginnt bei der Ist-Zeit Spalte)
       const valX = table.colPositions.actual;
-      const valW = table.colWidths.actual+table.colWidths.diff; // Breite für Werte (Ist + Diff Spalte)
+      const valW = table.colWidths.actual+table.colWidths.diff;
 
       // TODO: Labels anpassen an Ziel.pdf, fehlende Zeilen hinzufügen
-
       doc.text('Übertrag Vormonat:', left, doc.y, {width:lblW});
       doc.text(decimalHoursToHHMM(data.previousCarryOver), valX, doc.y, { width: valW, align:'right' });
-      doc.moveDown(0.5); // Kleiner Abstand
-
+      doc.moveDown(0.5);
       doc.text('Gesamt Soll (Monat):', left, doc.y, {width:lblW});
       doc.text(decimalHoursToHHMM(data.totalExpected), valX, doc.y, { width: valW, align:'right' });
       doc.moveDown(0.5);
-
       doc.text('Gesamt Ist (Monat):', left, doc.y, {width:lblW});
-      // TODO: Hier fehlt die Detail-Info "(davon gearb...)"
       doc.text(decimalHoursToHHMM(data.totalActual), valX, doc.y, { width: valW, align:'right' });
       doc.moveDown(0.5);
-
-      doc.text('Differenz:', left, doc.y, {width:lblW}); // TODO: Anpassen zu "Mehr/Minderstunden:"?
+      doc.text('Differenz:', left, doc.y, {width:lblW});
       doc.text(decimalHoursToHHMM(data.totalActual-data.totalExpected), valX, doc.y, { width: valW, align:'right' });
       doc.moveDown(0.5);
+      // TODO: Zeile "Neuer Übertrag (Saldo Ende):" fehlt
 
-      // TODO: Hier fehlt die Zeile "Neuer Übertrag (Saldo Ende):"
-
-      // Signatur-Footer zeichnen (mit Abstand zur Zusammenfassung)
+      // Signatur-Footer zeichnen
       drawSignatureFooter(doc, doc.y + V_SPACE.LARGE);
 
       // PDF abschließen und Stream beenden
@@ -379,10 +319,9 @@ module.exports = function(db) {
 
     } catch (err) {
       console.error('[PDF] Kritischer Fehler bei PDF-Erstellung:', err);
-      // Sicherstellen, dass kein halbfertiges PDF gesendet wird
       if (!res.headersSent) {
-        // Sende die spezifische Fehlermeldung, wenn möglich, oder eine generische
-        res.status(500).send(`Fehler bei der PDF-Erstellung auf dem Server. (${err.message || ''})`);
+        // Die spezifische Fehlermeldung ausgeben, falls vorhanden
+        res.status(500).send(`Fehler bei der PDF-Erstellung auf dem Server. (${err.message || 'Unbekannter interner Fehler'})`);
       }
     }
   });
