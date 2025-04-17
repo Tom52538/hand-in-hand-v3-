@@ -1,4 +1,4 @@
-// monthlyPdfEndpoint.js - V11: Defensive checks inside loops and summary
+// monthlyPdfEndpoint.js - V12: Change Font to Times-Roman as diagnostic step
 // +++ DEBUG LOGGING ERWEITERT +++
 
 const express = require('express');
@@ -9,12 +9,14 @@ const router = express.Router();
 const { calculateMonthlyData, calculatePeriodData, getExpectedHours } = require('../utils/calculationUtils');
 
 // --- Konstanten & Hilfsfunktionen ---
-const FONT_NORMAL = 'Helvetica';
-const FONT_BOLD = 'Helvetica-Bold';
+// +++ V12 Änderung: Font auf Standard-PDF-Font geändert +++
+const FONT_NORMAL = 'Times-Roman';
+const FONT_BOLD = 'Times-Bold';
+// +++ Ende V12 Änderung +++
 const PAGE_OPTIONS = { size: 'A4', autoFirstPage: false, margins: { top: 25, bottom: 35, left: 40, right: 40 } };
 const V_SPACE = { TINY: 1, SMALL: 4, MEDIUM: 10, LARGE: 18, SIGNATURE_GAP: 45 };
 const FONT_SIZE = { HEADER: 16, SUB_HEADER: 11, TABLE_HEADER: 9, TABLE_CONTENT: 9, SUMMARY: 8, FOOTER: 8, PAGE_NUMBER: 8 };
-// Höhenabschätzungen (unverändert)
+// Höhenabschätzungen
 const TABLE_ROW_HEIGHT = 12;
 const FOOTER_CONTENT_HEIGHT = FONT_SIZE.FOOTER + V_SPACE.SMALL;
 const SIGNATURE_AREA_HEIGHT = V_SPACE.SIGNATURE_GAP + FONT_SIZE.FOOTER + V_SPACE.SMALL;
@@ -22,10 +24,10 @@ const FOOTER_TOTAL_HEIGHT = FOOTER_CONTENT_HEIGHT + SIGNATURE_AREA_HEIGHT + V_SP
 const SUMMARY_LINE_HEIGHT = FONT_SIZE.SUMMARY + V_SPACE.TINY + 0.5;
 const SUMMARY_TOTAL_HEIGHT = (7 * SUMMARY_LINE_HEIGHT) + V_SPACE.LARGE;
 
-// Formatierungsoptionen (unverändert)
+// Formatierungsoptionen
 const pdfDateOptions = { day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'UTC' };
 const pdfDateOptionsWithWeekday = { weekday: 'short', day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'UTC' };
-// Hilfsfunktion: Dezimalstunden in HH:MM (unverändert)
+// Hilfsfunktion: Dezimalstunden in HH:MM
 function decimalHoursToHHMM(decimalHours) {
     if (isNaN(decimalHours) || decimalHours === null) return "00:00";
     const sign = decimalHours < 0 ? "-" : "";
@@ -36,7 +38,7 @@ function decimalHoursToHHMM(decimalHours) {
     return `${sign}${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
 }
 
-// Hilfsfunktion: Datum TT.MM.YYYY (unverändert)
+// Hilfsfunktion: Datum TT.MM.YYYY
 function formatDateGerman(dateInput) {
     if (!dateInput) return 'N/A';
     try {
@@ -50,7 +52,7 @@ function formatDateGerman(dateInput) {
     }
 }
 
-// Hilfsfunktion: Datum Wochentag. TT.MM.YYYY (unverändert)
+// Hilfsfunktion: Datum Wochentag. TT.MM.YYYY
 function formatDateGermanWithWeekday(dateInput) {
     if (!dateInput) return 'N/A';
     try {
@@ -64,10 +66,10 @@ function formatDateGermanWithWeekday(dateInput) {
     }
 }
 
-// Hilfsfunktion: Zeichnet den Dokumentenkopf (unverändert)
+// Hilfsfunktion: Zeichnet den Dokumentenkopf
 function drawDocumentHeader(doc, title, employeeName, periodStartDate, periodEndDate) {
-    console.log(`[PDF DEBUG V11] drawDocumentHeader START für Titel: ${title}`);
-    if (!doc || !doc.page || !doc.page.margins) { console.error("[PDF DEBUG V11] drawDocumentHeader: doc.page oder doc.page.margins ist nicht verfügbar!"); return doc.page?.margins?.top || 50; }
+    console.log(`[PDF DEBUG V12] drawDocumentHeader START für Titel: ${title}`);
+    if (!doc || !doc.page || !doc.page.margins) { console.error("[PDF DEBUG V12] drawDocumentHeader: doc.page oder doc.page.margins ist nicht verfügbar!"); return doc.page?.margins?.top || 50; }
     const pageLeftMargin = doc.page.margins.left;
     const pageRightMargin = doc.page.margins.right;
     const usableWidth = doc.page.width - pageLeftMargin - pageRightMargin;
@@ -78,7 +80,7 @@ function drawDocumentHeader(doc, title, employeeName, periodStartDate, periodEnd
         const logoWidth = 70; const logoHeight = 70;
         const logoX = doc.page.width - pageRightMargin - logoWidth;
         doc.image(logoPath, logoX, headerStartY, { width: logoWidth, height: logoHeight });
-    } catch (errLogo) { console.warn("[PDF DEBUG V11] Logo Fehler:", errLogo); }
+    } catch (errLogo) { console.warn("[PDF DEBUG V12] Logo Fehler:", errLogo); }
     doc.font(FONT_BOLD).fontSize(FONT_SIZE.HEADER);
     const titleY = headerStartY + V_SPACE.SMALL;
     doc.text(title, pageLeftMargin, titleY, { align: 'center', width: usableWidth });
@@ -88,16 +90,16 @@ function drawDocumentHeader(doc, title, employeeName, periodStartDate, periodEnd
     currentY += FONT_SIZE.SUB_HEADER + V_SPACE.SMALL;
     doc.text(`Zeitraum: ${formatDateGerman(periodStartDate)} - ${formatDateGerman(periodEndDate)}`, pageLeftMargin, currentY);
     currentY += FONT_SIZE.SUB_HEADER + V_SPACE.LARGE;
-    console.log(`[PDF DEBUG V11] drawDocumentHeader ENDE bei Y=${currentY.toFixed(2)}`);
+    console.log(`[PDF DEBUG V12] drawDocumentHeader ENDE bei Y=${currentY.toFixed(2)}`);
     return currentY;
 }
 
-// Hilfsfunktion: Zeichnet den Tabellenkopf (unverändert)
+// Hilfsfunktion: Zeichnet den Tabellenkopf
 function drawTableHeader(doc, startY, usableWidth) {
-    console.log(`[PDF DEBUG V11] drawTableHeader START bei Y=${startY.toFixed(2)}`);
+    console.log(`[PDF DEBUG V12] drawTableHeader START bei Y=${startY.toFixed(2)}`);
     if (!doc || !doc.page || !doc.page.margins || !usableWidth || usableWidth <= 0) {
-         console.error("[PDF DEBUG V11] drawTableHeader: Ungültiger Zustand für doc oder usableWidth!");
-         throw new Error("[PDF V11 Error] drawTableHeader received invalid doc state or usableWidth.");
+         console.error("[PDF DEBUG V12] drawTableHeader: Ungültiger Zustand für doc oder usableWidth!");
+         throw new Error("[PDF V12 Error] drawTableHeader received invalid doc state or usableWidth.");
     }
     const pageLeftMargin = doc.page.margins.left;
     const colWidths = { date: 105, start: 65, end: 85, expected: 75, actual: 75, diff: usableWidth - 105 - 65 - 85 - 75 - 75 };
@@ -117,37 +119,37 @@ function drawTableHeader(doc, startY, usableWidth) {
         const headerBottomY = startY + headerHeight;
         doc.moveTo(pageLeftMargin, headerBottomY).lineTo(pageLeftMargin + usableWidth, headerBottomY).lineWidth(0.5).stroke();
         const result = { headerBottomY: headerBottomY + V_SPACE.SMALL, colWidths, colPositions };
-        console.log(`[PDF DEBUG V11] drawTableHeader ENDE, returniert headerBottomY=${result.headerBottomY.toFixed(2)}`);
+        console.log(`[PDF DEBUG V12] drawTableHeader ENDE, returniert headerBottomY=${result.headerBottomY.toFixed(2)}`);
         if (oldFont) doc.font(oldFont); if (oldFontSize) doc.fontSize(oldFontSize);
         return result;
     } catch (headerError){
-         console.error("[PDF DEBUG V11] FEHLER innerhalb drawTableHeader!", headerError);
+         console.error("[PDF DEBUG V12] FEHLER innerhalb drawTableHeader!", headerError);
          try { if (oldFont) doc.font(oldFont); if (oldFontSize) doc.fontSize(oldFontSize); } catch(restoreErr){}
          throw headerError;
     }
 }
 
-// Hilfsfunktion: Zeichnet die Seitenzahl (unverändert)
+// Hilfsfunktion: Zeichnet die Seitenzahl
 function drawPageNumber(doc, pageNum) {
-    console.log(`[PDF DEBUG V11] drawPageNumber START für Seite ${pageNum}`);
-    if (!doc || !doc.page || !doc.page.margins) { console.error("[PDF DEBUG V11] drawPageNumber: doc.page oder doc.page.margins ist nicht verfügbar!"); return; }
+    console.log(`[PDF DEBUG V12] drawPageNumber START für Seite ${pageNum}`);
+    if (!doc || !doc.page || !doc.page.margins) { console.error("[PDF DEBUG V12] drawPageNumber: doc.page oder doc.page.margins ist nicht verfügbar!"); return; }
     const pageBottomMargin = doc.page.margins.bottom; const pageHeight = doc.page.height; const pageLeftMargin = doc.page.margins.left;
     const usableWidth = doc.page.width - pageLeftMargin - doc.page.margins.right; const numberY = pageHeight - pageBottomMargin + V_SPACE.MEDIUM;
     const oldFont = doc._font; const oldFontSize = doc._fontSize; const oldFillColor = doc._fillColor; const oldLineGap = doc._lineGap;
     try {
         doc.font(FONT_NORMAL).fontSize(FONT_SIZE.PAGE_NUMBER).fillColor('black').lineGap(0)
            .text(`Seite ${pageNum}`, pageLeftMargin, numberY, { width: usableWidth, align: 'center' });
-    } catch (fontError) { console.error("[PDF DEBUG V11] drawPageNumber: FEHLER beim Setzen des Fonts oder Zeichnen des Texts!", fontError); return; }
+    } catch (fontError) { console.error("[PDF DEBUG V12] drawPageNumber: FEHLER beim Setzen des Fonts oder Zeichnen des Texts!", fontError); return; }
     try {
         if (oldFont) doc.font(oldFont); if (oldFontSize) doc.fontSize(oldFontSize); if (oldFillColor) doc.fillColor(oldFillColor); if (typeof oldLineGap !== 'undefined') doc.lineGap(oldLineGap);
-    } catch (restoreError) { console.error("[PDF DEBUG V11] drawPageNumber: FEHLER beim Wiederherstellen des Font-Status!", restoreError); }
-    console.log(`[PDF DEBUG V11] drawPageNumber ENDE für Seite ${pageNum}`);
+    } catch (restoreError) { console.error("[PDF DEBUG V12] drawPageNumber: FEHLER beim Wiederherstellen des Font-Status!", restoreError); }
+    console.log(`[PDF DEBUG V12] drawPageNumber ENDE für Seite ${pageNum}`);
 }
 
-// Hilfsfunktion: Zeichnet den Footer (unverändert)
+// Hilfsfunktion: Zeichnet den Footer
 function drawSignatureFooter(doc, startY) {
-    console.log(`[PDF DEBUG V11] drawSignatureFooter START bei Y=${startY.toFixed(2)}`);
-    if (!doc || !doc.page || !doc.page.margins) { console.error("[PDF DEBUG V11] drawSignatureFooter: doc.page oder doc.page.margins ist nicht verfügbar!"); return; }
+    console.log(`[PDF DEBUG V12] drawSignatureFooter START bei Y=${startY.toFixed(2)}`);
+    if (!doc || !doc.page || !doc.page.margins) { console.error("[PDF DEBUG V12] drawSignatureFooter: doc.page oder doc.page.margins ist nicht verfügbar!"); return; }
     const pageLeftMargin = doc.page.margins.left; const usableWidth = doc.page.width - pageLeftMargin - doc.page.margins.right; let currentY = startY;
     const oldFont = doc._font; const oldFontSize = doc._fontSize; const oldFillColor = doc._fillColor; const oldLineGap = doc._lineGap;
     try {
@@ -159,14 +161,14 @@ function drawSignatureFooter(doc, startY) {
         doc.moveTo(lineStartX, currentY).lineTo(lineEndX, currentY).lineWidth(0.5).stroke(); currentY += V_SPACE.SMALL;
         doc.text("Datum, Unterschrift", pageLeftMargin, currentY);
         currentY += doc.heightOfString("Datum, Unterschrift");
-    } catch(drawError) { console.error("[PDF DEBUG V11] drawSignatureFooter: FEHLER beim Zeichnen!", drawError); return; }
+    } catch(drawError) { console.error("[PDF DEBUG V12] drawSignatureFooter: FEHLER beim Zeichnen!", drawError); return; }
     try {
         if (oldFont) doc.font(oldFont); if (oldFontSize) doc.fontSize(oldFontSize); if (oldFillColor) doc.fillColor(oldFillColor); if (typeof oldLineGap !== 'undefined') doc.lineGap(oldLineGap);
-    } catch (restoreError) { console.error("[PDF DEBUG V11] drawSignatureFooter: FEHLER beim Wiederherstellen des Font-Status!", restoreError); }
-    console.log(`[PDF DEBUG V11] drawSignatureFooter ENDE bei Y=${currentY.toFixed(2)}`);
+    } catch (restoreError) { console.error("[PDF DEBUG V12] drawSignatureFooter: FEHLER beim Wiederherstellen des Font-Status!", restoreError); }
+    console.log(`[PDF DEBUG V12] drawSignatureFooter ENDE bei Y=${currentY.toFixed(2)}`);
 }
 
-// Middleware: isAdmin (unverändert)
+// Middleware: isAdmin
 function isAdmin(req, res, next) {
   if (req.session && req.session.isAdmin) { next(); }
   else { console.warn("[isAdmin Middleware] Zugriff verweigert."); res.status(403).send('Zugriff verweigert'); }
@@ -177,33 +179,28 @@ function isAdmin(req, res, next) {
 //-----------------------------------------------------
 module.exports = function (db) {
 
-    // +++ TEST ROUTE (unverändert) +++
+    // +++ TEST ROUTE +++
     router.get('/test', (req, res) => { res.send('PDF Route Test OK'); });
 
-    // GET /create-monthly-pdf (V11 - Defensive Checks)
+    // GET /create-monthly-pdf (V12 - Font Change + Defensive Checks)
     router.get('/create-monthly-pdf', isAdmin, async (req, res) => {
-        console.log(`[PDF Mon V11 DEBUG] Route /create-monthly-pdf START.`);
+        console.log(`[PDF Mon V12 DEBUG] Route /create-monthly-pdf START.`);
         let doc; let currentPage = 0;
         try {
-            // Parameter validieren
             const { name, year, month } = req.query;
             if (!name || !year || !month || isNaN(parseInt(year)) || isNaN(parseInt(month)) || month < 1 || month > 12) {
-                console.error(`[PDF Mon V11 DEBUG] Ungültige Parameter: name=${name}, year=${year}, month=${month}`);
+                console.error(`[PDF Mon V12 DEBUG] Ungültige Parameter: name=${name}, year=${year}, month=${month}`);
                 return res.status(400).send("Parameter fehlen oder sind ungültig.");
             }
             const parsedYear = parseInt(year, 10); const parsedMonth = parseInt(month, 10);
-            console.log(`[PDF Mon V11] Starte Generierung für ${name}, ${parsedMonth}/${parsedYear}`);
+            console.log(`[PDF Mon V12] Starte Generierung für ${name}, ${parsedMonth}/${parsedYear}`);
 
-            // +++ DEBUG LOGGING +++
-            console.log('[PDF Mon V11 DEBUG] ===> Vor calculateMonthlyData...');
-            // Daten holen
+            console.log('[PDF Mon V12 DEBUG] ===> Vor calculateMonthlyData...');
             const data = await calculateMonthlyData(db, name, year, month);
-            // +++ DEBUG LOGGING +++
-            console.log('[PDF Mon V11 DEBUG] <=== Nach calculateMonthlyData. Daten erhalten:', data ? `Ja (${data.workEntries?.length || 0} Arbeits-Einträge, ${data.absenceEntries?.length || 0} Abwesenheiten)` : 'Nein / Fehler');
+            console.log('[PDF Mon V12 DEBUG] <=== Nach calculateMonthlyData. Daten erhalten:', data ? `Ja (${data.workEntries?.length || 0} Arbeits-Einträge, ${data.absenceEntries?.length || 0} Abwesenheiten)` : 'Nein / Fehler');
             if (!data) { throw new Error("Konnte Daten für die PDF-Generierung nicht abrufen."); }
             const employeeDataForPdf = data.employeeData;
 
-            // PDF initialisieren und Header setzen
             doc = new PDFDocument(PAGE_OPTIONS);
             const usableWidth = doc.page.width - doc.page.margins.left - doc.page.margins.right;
             doc.pipe(res);
@@ -211,58 +208,50 @@ module.exports = function (db) {
             const filename = `Monatsnachweis_${safeName}_${String(parsedMonth).padStart(2, '0')}_${parsedYear}.pdf`;
             res.setHeader('Content-Type', 'application/pdf'); res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
 
-            // Erste Seite hinzufügen und Kopf/Seitenzahl
             currentPage++; doc.addPage();
-            console.log(`[PDF Mon V11 DEBUG] Seite ${currentPage} hinzugefügt.`);
+            console.log(`[PDF Mon V12 DEBUG] Seite ${currentPage} hinzugefügt.`);
             let currentY = drawDocumentHeader(doc, `Monatsnachweis ${String(parsedMonth).padStart(2, '0')}/${parsedYear}`, data.employeeName, new Date(Date.UTC(parsedYear, parsedMonth - 1, 1)), new Date(Date.UTC(parsedYear, parsedMonth, 0)));
             drawPageNumber(doc, currentPage);
 
-            // Erster Tabellenkopf
             let tableLayout = drawTableHeader(doc, currentY, usableWidth);
-            if (!tableLayout || !tableLayout.colWidths || !tableLayout.colPositions) { throw new Error(`[PDF V11 Error] drawTableHeader returned invalid layout object on page ${currentPage} (initial).`); }
+            if (!tableLayout || !tableLayout.colWidths || !tableLayout.colPositions) { throw new Error(`[PDF V12 Error] drawTableHeader returned invalid layout object on page ${currentPage} (initial).`); }
             currentY = tableLayout.headerBottomY;
             doc.font(FONT_NORMAL).fontSize(FONT_SIZE.TABLE_CONTENT).lineGap(1.5); doc.y = currentY;
 
-            // Kombinierte Liste erstellen
             const allDays = [];
             data.workEntries.forEach(entry => { const dateStr=(entry.date instanceof Date)?entry.date.toISOString().split('T')[0]:String(entry.date); allDays.push({ date: dateStr, type: 'WORK', startTime: entry.startTime, endTime: entry.endTime, actualHours: parseFloat(entry.hours)||0, comment: entry.comment }); });
             data.absenceEntries.forEach(absence => { const dateStr=(absence.date instanceof Date)?absence.date.toISOString().split('T')[0]:String(absence.date); if (!allDays.some(d=>d.date===dateStr)) { allDays.push({ date: dateStr, type: absence.type, startTime: '--:--', endTime: '--:--', actualHours: parseFloat(absence.hours)||0, comment: absence.type==='VACATION'?'Urlaub':(absence.type==='SICK'?'Krank':'Feiertag') }); } });
             allDays.sort((a, b) => (new Date(a.date) - new Date(b.date)));
 
-            // --- Schleife zum Zeichnen der Tabellenzeilen ---
             if (allDays.length === 0) {
                 doc.text('Keine Buchungen/Abwesenheiten für diesen Monat.', doc.page.margins.left, doc.y, {width: usableWidth}); doc.y += TABLE_ROW_HEIGHT;
             } else {
-                console.log(`[PDF Mon V11 DEBUG] Starte Zeichnen von ${allDays.length} Zeilen...`);
+                console.log(`[PDF Mon V12 DEBUG] Starte Zeichnen von ${allDays.length} Zeilen...`);
                 for (let i = 0; i < allDays.length; i++) {
-                    // +++ DEBUG LOGGING +++
-                    if (i % 10 === 0 || i === allDays.length - 1) { console.log(`[PDF Mon V11 DEBUG] --- Zeichne Zeile ${i+1}/${allDays.length} für ${allDays[i].date}`); }
+                    if (i % 10 === 0 || i === allDays.length - 1) { console.log(`[PDF Mon V12 DEBUG] --- Zeichne Zeile ${i+1}/${allDays.length} für ${allDays[i].date}`); }
 
                     const dayData = allDays[i];
                     const estimatedLineHeight = TABLE_ROW_HEIGHT;
-                    // Seitenumbruch Prüfung
                     if (doc.y + estimatedLineHeight > doc.page.height - doc.page.margins.bottom - FOOTER_TOTAL_HEIGHT - SUMMARY_TOTAL_HEIGHT) {
-                        doc.addPage(); currentPage++; console.log(`[PDF Mon V11 DEBUG] Seite ${currentPage} manuell hinzugefügt (vor Zeile ${i+1}).`);
+                        doc.addPage(); currentPage++; console.log(`[PDF Mon V12 DEBUG] Seite ${currentPage} manuell hinzugefügt (vor Zeile ${i+1}).`);
                         drawPageNumber(doc, currentPage); currentY = doc.page.margins.top;
                         tableLayout = drawTableHeader(doc, currentY, usableWidth);
-                        if (!tableLayout || !tableLayout.colWidths || !tableLayout.colPositions) { throw new Error(`[PDF V11 Error] drawTableHeader returned invalid layout object on page ${currentPage} (after page break).`); }
+                        if (!tableLayout || !tableLayout.colWidths || !tableLayout.colPositions) { throw new Error(`[PDF V12 Error] drawTableHeader returned invalid layout object on page ${currentPage} (after page break).`); }
                         currentY = tableLayout.headerBottomY; doc.font(FONT_NORMAL).fontSize(FONT_SIZE.TABLE_CONTENT).lineGap(1.5); doc.y = currentY;
                     }
 
-                    // +++ Defensive Checks V11 +++
-                    if (!tableLayout || !tableLayout.colWidths || !tableLayout.colPositions) { console.error(`[PDF Mon V11 DEBUG] FATAL: Invalid tableLayout detected INSIDE loop at index ${i}!`); throw new Error(`Invalid tableLayout inside loop on page ${currentPage}.`); }
-                    if (!doc || !doc.page) { console.error(`[PDF Mon V11 DEBUG] FATAL: doc or doc.page became invalid INSIDE loop at index ${i}!`); throw new Error(`Invalid doc state inside loop on page ${currentPage}.`); }
-                    // +++ Ende Defensive Checks V11 +++
+                    // Defensive Checks V11/V12
+                    if (!tableLayout || !tableLayout.colWidths || !tableLayout.colPositions) { console.error(`[PDF Mon V12 DEBUG] FATAL: Invalid tableLayout detected INSIDE loop at index ${i}!`); throw new Error(`Invalid tableLayout inside loop on page ${currentPage}.`); }
+                    if (!doc || !doc.page) { console.error(`[PDF Mon V12 DEBUG] FATAL: doc or doc.page became invalid INSIDE loop at index ${i}!`); throw new Error(`Invalid doc state inside loop on page ${currentPage}.`); }
 
-                    // --- Zeile zeichnen (mit defensiven Zugriffen V11) ---
+                    // Zeile zeichnen (mit defensiven Zugriffen V11/V12)
                     doc.font(FONT_NORMAL).fontSize(FONT_SIZE.TABLE_CONTENT);
                     const dateFormatted = formatDateGermanWithWeekday(dayData.date); const actualHours = dayData.actualHours || 0; const expectedHours = employeeDataForPdf ? getExpectedHours(employeeDataForPdf, dayData.date) : 0; const diffHours = actualHours - expectedHours; let startOverride = dayData.startTime || "--:--"; let endOverride = dayData.endTime || "--:--"; let isAbsence = false;
                     if (dayData.type !== 'WORK') { startOverride = '--:--'; endOverride = dayData.comment || (dayData.type==='VACATION'?'Urlaub':(dayData.type==='SICK'?'Krank':'Feiertag')); isAbsence = true; }
                     const expectedStr = decimalHoursToHHMM(expectedHours); const actualStr = decimalHoursToHHMM(actualHours); const diffStr = decimalHoursToHHMM(diffHours);
                     const currentRowY = doc.y;
-                    const { colPositions, colWidths } = tableLayout; // Nach den Checks holen
+                    const { colPositions, colWidths } = tableLayout;
 
-                    // Verwende optional chaining (?.) und nullish coalescing (??) mit Defaults
                     doc.text(dateFormatted, colPositions?.date ?? 10, currentRowY, { width: colWidths?.date ?? 100, align: 'left', lineBreak: false });
                     doc.text(startOverride, colPositions?.start ?? 110, currentRowY, { width: colWidths?.start ?? 60, align: 'right', lineBreak: false });
                     doc.text(endOverride, colPositions?.end ?? 170, currentRowY, { width: colWidths?.end ?? 80, align: isAbsence ? 'left' : 'right', lineBreak: false });
@@ -272,22 +261,21 @@ module.exports = function (db) {
 
                     doc.y = currentRowY + TABLE_ROW_HEIGHT;
                 } // Ende for-Schleife
-                console.log(`[PDF Mon V11 DEBUG] Zeichnen der Zeilen beendet.`);
+                console.log(`[PDF Mon V12 DEBUG] Zeichnen der Zeilen beendet.`);
             }
 
             // *** Zusammenfassung und Signatur-Footer ***
             const spaceNeededForSummaryAndFooter = SUMMARY_TOTAL_HEIGHT + FOOTER_TOTAL_HEIGHT + V_SPACE.LARGE;
             const isAtTopOfPageSummary = Math.abs(doc.y - doc.page.margins.top) < 1;
             if (!isAtTopOfPageSummary && (doc.y + spaceNeededForSummaryAndFooter > doc.page.height - doc.page.margins.bottom)) {
-                doc.addPage(); currentPage++; console.log(`[PDF Mon V11 DEBUG] Seite ${currentPage} manuell für Summary/Footer hinzugefügt.`);
+                doc.addPage(); currentPage++; console.log(`[PDF Mon V12 DEBUG] Seite ${currentPage} manuell für Summary/Footer hinzugefügt.`);
                 drawPageNumber(doc, currentPage); doc.y = doc.page.margins.top;
             } else if (!isAtTopOfPageSummary) { doc.y += V_SPACE.LARGE; }
 
             // --- Zeichne Zusammenfassung ---
             const oldFontSum = doc._font; const oldFontSizeSum = doc._fontSize; const oldFillColorSum = doc._fillColor; const oldLineGapSum = doc._lineGap;
             try {
-                // +++ Defensive Check V11 +++
-                if (!tableLayout || !tableLayout.colWidths || !tableLayout.colPositions) { throw new Error(`[PDF V11 Error] Invalid tableLayout object before drawing summary on page ${currentPage}.`); }
+                if (!tableLayout || !tableLayout.colWidths || !tableLayout.colPositions) { throw new Error(`[PDF V12 Error] Invalid tableLayout object before drawing summary on page ${currentPage}.`); }
                 doc.font(FONT_BOLD).fontSize(FONT_SIZE.SUMMARY).lineGap(0);
                 const summaryLabelWidth = (tableLayout.colWidths?.date ?? 100) + (tableLayout.colWidths?.start ?? 60) + (tableLayout.colWidths?.end ?? 80) + (tableLayout.colWidths?.expected ?? 70) - V_SPACE.SMALL;
                 const summaryValueWidth = (tableLayout.colWidths?.actual ?? 70) + (tableLayout.colWidths?.diff ?? 70);
@@ -299,7 +287,7 @@ module.exports = function (db) {
                 const totalDiff = (data.totalActual || 0) - (data.totalExpected || 0); doc.text("Gesamt Mehr/Minderstunden:", summaryLabelX, doc.y, { width: summaryLabelWidth }); doc.text(decimalHoursToHHMM(totalDiff), summaryValueX, doc.y, { width: summaryValueWidth, align: 'right' }); doc.moveDown(summaryLineSpacing);
                 doc.text("Neuer Übertrag (Saldo Ende):", summaryLabelX, doc.y, { width: summaryLabelWidth }); doc.text(decimalHoursToHHMM(data.newCarryOver || 0), summaryValueX, doc.y, { width: summaryValueWidth, align: 'right' });
                 const summaryEndY = doc.y + doc.heightOfString("Neuer Übertrag...", {width: summaryLabelWidth}); doc.y = summaryEndY;
-            } catch (summaryError) { console.error("[PDF Mon V11 DEBUG] FEHLER beim Zeichnen der Summary!", summaryError); throw summaryError; }
+            } catch (summaryError) { console.error("[PDF Mon V12 DEBUG] FEHLER beim Zeichnen der Summary!", summaryError); throw summaryError; }
             finally { try { if (oldFontSum) doc.font(oldFontSum); if (oldFontSizeSum) doc.fontSize(oldFontSizeSum); if (oldFillColorSum) doc.fillColor(oldFillColorSum); if (typeof oldLineGapSum !== 'undefined') doc.lineGap(oldLineGapSum); } catch (restoreError) {} }
 
             // --- Zeichne Signatur-Footer ---
@@ -307,55 +295,51 @@ module.exports = function (db) {
             drawSignatureFooter(doc, footerStartY);
 
             // --- PDF abschließen ---
-            console.log("[PDF Mon V11 DEBUG] ===> Kurz vor doc.end()");
+            console.log("[PDF Mon V12 DEBUG] ===> Kurz vor doc.end()");
             doc.end();
-            console.log("[PDF Mon V11 DEBUG] ===> Nach doc.end() aufgerufen.");
+            console.log("[PDF Mon V12 DEBUG] ===> Nach doc.end() aufgerufen.");
 
         } catch (err) {
-            // *** Fehlerbehandlung (V11) ***
-            console.error("[PDF Mon V11 DEBUG] !!!!! CATCH BLOCK REACHED (MONTHLY) !!!!!");
-            console.error("Fehler Erstellen Monats-PDF V11:", err); // Gibt ganzes Fehlerobjekt aus
+            // *** Fehlerbehandlung (V12) ***
+            console.error("[PDF Mon V12 DEBUG] !!!!! CATCH BLOCK REACHED (MONTHLY) !!!!!");
+            console.error("Fehler Erstellen Monats-PDF V12:", err); // Gibt ganzes Fehlerobjekt aus
             if (!res.headersSent) {
-                console.error("[PDF Mon V11 DEBUG] Catch-Block: Sende 500er Status.");
-                if (doc && doc.writable && !doc.writableEnded) { try { console.error("[PDF Mon V11 DEBUG] Catch-Block: Versuch, Stream zu beenden."); doc.end(); } catch(endErr){console.error("[PDF Mon V11 DEBUG] Fehler bei doc.end() im Catch Block:", endErr);} }
+                console.error("[PDF Mon V12 DEBUG] Catch-Block: Sende 500er Status.");
+                if (doc && doc.writable && !doc.writableEnded) { try { console.error("[PDF Mon V12 DEBUG] Catch-Block: Versuch, Stream zu beenden."); doc.end(); } catch(endErr){console.error("[PDF Mon V12 DEBUG] Fehler bei doc.end() im Catch Block:", endErr);} }
                 res.status(500).send(`Interner Serverfehler beim Erstellen des Monats-PDF: ${err.message}`);
             } else {
-                console.error("[PDF Mon V11 DEBUG] Catch-Block: Header bereits gesendet. Nur Logging.");
-                 if (doc && doc.writable && !doc.writableEnded) { try { console.error("[PDF Mon V11 DEBUG] Catch-Block: Versuch, Stream zu beenden (Header gesendet)."); doc.end(); } catch(endErr){console.error("[PDF Mon V11 DEBUG] Fehler bei doc.end() im Catch Block (Header gesendet):", endErr);} }
+                console.error("[PDF Mon V12 DEBUG] Catch-Block: Header bereits gesendet. Nur Logging.");
+                 if (doc && doc.writable && !doc.writableEnded) { try { console.error("[PDF Mon V12 DEBUG] Catch-Block: Versuch, Stream zu beenden (Header gesendet)."); doc.end(); } catch(endErr){console.error("[PDF Mon V12 DEBUG] Fehler bei doc.end() im Catch Block (Header gesendet):", endErr);} }
             }
         }
     }); // Ende /create-monthly-pdf
     //-----------------------------------------------------
 
-     // GET /create-period-pdf (V11 - Defensive Checks)
+     // GET /create-period-pdf (V12 - Font Change + Defensive Checks)
     router.get('/create-period-pdf', isAdmin, async (req, res) => {
-        console.log(`[PDF Per V11 DEBUG] Route /create-period-pdf START.`);
+        console.log(`[PDF Per V12 DEBUG] Route /create-period-pdf START.`);
         let doc; let currentPage = 0;
          try {
             // Parameter validieren
             const { name, year, periodType, periodValue } = req.query;
             if (!name || !year || isNaN(parseInt(year)) || !periodType || !['QUARTER', 'YEAR'].includes(periodType.toUpperCase())) {
-                 console.error(`[PDF Per V11 DEBUG] Ungültige Parameter: name=${name}, year=${year}, periodType=${periodType}`);
+                 console.error(`[PDF Per V12 DEBUG] Ungültige Parameter: name=${name}, year=${year}, periodType=${periodType}`);
                  return res.status(400).send("Parameter fehlen oder sind ungültig (Name, Jahr, PeriodType).");
             }
             if (periodType.toUpperCase() === 'QUARTER' && (!periodValue || isNaN(parseInt(periodValue)) || periodValue < 1 || periodValue > 4)) {
-                 console.error(`[PDF Per V11 DEBUG] Ungültiger periodValue für Quartal: ${periodValue}`);
+                 console.error(`[PDF Per V12 DEBUG] Ungültiger periodValue für Quartal: ${periodValue}`);
                  return res.status(400).send("Gültiger periodValue (1-4) für Quartal erforderlich.");
             }
             const parsedYear = parseInt(year, 10); const pTypeUpper = periodType.toUpperCase();
             const pValue = pTypeUpper === 'QUARTER' ? parseInt(periodValue) : null;
-            console.log(`[PDF Per V11] Starte Generierung für ${name}, ${year}, Typ: ${pTypeUpper}, Wert: ${pValue}`);
+            console.log(`[PDF Per V12] Starte Generierung für ${name}, ${year}, Typ: ${pTypeUpper}, Wert: ${pValue}`);
 
-            // +++ DEBUG LOGGING +++
-            console.log('[PDF Per V11 DEBUG] ===> Vor calculatePeriodData...');
-            // Daten holen
+            console.log('[PDF Per V12 DEBUG] ===> Vor calculatePeriodData...');
             const data = await calculatePeriodData(db, name, year, pTypeUpper, pValue);
-            // +++ DEBUG LOGGING +++
-            console.log('[PDF Per V11 DEBUG] <=== Nach calculatePeriodData. Daten erhalten:', data ? `Ja (${data.workEntriesPeriod?.length || 0} Arbeits-Einträge, ${data.absenceEntriesPeriod?.length || 0} Abwesenheiten)` : 'Nein / Fehler');
+            console.log('[PDF Per V12 DEBUG] <=== Nach calculatePeriodData. Daten erhalten:', data ? `Ja (${data.workEntriesPeriod?.length || 0} Arbeits-Einträge, ${data.absenceEntriesPeriod?.length || 0} Abwesenheiten)` : 'Nein / Fehler');
             if (!data) { throw new Error("Konnte Daten für die PDF-Generierung nicht abrufen."); }
             const employeeDataForPdf = data.employeeData;
 
-            // PDF initialisieren und Header setzen
             doc = new PDFDocument(PAGE_OPTIONS);
             const usableWidth = doc.page.width - doc.page.margins.left - doc.page.margins.right;
             doc.pipe(res);
@@ -365,59 +349,51 @@ module.exports = function (db) {
             res.setHeader('Content-Type', 'application/pdf');
             res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
 
-            // Erste Seite hinzufügen und Kopf/Seitenzahl
             currentPage++;
-            doc.addPage(); console.log(`[PDF Per V11 DEBUG] Seite ${currentPage} hinzugefügt.`);
+            doc.addPage(); console.log(`[PDF Per V12 DEBUG] Seite ${currentPage} hinzugefügt.`);
             const title = pTypeUpper === 'QUARTER' ? `Quartalsnachweis ${data.periodIdentifier}/${parsedYear}` : `Jahresnachweis ${parsedYear}`;
             let currentY = drawDocumentHeader(doc, title, data.employeeName, data.periodStartDate, data.periodEndDate);
             drawPageNumber(doc, currentPage);
 
-            // Erster Tabellenkopf
             let tableLayout = drawTableHeader(doc, currentY, usableWidth);
-            if (!tableLayout || !tableLayout.colWidths || !tableLayout.colPositions) { throw new Error(`[PDF V11 Error] drawTableHeader returned invalid layout object on page ${currentPage} (initial).`); }
+            if (!tableLayout || !tableLayout.colWidths || !tableLayout.colPositions) { throw new Error(`[PDF V12 Error] drawTableHeader returned invalid layout object on page ${currentPage} (initial).`); }
             currentY = tableLayout.headerBottomY;
             doc.font(FONT_NORMAL).fontSize(FONT_SIZE.TABLE_CONTENT).lineGap(1.5); doc.y = currentY;
 
-            // Kombinierte Liste erstellen
             const allDaysPeriod = [];
             data.workEntriesPeriod.forEach(entry => { const dateStr=(entry.date instanceof Date)?entry.date.toISOString().split('T')[0]:String(entry.date); allDaysPeriod.push({ date: dateStr, type: 'WORK', startTime: entry.startTime, endTime: entry.endTime, actualHours: parseFloat(entry.hours)||0, comment: entry.comment }); });
             data.absenceEntriesPeriod.forEach(absence => { const dateStr=(absence.date instanceof Date)?absence.date.toISOString().split('T')[0]:String(absence.date); if (!allDaysPeriod.some(d=>d.date===dateStr)) { allDaysPeriod.push({ date: dateStr, type: absence.type, startTime: '--:--', endTime: '--:--', actualHours: parseFloat(absence.hours)||0, comment: absence.type==='VACATION'?'Urlaub':(absence.type==='SICK'?'Krank':'Feiertag') }); } });
             allDaysPeriod.sort((a, b) => new Date(a.date) - new Date(b.date));
 
-            // --- Schleife zum Zeichnen der Tabellenzeilen (Periode) ---
             if (allDaysPeriod.length === 0) {
                  doc.text('Keine Buchungen/Abwesenheiten für diesen Zeitraum.', doc.page.margins.left, doc.y, {width: usableWidth}); doc.y += TABLE_ROW_HEIGHT;
             } else {
-                 console.log(`[PDF Per V11 DEBUG] Starte Zeichnen von ${allDaysPeriod.length} Zeilen...`);
+                 console.log(`[PDF Per V12 DEBUG] Starte Zeichnen von ${allDaysPeriod.length} Zeilen...`);
                  for (let i = 0; i < allDaysPeriod.length; i++) {
-                     // +++ DEBUG LOGGING +++
-                     if (i % 10 === 0 || i === allDaysPeriod.length - 1) { console.log(`[PDF Per V11 DEBUG] --- Zeichne Zeile ${i+1}/${allDaysPeriod.length} für ${allDaysPeriod[i].date}`); }
+                     if (i % 10 === 0 || i === allDaysPeriod.length - 1) { console.log(`[PDF Per V12 DEBUG] --- Zeichne Zeile ${i+1}/${allDaysPeriod.length} für ${allDaysPeriod[i].date}`); }
 
                     const dayData = allDaysPeriod[i];
                     const estimatedLineHeight = TABLE_ROW_HEIGHT;
-                    // Seitenumbruch Prüfung
-                    if (doc.y + estimatedLineHeight > doc.page.height - doc.page.margins.bottom - FOOTER_TOTAL_HEIGHT - SUMMARY_TOTAL_HEIGHT) { // Mehr Platz lassen
-                        doc.addPage(); currentPage++; console.log(`[PDF Per V11 DEBUG] Seite ${currentPage} manuell hinzugefügt (vor Zeile ${i+1}).`);
+                    if (doc.y + estimatedLineHeight > doc.page.height - doc.page.margins.bottom - FOOTER_TOTAL_HEIGHT - SUMMARY_TOTAL_HEIGHT) {
+                        doc.addPage(); currentPage++; console.log(`[PDF Per V12 DEBUG] Seite ${currentPage} manuell hinzugefügt (vor Zeile ${i+1}).`);
                         drawPageNumber(doc, currentPage); currentY = doc.page.margins.top;
                         tableLayout = drawTableHeader(doc, currentY, usableWidth);
-                        if (!tableLayout || !tableLayout.colWidths || !tableLayout.colPositions) { throw new Error(`[PDF V11 Error] drawTableHeader returned invalid layout object on page ${currentPage} (after page break).`); }
+                        if (!tableLayout || !tableLayout.colWidths || !tableLayout.colPositions) { throw new Error(`[PDF V12 Error] drawTableHeader returned invalid layout object on page ${currentPage} (after page break).`); }
                         currentY = tableLayout.headerBottomY; doc.font(FONT_NORMAL).fontSize(FONT_SIZE.TABLE_CONTENT).lineGap(1.5); doc.y = currentY;
                     }
 
-                    // +++ Defensive Checks V11 +++
-                    if (!tableLayout || !tableLayout.colWidths || !tableLayout.colPositions) { console.error(`[PDF Per V11 DEBUG] FATAL: Invalid tableLayout detected INSIDE loop at index ${i}!`); throw new Error(`Invalid tableLayout inside loop on page ${currentPage}.`); }
-                    if (!doc || !doc.page) { console.error(`[PDF Per V11 DEBUG] FATAL: doc or doc.page became invalid INSIDE loop at index ${i}!`); throw new Error(`Invalid doc state inside loop on page ${currentPage}.`); }
-                    // +++ Ende Defensive Checks V11 +++
+                    // Defensive Checks V11/V12
+                    if (!tableLayout || !tableLayout.colWidths || !tableLayout.colPositions) { console.error(`[PDF Per V12 DEBUG] FATAL: Invalid tableLayout detected INSIDE loop at index ${i}!`); throw new Error(`Invalid tableLayout inside loop on page ${currentPage}.`); }
+                    if (!doc || !doc.page) { console.error(`[PDF Per V12 DEBUG] FATAL: doc or doc.page became invalid INSIDE loop at index ${i}!`); throw new Error(`Invalid doc state inside loop on page ${currentPage}.`); }
 
-                    // --- Zeile zeichnen (mit defensiven Zugriffen V11) ---
+                    // Zeile zeichnen (mit defensiven Zugriffen V11/V12)
                     doc.font(FONT_NORMAL).fontSize(FONT_SIZE.TABLE_CONTENT);
                     const dateFormatted = formatDateGermanWithWeekday(dayData.date); const actualHours = dayData.actualHours || 0; const expectedHours = employeeDataForPdf ? getExpectedHours(employeeDataForPdf, dayData.date) : 0; const diffHours = actualHours - expectedHours; let startOverride = dayData.startTime || "--:--"; let endOverride = dayData.endTime || "--:--"; let isAbsence = false;
                     if (dayData.type !== 'WORK') { startOverride = '--:--'; endOverride = dayData.comment || (dayData.type==='VACATION'?'Urlaub':(dayData.type==='SICK'?'Krank':'Feiertag')); isAbsence = true; }
                     const expectedStr = decimalHoursToHHMM(expectedHours); const actualStr = decimalHoursToHHMM(actualHours); const diffStr = decimalHoursToHHMM(diffHours);
                     const currentRowY = doc.y;
-                    const { colPositions, colWidths } = tableLayout; // Nach den Checks holen
+                    const { colPositions, colWidths } = tableLayout;
 
-                    // Verwende optional chaining (?.) und nullish coalescing (??) mit Defaults
                     doc.text(dateFormatted, colPositions?.date ?? 10, currentRowY, { width: colWidths?.date ?? 100, align: 'left', lineBreak: false });
                     doc.text(startOverride, colPositions?.start ?? 110, currentRowY, { width: colWidths?.start ?? 60, align: 'right', lineBreak: false });
                     doc.text(endOverride, colPositions?.end ?? 170, currentRowY, { width: colWidths?.end ?? 80, align: isAbsence ? 'left' : 'right', lineBreak: false });
@@ -427,23 +403,21 @@ module.exports = function (db) {
 
                     doc.y = currentRowY + TABLE_ROW_HEIGHT;
                 } // Ende for-Schleife
-                console.log(`[PDF Per V11 DEBUG] Zeichnen der Zeilen beendet.`);
+                console.log(`[PDF Per V12 DEBUG] Zeichnen der Zeilen beendet.`);
             }
-             // *** Ende Schleife für Tabellenzeilen (Periode) ***
 
              // *** Zusammenfassung und Signatur-Footer ***
             const spaceNeededForSummaryAndFooter = SUMMARY_TOTAL_HEIGHT + FOOTER_TOTAL_HEIGHT + V_SPACE.LARGE;
             const isAtTopOfPageSummaryPeriod = Math.abs(doc.y - doc.page.margins.top) < 1;
             if (!isAtTopOfPageSummaryPeriod && (doc.y + spaceNeededForSummaryAndFooter > doc.page.height - doc.page.margins.bottom)) {
-                 doc.addPage(); currentPage++; console.log(`[PDF Per V11 DEBUG] Seite ${currentPage} manuell für Summary/Footer hinzugefügt.`);
+                 doc.addPage(); currentPage++; console.log(`[PDF Per V12 DEBUG] Seite ${currentPage} manuell für Summary/Footer hinzugefügt.`);
                  drawPageNumber(doc, currentPage); doc.y = doc.page.margins.top;
             } else if (!isAtTopOfPageSummaryPeriod) { doc.y += V_SPACE.LARGE; }
 
              // --- Zeichne Zusammenfassung (Periode) ---
             const oldFontSumP = doc._font; const oldFontSizeSumP = doc._fontSize; const oldFillColorSumP = doc._fillColor; const oldLineGapSumP = doc._lineGap;
             try {
-                 // +++ Defensive Check V11 +++
-                if (!tableLayout || !tableLayout.colWidths || !tableLayout.colPositions) { throw new Error(`[PDF V11 Error] Invalid tableLayout object before drawing summary on page ${currentPage}.`); }
+                if (!tableLayout || !tableLayout.colWidths || !tableLayout.colPositions) { throw new Error(`[PDF V12 Error] Invalid tableLayout object before drawing summary on page ${currentPage}.`); }
                 doc.font(FONT_BOLD).fontSize(FONT_SIZE.SUMMARY).lineGap(0);
                 const summaryLabelWidth = (tableLayout.colWidths?.date ?? 100) + (tableLayout.colWidths?.start ?? 60) + (tableLayout.colWidths?.end ?? 80) + (tableLayout.colWidths?.expected ?? 70) - V_SPACE.SMALL;
                 const summaryValueWidth = (tableLayout.colWidths?.actual ?? 70) + (tableLayout.colWidths?.diff ?? 70);
@@ -455,7 +429,7 @@ module.exports = function (db) {
                 doc.text(`Gesamt Mehr/Minderstunden (${periodLabelSummary}):`, summaryLabelX, doc.y, { width: summaryLabelWidth }); doc.text(decimalHoursToHHMM(data.periodDifference || 0), summaryValueX, doc.y, { width: summaryValueWidth, align: 'right' }); doc.moveDown(summaryLineSpacing);
                 doc.text("Neuer Übertrag (Saldo Ende):", summaryLabelX, doc.y, { width: summaryLabelWidth }); doc.text(decimalHoursToHHMM(data.endingBalancePeriod || 0), summaryValueX, doc.y, { width: summaryValueWidth, align: 'right' });
                 const summaryEndY = doc.y + doc.heightOfString("Neuer Übertrag...", {width: summaryLabelWidth}); doc.y = summaryEndY;
-            } catch (summaryError) { console.error("[PDF Per V11 DEBUG] FEHLER beim Zeichnen der Summary!", summaryError); throw summaryError; }
+            } catch (summaryError) { console.error("[PDF Per V12 DEBUG] FEHLER beim Zeichnen der Summary!", summaryError); throw summaryError; }
             finally { try { if (oldFontSumP) doc.font(oldFontSumP); if (oldFontSizeSumP) doc.fontSize(oldFontSizeSumP); if (oldFillColorSumP) doc.fillColor(oldFillColorSumP); if (typeof oldLineGapSumP !== 'undefined') doc.lineGap(oldLineGapSumP); } catch (restoreError) {} }
 
             // --- Zeichne Signatur-Footer ---
@@ -463,21 +437,21 @@ module.exports = function (db) {
             drawSignatureFooter(doc, footerStartY);
 
             // --- PDF abschließen ---
-            console.log("[PDF Per V11 DEBUG] ===> Kurz vor doc.end()");
+            console.log("[PDF Per V12 DEBUG] ===> Kurz vor doc.end()");
             doc.end();
-            console.log("[PDF Per V11 DEBUG] ===> Nach doc.end() aufgerufen.");
+            console.log("[PDF Per V12 DEBUG] ===> Nach doc.end() aufgerufen.");
 
         } catch (err) {
-            // *** Fehlerbehandlung (V11) ***
-            console.error("[PDF Per V11 DEBUG] !!!!! CATCH BLOCK REACHED (PERIOD) !!!!!");
-            console.error("Fehler Erstellen Perioden-PDF V11:", err); // Gibt ganzes Fehlerobjekt aus
+            // *** Fehlerbehandlung (V12) ***
+            console.error("[PDF Per V12 DEBUG] !!!!! CATCH BLOCK REACHED (PERIOD) !!!!!");
+            console.error("Fehler Erstellen Perioden-PDF V12:", err); // Gibt ganzes Fehlerobjekt aus
             if (!res.headersSent) {
-                 console.error("[PDF Per V11 DEBUG] Catch-Block: Sende 500er Status.");
-                 if (doc && doc.writable && !doc.writableEnded) { try { console.error("[PDF Per V11 DEBUG] Catch-Block: Versuch, Stream zu beenden."); doc.end(); } catch(endErr){console.error("[PDF Per V11 DEBUG] Fehler bei doc.end() im Catch Block:", endErr);} }
+                 console.error("[PDF Per V12 DEBUG] Catch-Block: Sende 500er Status.");
+                 if (doc && doc.writable && !doc.writableEnded) { try { console.error("[PDF Per V12 DEBUG] Catch-Block: Versuch, Stream zu beenden."); doc.end(); } catch(endErr){console.error("[PDF Per V12 DEBUG] Fehler bei doc.end() im Catch Block:", endErr);} }
                  res.status(500).send(`Interner Serverfehler beim Erstellen des Perioden-PDF: ${err.message}`);
             } else {
-                 console.error("[PDF Per V11 DEBUG] Catch-Block: Header bereits gesendet. Nur Logging.");
-                 if (doc && doc.writable && !doc.writableEnded) { try { console.error("[PDF Per V11 DEBUG] Catch-Block: Versuch, Stream zu beenden (Header gesendet)."); doc.end(); } catch(endErr){console.error("[PDF Per V11 DEBUG] Fehler bei doc.end() im Catch Block (Header gesendet):", endErr);} }
+                 console.error("[PDF Per V12 DEBUG] Catch-Block: Header bereits gesendet. Nur Logging.");
+                 if (doc && doc.writable && !doc.writableEnded) { try { console.error("[PDF Per V12 DEBUG] Catch-Block: Versuch, Stream zu beenden (Header gesendet)."); doc.end(); } catch(endErr){console.error("[PDF Per V12 DEBUG] Fehler bei doc.end() im Catch Block (Header gesendet):", endErr);} }
             }
         } // Ende Catch-Block für die Route
     }); // Ende /create-period-pdf
