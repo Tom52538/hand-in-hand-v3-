@@ -29,7 +29,7 @@ db.connect((err, client, release) => {
     // Programm nicht beenden, versuchen es später erneut im Setup
   } else {
     console.log('>>> Datenbank beim ersten Test erfolgreich verbunden.');
-    release();
+    if (release) release(); // Client freigeben
   }
 });
 
@@ -50,10 +50,8 @@ try {
 } catch (e) {
     console.error("!!! FEHLER beim Laden von Hilfsmodulen (calculationUtils / monthlyPdfEndpoint):", e);
     console.error("!!! Stellen Sie sicher, dass die Dateien './utils/calculationUtils.js' und './routes/monthlyPdfEndpoint.js' existieren und korrekt exportieren.");
-    // Prozess beenden oder Fallback implementieren, hier beenden wir, da Kernfunktionalität fehlt
-    process.exit(1);
+    process.exit(1); // Beenden, da Kernfunktionalität fehlt
 }
-
 
 // Formatierungsoptionen für Datum mit Wochentag (global für CSV)
 const csvDateOptions = { weekday: 'short', day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'UTC' };
@@ -84,10 +82,16 @@ async function convertToCSV(database, data) {
     csvRows.push(headers.join(','));
     let employeeMap = new Map();
     try {
+        // Stelle sicher, dass 'database' ein gültiges Pool-Objekt ist
+        if (!database || typeof database.query !== 'function') {
+            throw new Error("Ungültiges Datenbankobjekt an convertToCSV übergeben.");
+        }
         const empRes = await database.query('SELECT id, name, mo_hours, di_hours, mi_hours, do_hours, fr_hours FROM employees');
         empRes.rows.forEach(emp => employeeMap.set(emp.name.toLowerCase(), emp));
     } catch(e) {
         console.error("Fehler beim Abrufen der Mitarbeiterdaten für CSV-Sollstunden:", e);
+        // Optional: Einen leeren CSV zurückgeben oder Fehler werfen
+        return ""; // Sicherer Fallback
     }
 
     for (const row of data) {
@@ -96,15 +100,12 @@ async function convertToCSV(database, data) {
         if (row.date) {
             try {
                 const dateObj = (row.date instanceof Date) ? row.date : new Date(row.date);
-                dateForCalc = dateObj.toISOString().split('T')[0]; // YYYY-MM-DD für Berechnungen
+                 if (isNaN(dateObj.getTime())) throw new Error('Ungültiges Datumsobjekt'); // Zusätzliche Prüfung
+                dateForCalc = dateObj.toISOString().split('T')[0];
 
-                if (!isNaN(dateObj.getTime())) {
-                   dateFormatted = dateObj.toLocaleDateString('de-DE', csvDateOptions); // Format: "Mo. TT.MM.YYYY"
-                } else {
-                   dateFormatted = String(row.date); // Fallback
-                }
+                dateFormatted = dateObj.toLocaleDateString('de-DE', csvDateOptions);
             } catch (e) {
-                dateFormatted = String(row.date); // Fallback bei Fehler
+                dateFormatted = String(row.date);
                 console.warn("Fehler bei CSV-Datumsformatierung:", row.date, e);
             }
         }
@@ -113,17 +114,19 @@ async function convertToCSV(database, data) {
         const istHours = parseFloat(row.hours) || 0;
         let expectedHours = 0;
         const employeeData = employeeMap.get(String(row.name).toLowerCase());
+        // Zusätzliche Prüfung für getExpectedHours Existenz
         if(employeeData && dateForCalc && typeof getExpectedHours === 'function') {
             try {
-                // Prüfen, ob an diesem Tag eine Abwesenheit eingetragen ist (ignoriert Sollstunden)
                 const absenceCheck = await database.query('SELECT 1 FROM absences WHERE employee_id = $1 AND date = $2', [employeeData.id, dateForCalc]);
-                if (absenceCheck.rows.length === 0) { // Nur wenn KEINE Abwesenheit
+                if (absenceCheck.rows.length === 0) {
                     expectedHours = getExpectedHours(employeeData, dateForCalc);
                 }
             } catch (e) { console.error(`Fehler Soll-Std CSV (MA: ${row.name}, D: ${dateForCalc}):`, e); }
+        } else if (employeeData && dateForCalc && typeof getExpectedHours !== 'function') {
+            console.warn("Funktion getExpectedHours nicht gefunden/importiert.");
         }
         const diffHours = istHours - expectedHours;
-        const commentFormatted = `"${(row.comment || '').replace(/"/g, '""')}"`; // Korrektes Escaping
+        const commentFormatted = `"${(row.comment || '').replace(/"/g, '""')}"`;
         const values = [
             row.id, row.name, dateFormatted, startTimeFormatted, endTimeFormatted,
             istHours.toFixed(2), expectedHours.toFixed(2), diffHours.toFixed(2), commentFormatted
@@ -135,7 +138,7 @@ async function convertToCSV(database, data) {
 
 // 4. Middleware konfigurieren
 app.use(cors({
-    origin: process.env.CORS_ORIGIN || '*', // Für Produktion sicher konfigurieren!
+    origin: process.env.CORS_ORIGIN || '*',
     credentials: true
 }));
 app.use(bodyParser.json());
@@ -144,40 +147,38 @@ app.use(bodyParser.urlencoded({ extended: true }));
 // Session Middleware
 app.use(session({
     store: new pgSession({
-        pool: db, // Übergibt den Pool an connect-pg-simple
-        tableName: 'user_sessions' // Name der Session-Tabelle
+        pool: db,
+        tableName: 'user_sessions'
     }),
-    secret: process.env.SESSION_SECRET || 'sehr-geheimes-fallback-secret-fuer-dev', // UNBEDINGT IN .env ÄNDERN!
-    resave: false, // Nicht bei jeder Anfrage speichern, nur bei Änderungen
-    saveUninitialized: false, // Keine Session für unauthentifizierte Nutzer speichern
+    secret: process.env.SESSION_SECRET || 'sehr-geheimes-fallback-secret-fuer-dev',
+    resave: false,
+    saveUninitialized: false,
     cookie: {
-        secure: process.env.NODE_ENV === 'production', // Cookie nur über HTTPS senden (wird durch 'trust proxy' korrekt behandelt)
-        maxAge: 1000 * 60 * 60 * 24, // Gültigkeit: 24 Stunden
-        httpOnly: true, // Verhindert Zugriff auf Cookie via JavaScript im Frontend
-        sameSite: 'lax' // Schutz gegen CSRF-Angriffe
+        secure: process.env.NODE_ENV === 'production',
+        maxAge: 1000 * 60 * 60 * 24, // 24 Stunden
+        httpOnly: true,
+        sameSite: 'lax'
     }
 }));
 
-// Statische Dateien ausliefern (HTML, CSS, Client-JS)
+// Statische Dateien ausliefern
 app.use(express.static(path.join(__dirname, 'public')));
 
 // Middleware zur Prüfung ob Admin eingeloggt ist
 function isAdmin(req, res, next) {
-    // Prüft ob eine Session existiert und der isAdmin-Flag gesetzt ist
     if (req.session && req.session.isAdmin === true) {
-        next(); // Zugriff erlaubt, weiter zur nächsten Middleware/Route
+        next();
     } else {
-        // Loggen des fehlgeschlagenen Versuchs für Diagnosezwecke
         console.warn(`isAdmin Check FAILED für Session ID: ${req.sessionID} - isAdmin Flag: ${req.session?.isAdmin} - URL: ${req.originalUrl} von IP ${req.ip}`);
-        res.status(403).send('Zugriff verweigert. Admin-Login erforderlich.'); // Zugriff verweigern
+        res.status(403).send('Zugriff verweigert. Admin-Login erforderlich.');
     }
 }
 
 // 5. Datenbank-Setup Funktion (ANGEPASST für password_hash)
 const setupTables = async () => {
+  let client; // Definiere client außerhalb des try-Blocks für finally
   try {
-    // Verbindung zur DB sicherstellen (wichtig, wenn erster Test fehlschlug)
-    const client = await db.connect();
+    client = await db.connect(); // Hole eine Verbindung aus dem Pool
     console.log(">>> DB-Verbindung für Setup hergestellt.");
 
     // Tabelle für Mitarbeiter
@@ -199,7 +200,7 @@ const setupTables = async () => {
     await client.query(`
       CREATE TABLE IF NOT EXISTS work_hours (
         id SERIAL PRIMARY KEY,
-        name TEXT NOT NULL,
+        name TEXT NOT NULL, -- Später vielleicht employee_id REFERENCES employees(id)
         date DATE NOT NULL,
         starttime TIME,
         endtime TIME,
@@ -239,32 +240,32 @@ const setupTables = async () => {
     await client.query(`CREATE INDEX IF NOT EXISTS idx_absences_employee_date ON absences (employee_id, date);`);
     console.log("Tabelle 'absences' und Index geprüft/erstellt.");
 
-    // Tabelle für Sessions prüfen
+    // Tabelle für Sessions prüfen (wird von connect-pg-simple automatisch erstellt, wenn nicht vorhanden)
     const sessionTableCheck = await client.query(`SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'user_sessions');`);
-    if (!sessionTableCheck.rows[0].exists) {
+    if (sessionTableCheck.rows.length > 0 && !sessionTableCheck.rows[0].exists) {
         console.log("Session-Tabelle 'user_sessions' wird von connect-pg-simple erstellt...");
-        // connect-pg-simple erstellt die Tabelle automatisch, wenn sie nicht existiert
-    } else {
+    } else if (sessionTableCheck.rows.length > 0 && sessionTableCheck.rows[0].exists) {
         console.log("Session-Tabelle 'user_sessions' existiert.");
+    } else {
+         console.warn("Konnte Existenz der Session-Tabelle nicht prüfen.");
     }
-
-    client.release(); // Verbindung wieder freigeben
 
   } catch (err) {
     console.error("!!! Kritischer Datenbank Setup Fehler:", err);
-    // Hier process.exit() aufrufen, da das Setup essentiell ist
-    process.exit(1);
+    process.exit(1); // Beenden, wenn Setup fehlschlägt
+  } finally {
+      if (client) {
+          client.release(); // WICHTIG: Verbindung freigeben, egal ob Fehler oder nicht
+          console.log(">>> DB-Verbindung für Setup freigegeben.");
+      }
   }
 };
 
 // ==========================================
-// Öffentliche Endpunkte (kein Login nötig - NOCH!)
+// Öffentliche Endpunkte (noch nicht final gesichert)
 // ==========================================
-
-// Health Check Endpoint (nützlich für manche Hoster)
 app.get('/healthz', (req, res) => res.status(200).send('OK'));
 
-// Liefert Liste aller Mitarbeiter (ID und Name) - Wird später evtl. entfernt oder geschützt
 app.get('/employees', async (req, res) => {
     try {
         const result = await db.query('SELECT id, name FROM employees ORDER BY name ASC');
@@ -275,9 +276,8 @@ app.get('/employees', async (req, res) => {
     }
 });
 
-// Prüft den letzten Eintrag eines Mitarbeiters, um den nächsten Buchungsstatus zu bestimmen - Wird später angepasst
 app.get('/next-booking-details', async (req, res) => {
-    const { name } = req.query; // Nimmt Name noch aus Query - Unsicher!
+    const { name } = req.query;
     if (!name) return res.status(400).json({ message: 'Name ist erforderlich.' });
     try {
         const query = `
@@ -291,7 +291,6 @@ app.get('/next-booking-details', async (req, res) => {
         let nextBooking = 'arbeitsbeginn', entryId = null, startDate = null, startTime = null;
         if (result.rows.length > 0) {
             const lastEntry = result.rows[0];
-            // Wenn Startzeit existiert, aber Endzeit fehlt -> nächster Schritt ist Arbeitsende
             if (lastEntry.starttime_formatted && !lastEntry.endtime) {
                 nextBooking = 'arbeitsende';
                 entryId = lastEntry.id;
@@ -306,9 +305,8 @@ app.get('/next-booking-details', async (req, res) => {
     }
 });
 
-// Bucht den Arbeitsbeginn (mit Verhinderung von Doppelbuchungen) - Wird später angepasst
 app.post('/log-start', async (req, res) => {
-    const { name, date, startTime } = req.body; // Nimmt Name aus Body - Unsicher!
+    const { name, date, startTime } = req.body;
     if (!name || !date || !startTime || !/^\d{4}-\d{2}-\d{2}$/.test(date) || !/^\d{2}:\d{2}$/.test(startTime)) {
         return res.status(400).json({ message: 'Fehlende oder ungültige Daten (Name, Datum YYYY-MM-DD, Startzeit HH:MM).' });
     }
@@ -344,7 +342,6 @@ app.post('/log-start', async (req, res) => {
     }
 });
 
-// Bucht das Arbeitsende und berechnet die Stunden - Wird später angepasst
 app.put('/log-end/:id', async (req, res) => {
     const { id } = req.params;
     const { endTime, comment } = req.body;
@@ -386,9 +383,8 @@ app.put('/log-end/:id', async (req, res) => {
     }
 });
 
-// Liefert Zusammenfassung der Stunden für einen Tag und den laufenden Monat - Wird später angepasst
 app.get('/summary-hours', async (req, res) => {
-    const { name, date } = req.query; // Nimmt Name aus Query - Unsicher!
+    const { name, date } = req.query;
     if (!name || !date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
         return res.status(400).json({ message: 'Name und Datum (YYYY-MM-DD) erforderlich.' });
     }
@@ -423,7 +419,6 @@ app.get('/summary-hours', async (req, res) => {
 // Admin Endpunkte (Login erforderlich via isAdmin Middleware)
 // ==========================================
 
-// Admin-Login
 app.post("/admin-login", (req, res) => {
     const { password } = req.body;
     const adminPassword = process.env.ADMIN_PASSWORD;
@@ -434,17 +429,13 @@ app.post("/admin-login", (req, res) => {
     if (!password) {
         return res.status(400).send("Passwort fehlt.");
     }
-    // ACHTUNG: Einfacher String-Vergleich ist unsicher für Passwörter!
-    // In einer echten Anwendung sollte hier bcrypt.compare verwendet werden,
-    // wenn das Admin-Passwort als Hash gespeichert wäre.
     if (password === adminPassword) {
         req.session.regenerate((errReg) => {
             if (errReg) {
                 console.error("Fehler beim Regenerieren der Session:", errReg);
                 return res.status(500).send("Session Fehler.");
             }
-            req.session.isAdmin = true; // Flag für Admin setzen
-            // Optional: Weitere Admin-Infos in Session speichern
+            req.session.isAdmin = true;
             req.session.save((errSave) => {
                 if (errSave) {
                     console.error("Fehler beim Speichern der Session:", errSave);
@@ -460,7 +451,6 @@ app.post("/admin-login", (req, res) => {
     }
 });
 
-// Admin-Logout
 app.post("/admin-logout", isAdmin, (req, res) => {
     if (req.session) {
         const sessionId = req.sessionID;
@@ -469,17 +459,15 @@ app.post("/admin-logout", isAdmin, (req, res) => {
                 console.error("Fehler beim Zerstören der Session:", err);
                 return res.status(500).send("Fehler beim Logout.");
             }
-            res.clearCookie('connect.sid'); // Cookie im Browser löschen (Name ist Standard von express-session)
+            res.clearCookie('connect.sid');
             console.log(`Admin abgemeldet (Session ID: ${sessionId}).`);
             return res.status(200).send("Erfolgreich abgemeldet.");
         });
     } else {
-        // Sollte nicht passieren, wenn isAdmin Middleware greift, aber sicherheitshalber
         return res.status(200).send("Keine aktive Session zum Abmelden gefunden.");
     }
 });
 
-// Arbeitszeiten für Admin anzeigen (mit Filterung, aufsteigend sortiert)
 app.get('/admin-work-hours', isAdmin, async (req, res, next) => {
     const { employeeId, year, month } = req.query;
     const logPrefix = `[ROUTE:/admin-work-hours] EmpID: ${employeeId}, M: ${month}/${year}, Session: ${req.sessionID} -`;
@@ -545,7 +533,6 @@ app.get('/admin-work-hours', isAdmin, async (req, res, next) => {
     }
 });
 
-// CSV-Download für Admin (berücksichtigt Filter, sortiert aufsteigend)
 app.get('/admin-download-csv', isAdmin, async (req, res, next) => {
     const logPrefix = `[ROUTE:/admin-download-csv] Query: ${JSON.stringify(req.query)}, Session: ${req.sessionID} -`;
     console.log(`${logPrefix} Request received.`);
@@ -621,7 +608,6 @@ app.get('/admin-download-csv', isAdmin, async (req, res, next) => {
     }
 });
 
-// Admin: Arbeitszeiteintrag aktualisieren
 app.put('/api/admin/update-hours', isAdmin, async (req, res, next) => {
     const logPrefix = `[ROUTE:/api/admin/update-hours] ID: ${req.body?.id}, Session: ${req.sessionID} -`;
     console.log(`${logPrefix} Request received. Data: ${JSON.stringify(req.body)}`);
@@ -659,7 +645,6 @@ app.put('/api/admin/update-hours', isAdmin, async (req, res, next) => {
     }
 });
 
-// Admin: Arbeitszeiteintrag löschen
 app.delete('/api/admin/delete-hours/:id', isAdmin, async (req, res, next) => {
     const logPrefix = `[ROUTE:/api/admin/delete-hours] ID: ${req.params?.id}, Session: ${req.sessionID} -`;
     console.log(`${logPrefix} Request received.`);
@@ -683,7 +668,6 @@ app.delete('/api/admin/delete-hours/:id', isAdmin, async (req, res, next) => {
     }
 });
 
-// Admin: Alle Daten löschen (Arbeitszeiten, Bilanzen, Abwesenheiten)
 app.delete('/adminDeleteData', isAdmin, async (req, res, next) => {
     const logPrefix = `[ROUTE:/adminDeleteData] Session: ${req.sessionID} -`;
     console.warn(`${logPrefix} !!! DELETE ALL DATA REQUEST RECEIVED !!!`);
@@ -762,7 +746,7 @@ app.post('/admin/employees', isAdmin, async (req, res, next) => {
 
     } catch (err) {
         console.error(`${logPrefix} ERROR - DB Error or processing error: ${err.message}`, err.stack);
-        if (err.code === '23505') {
+        if (err.code === '23505') { // Unique constraint violation
             console.warn(`${logPrefix} Conflict - Employee name '${req.body.name}' already exists.`);
             res.status(409).send(`Mitarbeiter '${req.body.name}' existiert bereits.`);
         } else {
@@ -832,7 +816,7 @@ app.put('/admin/employees/:id', isAdmin, async (req, res, next) => {
     } catch (err) {
         if (client) await client.query('ROLLBACK');
         console.error(`${logPrefix} ERROR during transaction. Rolled back. Error: ${err.message}`, err.stack);
-        if (err.code === '23505') {
+        if (err.code === '23505') { // Unique constraint violation
             res.status(409).send(`Name '${req.body.name}' existiert bereits.`);
         } else {
             next(err);
@@ -853,6 +837,7 @@ app.delete('/admin/employees/:id', isAdmin, async (req, res, next) => {
         const employeeId = parseInt(id);
         if (isNaN(employeeId)) { await client.query('ROLLBACK'); console.error(`${logPrefix} ERROR - Invalid ID.`); return res.status(400).send('Ungültige ID.');}
 
+        // Namen holen nur für Logging, Löschen erfolgt über ID und CASCADE
         const nameResult = await client.query('SELECT name FROM employees WHERE id = $1 FOR UPDATE', [employeeId]);
         if (nameResult.rows.length === 0) {
             await client.query('ROLLBACK');
@@ -861,7 +846,13 @@ app.delete('/admin/employees/:id', isAdmin, async (req, res, next) => {
         }
         const employeeName = nameResult.rows[0].name;
 
-        console.warn(`${logPrefix} Deleting employee ${employeeName} (ID: ${employeeId}) from employees table (cascades to absences, monthly_balance, work_hours)...`);
+        // Mitarbeiter löschen (CASCADE sollte absences, monthly_balance löschen)
+        // Optional: work_hours auch per FK und CASCADE löschen lassen, sonst hier manuell
+        console.warn(`${logPrefix} Deleting employee ${employeeName} (ID: ${employeeId}) from employees table (should cascade)...`);
+        // Optional: Zuerst abhängige work_hours löschen, falls kein FK mit CASCADE existiert
+        // console.warn(`${logPrefix} Deleting work_hours for ${employeeName}...`);
+        // await client.query('DELETE FROM work_hours WHERE LOWER(name) = LOWER($1)', [employeeName.toLowerCase()]);
+
         const deleteEmpResult = await client.query('DELETE FROM employees WHERE id = $1', [employeeId]);
 
         if (deleteEmpResult.rowCount > 0) {
@@ -876,8 +867,8 @@ app.delete('/admin/employees/:id', isAdmin, async (req, res, next) => {
     } catch (err) {
         if (client) await client.query('ROLLBACK');
         console.error(`${logPrefix} !!! CRITICAL ERROR during employee delete. Rolled back. Error: ${err.message}`, err.stack);
-        if (err.code === '23503') { // Sollte nicht passieren
-            res.status(409).send('FK Fehler: Abhängige Daten existieren (sollte nicht passieren mit CASCADE).');
+        if (err.code === '23503') { // Foreign key violation
+            res.status(409).send('FK Fehler: Konnte Mitarbeiter nicht löschen, da noch abhängige Daten existieren (sollte mit CASCADE nicht passieren).');
         } else {
             next(err);
         }
@@ -1040,10 +1031,10 @@ app.post('/admin/absences', isAdmin, async (req, res, next) => {
     } catch (err) {
         if (client) await client.query('ROLLBACK');
         console.error(`${logPrefix} ERROR during transaction. Rolled back. Error: ${err.message}`, err.stack);
-        if (err.code === '23505') {
+        if (err.code === '23505') { // Unique violation (employee_id, date)
             const fd = new Date(req.body.date+'T00:00:00Z').toLocaleDateString('de-DE',{timeZone:'UTC'});
             res.status(409).json({ message: `Für diesen Mitarbeiter existiert bereits ein Abwesenheitseintrag am ${fd}.` });
-        } else if (err.code === '23503') {
+        } else if (err.code === '23503') { // Foreign key violation
             res.status(404).json({ message: `Mitarbeiter mit ID ${req.body.employeeId} nicht gefunden (FK Fehler).`});
         } else {
             next(err);
@@ -1123,7 +1114,7 @@ app.post('/admin/generate-holidays', isAdmin, async (req, res, next) => {
             const holidayDate = new Date(holidayDateString + 'T00:00:00Z');
             const dayOfWeek = holidayDate.getUTCDay();
 
-            if (dayOfWeek !== 0 && dayOfWeek !== 6) {
+            if (dayOfWeek !== 0 && dayOfWeek !== 6) { // Nur Mo-Fr
                  for (const employee of employees) {
                     const expectedHours = getExpectedHours(employee, holidayDateString);
                     if (expectedHours > 0) {
@@ -1177,9 +1168,8 @@ app.delete('/admin/delete-public-holidays', isAdmin, async (req, res, next) => {
 
 // --- PDF Router ---
 try {
-    // Stelle sicher, dass monthlyPdfRouter eine Funktion ist, die den Router zurückgibt
     if (typeof monthlyPdfRouter === 'function') {
-        app.use('/api/pdf', monthlyPdfRouter(db)); // Übergibt die DB-Instanz
+        app.use('/api/pdf', monthlyPdfRouter(db));
     } else {
         console.error("!!! Fehler: monthlyPdfRouter ist keine Funktion. Überprüfen Sie den Export in './routes/monthlyPdfEndpoint.js'.");
     }
@@ -1196,7 +1186,6 @@ app.use((err, req, res, next) => {
     } else {
         console.error("Error:", err);
     }
-
     if (!res.headersSent) {
          res.status(500).send('Ein unerwarteter interner Serverfehler ist aufgetreten.');
     } else {
@@ -1205,11 +1194,9 @@ app.use((err, req, res, next) => {
 });
 
 // --- Server Start (NACH DB Setup) ---
-// 6. Datenbank-Setup ausführen und DANN Server starten
 setupTables()
   .then(() => {
       console.log('>>> Datenbank Setup erfolgreich abgeschlossen.');
-      // --- Server Start ---
       app.listen(port, () => {
           console.log(`=======================================================`);
           console.log(` Server läuft auf Port ${port}`);
@@ -1217,7 +1204,7 @@ setupTables()
           console.log(` Admin-Login: ${process.env.ADMIN_PASSWORD ? 'AKTIVIERT' : 'DEAKTIVIERT (Passwort fehlt!)'}`);
           if(db && typeof db.options === 'object') {
               const host = process.env.PGHOST || db.options.host || '??';
-              const portNum = process.env.PGPORT || db.options.port || '??'; // Renamed port variable
+              const portNum = process.env.PGPORT || db.options.port || '??';
               const database = process.env.PGDATABASE || db.options.database || '??';
               console.log(` Datenbank verbunden (Pool erstellt): Host=${host}, Port=${portNum}, DB=${database}`);
           } else if (db) {
@@ -1247,5 +1234,5 @@ setupTables()
   })
   .catch((err) => {
       console.error('!!! FEHLER beim Ausführen von setupTables vor Serverstart:', err);
-      process.exit(1); // Beenden, wenn DB-Setup fehlschlägt
+      process.exit(1);
   });
