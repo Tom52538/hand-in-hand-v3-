@@ -799,11 +799,11 @@
             } else {
                 employeeListBody.innerHTML = "<tr><td colspan='8'>Keine Mitarbeiter angelegt.</td></tr>";
             }
-        } catch (error) { // <<< KORRIGIERTER Catch-Block Anfang
+        } catch (error) { // KORRIGIERTER Catch-Block Anfang
             console.error("Fehler beim Laden der Mitarbeiterliste (Admin):", error);
             employeeListBody.innerHTML = `<tr><td colspan='8' class="error-message">❌ Fehler: ${error.message}</td></tr>`;
-        } // <<< KORRIGIERTER Catch-Block Ende
-    } // <<< KORREKTES Ende der loadEmployees Funktion
+        } // KORRIGIERTER Catch-Block Ende
+    } // KORREKTES Ende der loadEmployees Funktion
 
     // ANGEPASST für Passwort
     async function handleAddEmployee(event) {
