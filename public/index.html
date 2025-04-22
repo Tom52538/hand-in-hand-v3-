@@ -532,11 +532,11 @@
         populateSelectWithOptions(balanceNameSelect, employees, false, "Bitte auswählen...");
         if (employees.length === 0) {
             console.warn("Keine Mitarbeiter gefunden oder Fehler beim Laden.");
-            const errorMsg = '<option value="">Fehler/Keine MA</option>';
-            if(employeeSelect) employeeSelect.innerHTML = errorMsg;
-            if(filterEmployeeSelect) filterEmployeeSelect.innerHTML = errorMsg;
-            if(absenceEmployeeSelect) absenceEmployeeSelect.innerHTML = errorMsg;
-            if(balanceNameSelect) balanceNameSelect.innerHTML = errorMsg;
+            // Keine Alert-Box hier, da der Fehler schon in fetchEmployees angezeigt wird.
+            // Setze ggf. UI in einen entsprechenden Zustand.
+        } else {
+            // Eventuell erste Option auswählen oder weitere UI-Anpassungen
+             handleEmployeeSelection(); // Prüfe Status für initial leere Auswahl (oder ersten MA)
         }
     }
 
@@ -598,7 +598,7 @@
         if (action === 'start') {
             try {
                 const response = await fetch("/log-start", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name, date, startTime: time }) });
-                const result = await response.json();
+                const result = await response.json(); // Parse JSON erst *nach* OK-Check
                 if (!response.ok) throw new Error(result.message || `Serverfehler ${response.status}`);
                 alert("✅ Arbeitsbeginn erfolgreich gebucht.");
                 currentWorkEntryId = result.id;
@@ -613,7 +613,7 @@
             try {
                 const comment = ""; // Kommentarfeld wird hier nicht verwendet
                 const response = await fetch(`/log-end/${currentWorkEntryId}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ endTime: time, comment: comment || null }) });
-                const result = await response.json();
+                const result = await response.json(); // Parse JSON erst *nach* OK-Check
                 if (!response.ok) throw new Error(result.message || `Serverfehler ${response.status}`);
                 alert("✅ Arbeitsende erfolgreich gebucht.");
                 displayEndTimeInput.value = time + " Uhr";
@@ -622,11 +622,11 @@
                 let summaryDate = date;
                 if(displayDateInput.value && displayDateInput.value !== 'Unbekannt') {
                      try {
-                        const parts = displayDateInput.value.split(' '); // "Do. 22.04.2025" -> ["Do.", "22.04.2025"]
+                        const parts = displayDateInput.value.split(' ');
                         if (parts.length > 1) {
-                             const dateParts = parts[1].split('.'); // "22.04.2025" -> ["22", "04", "2025"]
+                             const dateParts = parts[1].split('.');
                              if (dateParts.length === 3) {
-                                 summaryDate = `${dateParts[2]}-${dateParts[1].padStart(2,'0')}-${dateParts[0].padStart(2,'0')}`; // YYYY-MM-DD
+                                 summaryDate = `${dateParts[2]}-${dateParts[1].padStart(2,'0')}-${dateParts[0].padStart(2,'0')}`;
                              }
                          }
                      } catch (e) { console.error("Fehler beim Parsen des angezeigten Datums für Summary:", e); }
@@ -691,34 +691,33 @@
         const targetContentId = "tab-" + targetTabName; const targetContent = document.getElementById(targetContentId);
         if (targetContent) {
             targetContent.classList.remove("hidden");
-            // Lade Daten oder setze UI zurück, wenn Tab gewechselt wird
             switch (targetTabName) {
                 case 'workhours':
-                    if (!filterEmployeeSelect.options || filterEmployeeSelect.options.length <= 1) { loadEmployeeOptions(); } // Lade Optionen falls nötig
-                    if (!workHoursTableBody.firstChild || workHoursTableBody.innerHTML.includes('Filter auswählen')) { workHoursTableBody.innerHTML = '<tr><td colspan="7">Bitte Filter auswählen und anwenden.</td></tr>'; } // Setze initialen Zustand
-                    cancelEditWorkHours(); // Schließe Bearbeitungsformular
+                    if (!filterEmployeeSelect.options || filterEmployeeSelect.options.length <= 1) { loadEmployeeOptions(); }
+                    if (!workHoursTableBody.firstChild || workHoursTableBody.innerHTML.includes('Filter auswählen')) { workHoursTableBody.innerHTML = '<tr><td colspan="7">Bitte Filter auswählen und anwenden.</td></tr>'; }
+                    cancelEditWorkHours();
                     break;
                 case 'employees':
-                    loadEmployees(); // Lade Mitarbeiterliste neu
-                    cancelEditEmployee(); // Schließe Bearbeitungsformular
+                    loadEmployees();
+                    cancelEditEmployee();
                     break;
                 case 'absences':
-                    if (!absenceEmployeeSelect.options || absenceEmployeeSelect.options.length <= 1) { loadEmployeeOptions(); } // Lade Optionen falls nötig
-                    if(absencesTableBody) absencesTableBody.innerHTML = '<tr><td colspan="5">Bitte Mitarbeiter auswählen.</td></tr>'; // Setze initialen Zustand
-                    if(addAbsenceForm) addAbsenceForm.reset(); // Leere Formular
-                    if(addAbsenceSubmitBtn) addAbsenceSubmitBtn.disabled = true; // Deaktiviere Button
-                    if(absenceFormNote) absenceFormNote.style.display = 'block'; // Zeige Hinweis
-                    if(addAbsenceEmployeeIdInput) addAbsenceEmployeeIdInput.value = ""; // Lösche versteckte ID
-                    if(generateHolidaysResultDiv) generateHolidaysResultDiv.innerHTML = ""; // Lösche Ergebnis Feiertagsgen.
-                    if(generateHolidaysYearInput) generateHolidaysYearInput.value = new Date().getFullYear(); // Setze Jahr zurück
-                    if(deleteHolidaysResultDiv) deleteHolidaysResultDiv.innerHTML = ""; // Lösche Ergebnis Feiertagslösch.
+                    if (!absenceEmployeeSelect.options || absenceEmployeeSelect.options.length <= 1) { loadEmployeeOptions(); }
+                    if(absencesTableBody) absencesTableBody.innerHTML = '<tr><td colspan="5">Bitte Mitarbeiter auswählen.</td></tr>';
+                    if(addAbsenceForm) addAbsenceForm.reset();
+                    if(addAbsenceSubmitBtn) addAbsenceSubmitBtn.disabled = true;
+                    if(absenceFormNote) absenceFormNote.style.display = 'block';
+                    if(addAbsenceEmployeeIdInput) addAbsenceEmployeeIdInput.value = "";
+                    if(generateHolidaysResultDiv) generateHolidaysResultDiv.innerHTML = "";
+                    if(generateHolidaysYearInput) generateHolidaysYearInput.value = new Date().getFullYear();
+                    if(deleteHolidaysResultDiv) deleteHolidaysResultDiv.innerHTML = "";
                     break;
                 case 'reports':
-                    if (!balanceNameSelect.options || balanceNameSelect.options.length <= 1) { loadEmployeeOptions(); } // Lade Optionen falls nötig
-                    if(balanceResultDiv) balanceResultDiv.innerHTML = ''; // Lösche altes Ergebnis
-                    if(downloadPdfBtn) downloadPdfBtn.disabled = true; // Deaktiviere PDF-Button
-                    handlePeriodTypeChange(); // Setze Formular zurück
-                    currentBalanceData = null; // Lösche zwischengespeicherte Daten
+                    if (!balanceNameSelect.options || balanceNameSelect.options.length <= 1) { loadEmployeeOptions(); }
+                    if(balanceResultDiv) balanceResultDiv.innerHTML = '';
+                    if(downloadPdfBtn) downloadPdfBtn.disabled = true;
+                    handlePeriodTypeChange();
+                    currentBalanceData = null;
                     break;
             }
         } else { console.error(`Tab-Inhalt für ID '${targetContentId}' nicht gefunden.`); }
@@ -730,7 +729,7 @@
         const employeeId = filterEmployeeSelect.value;
         const monthValue = filterMonthInput.value;
         applyWorkHoursFilterBtn.disabled = true; applyWorkHoursFilterBtn.textContent = 'Lade...'; workHoursTableBody.innerHTML = "<tr><td colspan='7'>Lade Daten...</td></tr>";
-        let year = '', month = ''; if (monthValue) { const parts = monthValue.split('-'); if (parts.length === 2 && parts[0].length === 4 && parts[1].length === 2) { year = parts[0]; month = parts[1]; } else if (monthValue !== '') { workHoursTableBody.innerHTML = "<tr><td colspan='7' style='color:orange;'>Ungültiges Monatsformat. Bitte YYYY-MM verwenden.</td></tr>"; applyWorkHoursFilterBtn.disabled = false; applyWorkHoursFilterBtn.textContent = 'Filter anwenden'; return; }}
+        let year = '', month = ''; if (monthValue) { const parts = monthValue.split('-'); if (parts.length === 2 && parts[0].length === 4 && parts[1].length === 2) { year = parts[0]; month = parts[1]; } else if (monthValue !== '') { workHoursTableBody.innerHTML = "<tr><td colspan='7' style='color:orange;'>Ungültiges Monatsformat. Bitte-MM verwenden.</td></tr>"; applyWorkHoursFilterBtn.disabled = false; applyWorkHoursFilterBtn.textContent = 'Filter anwenden'; return; }}
         let fetchUrl = '/admin-work-hours?';
         const params = []; if (employeeId && employeeId !== 'all' && employeeId !== '') { params.push(`employeeId=${encodeURIComponent(employeeId)}`); } if (year && month) { params.push(`year=${encodeURIComponent(year)}`); params.push(`month=${encodeURIComponent(month)}`); } fetchUrl += params.join('&');
         try {
