@@ -1,4 +1,4 @@
-// server.js - KORRIGIERTE VERSION (Trust Proxy + Diagnose-Logging + Aufsteigende Sortierung + Verhinderung Doppelbuchung + Wochentag im CSV + Global Error Handler + Mitarbeiter-Passwörter)
+// server.js - KORRIGIERTE VERSION (Trust Proxy + Diagnose-Logging + Aufsteigende Sortierung + Verhinderung Doppelbuchung + Wochentag im CSV + Global Error Handler + Mitarbeiter-Passwörter + Korr. Start)
 
 // 1. Notwendige Bibliotheken importieren
 const express = require('express');
@@ -17,18 +17,18 @@ dotenv.config();
 // Datenbankverbindung herstellen
 const db = new Pool({
   connectionString: process.env.DATABASE_URL,
-  // ssl: { // Nur wenn nötig
+  // ssl: { // Nur wenn nötig für lokale Entwicklung oder bestimmte Hoster
   //   rejectUnauthorized: false
   // }
 });
 
-// Datenbankverbindung testen
+// Datenbankverbindung testen (nur beim Start)
 db.connect((err, client, release) => {
   if (err) {
-    console.error('!!! Kritischer Fehler beim Verbinden mit der Datenbank:', err.stack);
-    process.exit(1);
+    console.error('!!! Kritischer Fehler beim ersten Verbindungsversuch mit der Datenbank:', err.stack);
+    // Programm nicht beenden, versuchen es später erneut im Setup
   } else {
-    console.log('>>> Datenbank erfolgreich verbunden.');
+    console.log('>>> Datenbank beim ersten Test erfolgreich verbunden.');
     release();
   }
 });
@@ -37,14 +37,23 @@ db.connect((err, client, release) => {
 const app = express();
 const port = process.env.PORT || 3000;
 
-// Express anweisen, dem Proxy zu vertrauen
+// Express anweisen, dem Proxy zu vertrauen (wichtig für secure cookies hinter Load Balancern/Proxies wie Railway)
 app.set('trust proxy', 1);
 
 // 3. Globale Variablen und Hilfsfunktionen
-const hd = new Holidays('DE', 'NW');
+const hd = new Holidays('DE', 'NW'); // Feiertage für NRW
 // Stelle sicher, dass diese Dateien existieren und korrekt exportieren
-const { calculateMonthlyData, calculatePeriodData, getExpectedHours } = require('./utils/calculationUtils');
-const monthlyPdfRouter = require('./routes/monthlyPdfEndpoint');
+let calculateMonthlyData, calculatePeriodData, getExpectedHours, monthlyPdfRouter;
+try {
+    ({ calculateMonthlyData, calculatePeriodData, getExpectedHours } = require('./utils/calculationUtils'));
+    monthlyPdfRouter = require('./routes/monthlyPdfEndpoint');
+} catch (e) {
+    console.error("!!! FEHLER beim Laden von Hilfsmodulen (calculationUtils / monthlyPdfEndpoint):", e);
+    console.error("!!! Stellen Sie sicher, dass die Dateien './utils/calculationUtils.js' und './routes/monthlyPdfEndpoint.js' existieren und korrekt exportieren.");
+    // Prozess beenden oder Fallback implementieren, hier beenden wir, da Kernfunktionalität fehlt
+    process.exit(1);
+}
+
 
 // Formatierungsoptionen für Datum mit Wochentag (global für CSV)
 const csvDateOptions = { weekday: 'short', day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'UTC' };
@@ -67,7 +76,7 @@ function calculateWorkHours(startTime, endTime) {
   return diffInMin / 60;
 }
 
-// Angepasste convertToCSV Funktion (bleibt inhaltlich gleich)
+// Angepasste convertToCSV Funktion
 async function convertToCSV(database, data) {
     if (!data || data.length === 0) return '';
     const csvRows = [];
@@ -94,7 +103,6 @@ async function convertToCSV(database, data) {
                 } else {
                    dateFormatted = String(row.date); // Fallback
                 }
-
             } catch (e) {
                 dateFormatted = String(row.date); // Fallback bei Fehler
                 console.warn("Fehler bei CSV-Datumsformatierung:", row.date, e);
@@ -107,14 +115,15 @@ async function convertToCSV(database, data) {
         const employeeData = employeeMap.get(String(row.name).toLowerCase());
         if(employeeData && dateForCalc && typeof getExpectedHours === 'function') {
             try {
+                // Prüfen, ob an diesem Tag eine Abwesenheit eingetragen ist (ignoriert Sollstunden)
                 const absenceCheck = await database.query('SELECT 1 FROM absences WHERE employee_id = $1 AND date = $2', [employeeData.id, dateForCalc]);
-                if (absenceCheck.rows.length === 0) {
+                if (absenceCheck.rows.length === 0) { // Nur wenn KEINE Abwesenheit
                     expectedHours = getExpectedHours(employeeData, dateForCalc);
                 }
             } catch (e) { console.error(`Fehler Soll-Std CSV (MA: ${row.name}, D: ${dateForCalc}):`, e); }
         }
         const diffHours = istHours - expectedHours;
-        const commentFormatted = `"${(row.comment || '').replace(/"/g, '""')}"`;
+        const commentFormatted = `"${(row.comment || '').replace(/"/g, '""')}"`; // Korrektes Escaping
         const values = [
             row.id, row.name, dateFormatted, startTimeFormatted, endTimeFormatted,
             istHours.toFixed(2), expectedHours.toFixed(2), diffHours.toFixed(2), commentFormatted
@@ -135,38 +144,44 @@ app.use(bodyParser.urlencoded({ extended: true }));
 // Session Middleware
 app.use(session({
     store: new pgSession({
-        pool: db,
-        tableName: 'user_sessions'
+        pool: db, // Übergibt den Pool an connect-pg-simple
+        tableName: 'user_sessions' // Name der Session-Tabelle
     }),
     secret: process.env.SESSION_SECRET || 'sehr-geheimes-fallback-secret-fuer-dev', // UNBEDINGT IN .env ÄNDERN!
-    resave: false,
-    saveUninitialized: false,
+    resave: false, // Nicht bei jeder Anfrage speichern, nur bei Änderungen
+    saveUninitialized: false, // Keine Session für unauthentifizierte Nutzer speichern
     cookie: {
-        secure: process.env.NODE_ENV === 'production',
-        maxAge: 1000 * 60 * 60 * 24, // 24 Stunden
-        httpOnly: true,
-        sameSite: 'lax'
+        secure: process.env.NODE_ENV === 'production', // Cookie nur über HTTPS senden (wird durch 'trust proxy' korrekt behandelt)
+        maxAge: 1000 * 60 * 60 * 24, // Gültigkeit: 24 Stunden
+        httpOnly: true, // Verhindert Zugriff auf Cookie via JavaScript im Frontend
+        sameSite: 'lax' // Schutz gegen CSRF-Angriffe
     }
 }));
 
-// Statische Dateien ausliefern
+// Statische Dateien ausliefern (HTML, CSS, Client-JS)
 app.use(express.static(path.join(__dirname, 'public')));
 
 // Middleware zur Prüfung ob Admin eingeloggt ist
 function isAdmin(req, res, next) {
+    // Prüft ob eine Session existiert und der isAdmin-Flag gesetzt ist
     if (req.session && req.session.isAdmin === true) {
-        next();
+        next(); // Zugriff erlaubt, weiter zur nächsten Middleware/Route
     } else {
+        // Loggen des fehlgeschlagenen Versuchs für Diagnosezwecke
         console.warn(`isAdmin Check FAILED für Session ID: ${req.sessionID} - isAdmin Flag: ${req.session?.isAdmin} - URL: ${req.originalUrl} von IP ${req.ip}`);
-        res.status(403).send('Zugriff verweigert. Admin-Login erforderlich.');
+        res.status(403).send('Zugriff verweigert. Admin-Login erforderlich.'); // Zugriff verweigern
     }
 }
 
 // 5. Datenbank-Setup Funktion (ANGEPASST für password_hash)
 const setupTables = async () => {
   try {
+    // Verbindung zur DB sicherstellen (wichtig, wenn erster Test fehlschlug)
+    const client = await db.connect();
+    console.log(">>> DB-Verbindung für Setup hergestellt.");
+
     // Tabelle für Mitarbeiter
-    await db.query(`
+    await client.query(`
       CREATE TABLE IF NOT EXISTS employees (
         id SERIAL PRIMARY KEY,
         name TEXT NOT NULL UNIQUE,
@@ -181,7 +196,7 @@ const setupTables = async () => {
     console.log("Tabelle 'employees' geprüft/erstellt.");
 
     // Tabelle für erfasste Arbeitszeiten
-    await db.query(`
+    await client.query(`
       CREATE TABLE IF NOT EXISTS work_hours (
         id SERIAL PRIMARY KEY,
         name TEXT NOT NULL,
@@ -192,11 +207,11 @@ const setupTables = async () => {
         comment TEXT
       );
     `);
-    await db.query(`CREATE INDEX IF NOT EXISTS idx_work_hours_name_date ON work_hours (LOWER(name), date);`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_work_hours_name_date ON work_hours (LOWER(name), date);`);
     console.log("Tabelle 'work_hours' und Index geprüft/erstellt.");
 
     // Tabelle für Monatsbilanzen
-    await db.query(`
+    await client.query(`
       CREATE TABLE IF NOT EXISTS monthly_balance (
         id SERIAL PRIMARY KEY,
         employee_id INTEGER NOT NULL REFERENCES employees(id) ON DELETE CASCADE,
@@ -206,11 +221,11 @@ const setupTables = async () => {
         UNIQUE (employee_id, year_month)
       );
     `);
-    await db.query(`CREATE INDEX IF NOT EXISTS idx_monthly_balance_employee_year_month ON monthly_balance (employee_id, year_month);`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_monthly_balance_employee_year_month ON monthly_balance (employee_id, year_month);`);
     console.log("Tabelle 'monthly_balance' und Index geprüft/erstellt.");
 
     // Tabelle für Abwesenheiten
-    await db.query(`
+    await client.query(`
       CREATE TABLE IF NOT EXISTS absences (
         id SERIAL PRIMARY KEY,
         employee_id INTEGER NOT NULL REFERENCES employees(id) ON DELETE CASCADE,
@@ -221,35 +236,35 @@ const setupTables = async () => {
         UNIQUE (employee_id, date)
       );
     `);
-    await db.query(`CREATE INDEX IF NOT EXISTS idx_absences_employee_date ON absences (employee_id, date);`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_absences_employee_date ON absences (employee_id, date);`);
     console.log("Tabelle 'absences' und Index geprüft/erstellt.");
 
     // Tabelle für Sessions prüfen
-    const sessionTableCheck = await db.query(`SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'user_sessions');`);
+    const sessionTableCheck = await client.query(`SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'user_sessions');`);
     if (!sessionTableCheck.rows[0].exists) {
         console.log("Session-Tabelle 'user_sessions' wird von connect-pg-simple erstellt...");
+        // connect-pg-simple erstellt die Tabelle automatisch, wenn sie nicht existiert
     } else {
         console.log("Session-Tabelle 'user_sessions' existiert.");
     }
 
+    client.release(); // Verbindung wieder freigeben
+
   } catch (err) {
     console.error("!!! Kritischer Datenbank Setup Fehler:", err);
+    // Hier process.exit() aufrufen, da das Setup essentiell ist
     process.exit(1);
   }
 };
 
-// 6. Datenbank-Setup ausführen
-setupTables()
-  .then(() => { console.log('>>> Datenbank Setup erfolgreich abgeschlossen.'); })
-  .catch((err) => { console.error('!!! FEHLER beim Ausführen von setupTables:', err); process.exit(1); });
 // ==========================================
 // Öffentliche Endpunkte (kein Login nötig - NOCH!)
 // ==========================================
 
-// Health Check Endpoint
+// Health Check Endpoint (nützlich für manche Hoster)
 app.get('/healthz', (req, res) => res.status(200).send('OK'));
 
-// Liefert Liste aller Mitarbeiter (ID und Name)
+// Liefert Liste aller Mitarbeiter (ID und Name) - Wird später evtl. entfernt oder geschützt
 app.get('/employees', async (req, res) => {
     try {
         const result = await db.query('SELECT id, name FROM employees ORDER BY name ASC');
@@ -260,9 +275,9 @@ app.get('/employees', async (req, res) => {
     }
 });
 
-// Prüft den letzten Eintrag eines Mitarbeiters, um den nächsten Buchungsstatus zu bestimmen
+// Prüft den letzten Eintrag eines Mitarbeiters, um den nächsten Buchungsstatus zu bestimmen - Wird später angepasst
 app.get('/next-booking-details', async (req, res) => {
-    const { name } = req.query;
+    const { name } = req.query; // Nimmt Name noch aus Query - Unsicher!
     if (!name) return res.status(400).json({ message: 'Name ist erforderlich.' });
     try {
         const query = `
@@ -276,6 +291,7 @@ app.get('/next-booking-details', async (req, res) => {
         let nextBooking = 'arbeitsbeginn', entryId = null, startDate = null, startTime = null;
         if (result.rows.length > 0) {
             const lastEntry = result.rows[0];
+            // Wenn Startzeit existiert, aber Endzeit fehlt -> nächster Schritt ist Arbeitsende
             if (lastEntry.starttime_formatted && !lastEntry.endtime) {
                 nextBooking = 'arbeitsende';
                 entryId = lastEntry.id;
@@ -290,28 +306,25 @@ app.get('/next-booking-details', async (req, res) => {
     }
 });
 
-// Bucht den Arbeitsbeginn (mit Verhinderung von Doppelbuchungen)
+// Bucht den Arbeitsbeginn (mit Verhinderung von Doppelbuchungen) - Wird später angepasst
 app.post('/log-start', async (req, res) => {
-    const { name, date, startTime } = req.body;
+    const { name, date, startTime } = req.body; // Nimmt Name aus Body - Unsicher!
     if (!name || !date || !startTime || !/^\d{4}-\d{2}-\d{2}$/.test(date) || !/^\d{2}:\d{2}$/.test(startTime)) {
         return res.status(400).json({ message: 'Fehlende oder ungültige Daten (Name, Datum YYYY-MM-DD, Startzeit HH:MM).' });
     }
     try {
-        // Prüfen, ob Mitarbeiter existiert
         const empCheck = await db.query('SELECT id, name FROM employees WHERE LOWER(name) = LOWER($1)', [name.toLowerCase()]);
         if (empCheck.rows.length === 0) {
             return res.status(404).json({ message: `Mitarbeiter '${name}' nicht gefunden.` });
         }
-        const dbEmployeeName = empCheck.rows[0].name; // Korrekten Namen aus DB verwenden
+        const dbEmployeeName = empCheck.rows[0].name;
 
-        // Prüfen, ob bereits ein offener Eintrag für diesen Tag existiert
         const checkOpenQuery = `SELECT id FROM work_hours WHERE LOWER(name) = LOWER($1) AND date = $2 AND endtime IS NULL`;
         const checkOpenResult = await db.query(checkOpenQuery, [dbEmployeeName.toLowerCase(), date]);
         if (checkOpenResult.rows.length > 0) {
             return res.status(409).json({ message: `Für diesen Tag existiert bereits ein nicht abgeschlossener Arbeitsbeginn.` });
         }
 
-        // Prüfen, ob bereits ein abgeschlossener Eintrag für diesen Tag existiert (Verhinderung Mehrfachbuchung)
         const checkCompleteQuery = `SELECT id FROM work_hours WHERE LOWER(name) = LOWER($1) AND date = $2 AND endtime IS NOT NULL`;
         const checkCompleteResult = await db.query(checkCompleteQuery, [dbEmployeeName.toLowerCase(), date]);
         if (checkCompleteResult.rows.length > 0) {
@@ -319,7 +332,6 @@ app.post('/log-start', async (req, res) => {
             return res.status(409).json({ message: `Für diesen Tag existiert bereits eine abgeschlossene Arbeitszeitbuchung. Mehrfachbuchungen pro Tag sind nicht erlaubt.` });
         }
 
-        // Eintrag erstellen
         const insertQuery = `INSERT INTO work_hours (name, date, starttime) VALUES ($1, $2, $3) RETURNING id;`;
         const insertResult = await db.query(insertQuery, [dbEmployeeName, date, startTime]);
         const newEntryId = insertResult.rows[0].id;
@@ -332,7 +344,7 @@ app.post('/log-start', async (req, res) => {
     }
 });
 
-// Bucht das Arbeitsende und berechnet die Stunden
+// Bucht das Arbeitsende und berechnet die Stunden - Wird später angepasst
 app.put('/log-end/:id', async (req, res) => {
     const { id } = req.params;
     const { endTime, comment } = req.body;
@@ -341,7 +353,6 @@ app.put('/log-end/:id', async (req, res) => {
     }
     const entryId = parseInt(id);
     try {
-        // Eintrag holen
         const entryResult = await db.query(
             `SELECT name, date, TO_CHAR(starttime, 'HH24:MI') AS starttime_formatted, endtime FROM work_hours WHERE id = $1`,
             [entryId]
@@ -351,22 +362,18 @@ app.put('/log-end/:id', async (req, res) => {
         }
         const entry = entryResult.rows[0];
 
-        // Prüfen, ob bereits beendet
         if (entry.endtime) {
             return res.status(409).json({ message: `Eintrag ID ${entryId} wurde bereits abgeschlossen.` });
         }
-        // Prüfen, ob Startzeit vorhanden
         if (!entry.starttime_formatted) {
             return res.status(400).json({ message: `Keine Startzeit für Eintrag ID ${entryId} gefunden.` });
         }
 
-        // Stunden berechnen
         const netHours = calculateWorkHours(entry.starttime_formatted, endTime);
         if (netHours < 0) {
             console.warn(`Negative Arbeitszeit für ID ${entryId} (${entry.starttime_formatted} - ${endTime}) berechnet. Speichere 0.`);
         }
 
-        // Eintrag aktualisieren
         const updateQuery = `UPDATE work_hours SET endtime = $1, comment = $2, hours = $3 WHERE id = $4;`;
         await db.query(updateQuery, [endTime, comment || null, netHours >= 0 ? netHours : 0, entryId]);
 
@@ -379,26 +386,24 @@ app.put('/log-end/:id', async (req, res) => {
     }
 });
 
-// Liefert Zusammenfassung der Stunden für einen Tag und den laufenden Monat
+// Liefert Zusammenfassung der Stunden für einen Tag und den laufenden Monat - Wird später angepasst
 app.get('/summary-hours', async (req, res) => {
-    const { name, date } = req.query;
+    const { name, date } = req.query; // Nimmt Name aus Query - Unsicher!
     if (!name || !date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
         return res.status(400).json({ message: 'Name und Datum (YYYY-MM-DD) erforderlich.' });
     }
     try {
-        // Tagesstunden
         const dailyResult = await db.query(
             `SELECT SUM(hours) AS total_daily_hours FROM work_hours WHERE LOWER(name) = LOWER($1) AND date = $2 AND hours IS NOT NULL`,
             [name.toLowerCase(), date]
         );
         const dailyHours = dailyResult.rows.length > 0 ? (parseFloat(dailyResult.rows[0].total_daily_hours) || 0) : 0;
 
-        // Monatsstunden (bis zum abgefragten Tag)
         const yearMonthDay = date.split('-');
         const year = parseInt(yearMonthDay[0]);
         const month = parseInt(yearMonthDay[1]);
         const firstDayOfMonth = new Date(Date.UTC(year, month - 1, 1)).toISOString().split('T')[0];
-        const lastDayForQuery = date; // Bis zum angegebenen Datum im Monat
+        const lastDayForQuery = date;
 
         const monthlyResult = await db.query(
             `SELECT SUM(hours) AS total_monthly_hours FROM work_hours WHERE LOWER(name) = LOWER($1) AND date >= $2 AND date <= $3 AND hours IS NOT NULL`,
@@ -429,13 +434,17 @@ app.post("/admin-login", (req, res) => {
     if (!password) {
         return res.status(400).send("Passwort fehlt.");
     }
-    if (password === adminPassword) { // Einfacher String-Vergleich - Für echte Anwendungen unsicher!
+    // ACHTUNG: Einfacher String-Vergleich ist unsicher für Passwörter!
+    // In einer echten Anwendung sollte hier bcrypt.compare verwendet werden,
+    // wenn das Admin-Passwort als Hash gespeichert wäre.
+    if (password === adminPassword) {
         req.session.regenerate((errReg) => {
             if (errReg) {
                 console.error("Fehler beim Regenerieren der Session:", errReg);
                 return res.status(500).send("Session Fehler.");
             }
-            req.session.isAdmin = true;
+            req.session.isAdmin = true; // Flag für Admin setzen
+            // Optional: Weitere Admin-Infos in Session speichern
             req.session.save((errSave) => {
                 if (errSave) {
                     console.error("Fehler beim Speichern der Session:", errSave);
@@ -460,14 +469,16 @@ app.post("/admin-logout", isAdmin, (req, res) => {
                 console.error("Fehler beim Zerstören der Session:", err);
                 return res.status(500).send("Fehler beim Logout.");
             }
-            res.clearCookie('connect.sid'); // Cookie im Browser löschen
+            res.clearCookie('connect.sid'); // Cookie im Browser löschen (Name ist Standard von express-session)
             console.log(`Admin abgemeldet (Session ID: ${sessionId}).`);
             return res.status(200).send("Erfolgreich abgemeldet.");
         });
     } else {
+        // Sollte nicht passieren, wenn isAdmin Middleware greift, aber sicherheitshalber
         return res.status(200).send("Keine aktive Session zum Abmelden gefunden.");
     }
 });
+
 // Arbeitszeiten für Admin anzeigen (mit Filterung, aufsteigend sortiert)
 app.get('/admin-work-hours', isAdmin, async (req, res, next) => {
     const { employeeId, year, month } = req.query;
@@ -498,13 +509,13 @@ app.get('/admin-work-hours', isAdmin, async (req, res, next) => {
             }
             try {
                 const startDate = new Date(Date.UTC(parsedYear, parsedMonth - 1, 1));
-                const endDate = new Date(Date.UTC(parsedYear, parsedMonth, 1)); // Nächster Monat, 1. Tag
+                const endDate = new Date(Date.UTC(parsedYear, parsedMonth, 1));
                 if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) throw new Error('Ungültiges Datum erstellt');
                 const startDateStr = startDate.toISOString().split('T')[0];
                 const endDateStr = endDate.toISOString().split('T')[0];
                 whereClauses.push(`w.date >= $${paramIndex++}`);
                 queryParams.push(startDateStr);
-                whereClauses.push(`w.date < $${paramIndex++}`); // Exklusiv Enddatum
+                whereClauses.push(`w.date < $${paramIndex++}`);
                 queryParams.push(endDateStr);
             } catch(dateError) {
                 console.error(`${logPrefix} ERROR - Date processing error:`, dateError);
@@ -516,7 +527,7 @@ app.get('/admin-work-hours', isAdmin, async (req, res, next) => {
         if (whereClauses.length > 0) {
             finalQuery += ` WHERE ${whereClauses.join(' AND ')}`;
         }
-        finalQuery += ` ORDER BY w.date ASC, e.name ASC, w.starttime ASC NULLS FIRST;`; // Aufsteigende Sortierung
+        finalQuery += ` ORDER BY w.date ASC, e.name ASC, w.starttime ASC NULLS FIRST;`;
 
         console.log(`${logPrefix} Executing query: ${finalQuery.substring(0, 200)}... Params: ${queryParams}`);
         const result = await db.query(finalQuery, queryParams);
@@ -524,13 +535,13 @@ app.get('/admin-work-hours', isAdmin, async (req, res, next) => {
 
         const formattedRows = result.rows.map(row => ({
             ...row,
-            date: row.date instanceof Date ? row.date.toISOString().split('T')[0] : row.date // Datum formatieren
+            date: row.date instanceof Date ? row.date.toISOString().split('T')[0] : row.date
         }));
         res.json(formattedRows);
 
     } catch (err) {
         console.error(`${logPrefix} ERROR - DB or processing error: ${err.message}`);
-        next(err); // Fehler an globalen Handler weitergeben
+        next(err);
     }
 });
 
@@ -557,7 +568,7 @@ app.get('/admin-download-csv', isAdmin, async (req, res, next) => {
              try {
                  const nameRes = await db.query('SELECT name FROM employees WHERE id = $1', [empIdInt]);
                  if(nameRes.rows.length > 0) filterDesc = nameRes.rows[0].name.replace(/[^a-z0-9]/gi, '_');
-             } catch {} // Fehler ignorieren, wenn Name nicht geholt werden kann
+             } catch {}
         } else {
             filterDesc = "alle_MA";
         }
@@ -590,18 +601,18 @@ app.get('/admin-download-csv', isAdmin, async (req, res, next) => {
 
         let finalQuery = baseQuery;
         if (whereClauses.length > 0) finalQuery += ` WHERE ${whereClauses.join(' AND ')}`;
-        finalQuery += ` ORDER BY w.date ASC, e.name ASC, w.starttime ASC NULLS FIRST;`; // Aufsteigende Sortierung
+        finalQuery += ` ORDER BY w.date ASC, e.name ASC, w.starttime ASC NULLS FIRST;`;
 
         console.log(`${logPrefix} Executing query for CSV: ${finalQuery.substring(0, 200)}... Params: ${queryParams}`);
         const result = await db.query(finalQuery, queryParams);
         console.log(`${logPrefix} Query successful, ${result.rows.length} rows found. Generating CSV...`);
 
-        const csvData = await convertToCSV(db, result.rows); // DB übergeben
+        const csvData = await convertToCSV(db, result.rows);
 
         const filename = `arbeitszeiten_${filterDesc}_${new Date().toISOString().split('T')[0]}.csv`;
         res.setHeader('Content-Type', 'text/csv; charset=utf-8');
         res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
-        res.send(Buffer.concat([Buffer.from('\uFEFF', 'utf8'), Buffer.from(csvData, 'utf-8')])); // BOM für Excel
+        res.send(Buffer.concat([Buffer.from('\uFEFF', 'utf8'), Buffer.from(csvData, 'utf-8')]));
         console.log(`${logPrefix} CSV sent successfully.`);
 
     } catch (err) {
@@ -700,13 +711,13 @@ app.delete('/adminDeleteData', isAdmin, async (req, res, next) => {
         if (client) client.release();
     }
 });
+
 // --- Mitarbeiterverwaltung (ANGEPASST für Passwörter) ---
 app.get('/admin/employees', isAdmin, async (req, res, next) => {
     try {
         const logPrefix = `[ROUTE:/admin/employees GET] Session: ${req.sessionID} -`;
         console.log(`${logPrefix} Request received.`);
         console.log(`${logPrefix} Querying employees...`);
-        // Passwort-Hash wird hier NICHT abgefragt oder gesendet!
         const result = await db.query('SELECT id, name, mo_hours, di_hours, mi_hours, do_hours, fr_hours FROM employees ORDER BY name ASC');
         console.log(`${logPrefix} Query successful, found ${result.rows.length} employees.`);
         res.json(result.rows);
@@ -716,7 +727,6 @@ app.get('/admin/employees', isAdmin, async (req, res, next) => {
     }
 });
 
-// ANGEPASST für Passwort
 app.post('/admin/employees', isAdmin, async (req, res, next) => {
     const logPrefix = `[ROUTE:/admin/employees POST] Session: ${req.sessionID} -`;
     try {
@@ -748,7 +758,7 @@ app.post('/admin/employees', isAdmin, async (req, res, next) => {
         const result = await db.query(query, [trimmedName, passwordHash, ...hours]);
 
         console.log(`${logPrefix} Insert successful. ID: ${result.rows[0].id}`);
-        res.status(201).json(result.rows[0]); // Passwort-Hash nicht zurückgeben
+        res.status(201).json(result.rows[0]);
 
     } catch (err) {
         console.error(`${logPrefix} ERROR - DB Error or processing error: ${err.message}`, err.stack);
@@ -760,8 +770,6 @@ app.post('/admin/employees', isAdmin, async (req, res, next) => {
         }
     }
 });
-
-// ANGEPASST für Passwort-Update
 app.put('/admin/employees/:id', isAdmin, async (req, res, next) => {
     let client;
     const logPrefix = `[ROUTE:/admin/employees PUT] ID: ${req.params?.id}, Session: ${req.sessionID} -`;
@@ -834,7 +842,6 @@ app.put('/admin/employees/:id', isAdmin, async (req, res, next) => {
     }
 });
 
-// Mitarbeiter löschen (bleibt funktional gleich, CASCADE löscht abhängige Daten)
 app.delete('/admin/employees/:id', isAdmin, async (req, res, next) => {
     let client;
     const logPrefix = `[ROUTE:/admin/employees DELETE] ID: ${req.params?.id}, Session: ${req.sessionID} -`;
@@ -846,7 +853,6 @@ app.delete('/admin/employees/:id', isAdmin, async (req, res, next) => {
         const employeeId = parseInt(id);
         if (isNaN(employeeId)) { await client.query('ROLLBACK'); console.error(`${logPrefix} ERROR - Invalid ID.`); return res.status(400).send('Ungültige ID.');}
 
-        // Namen holen für Logging und ggf. work_hours Löschung (obwohl CASCADE das erledigen sollte)
         const nameResult = await client.query('SELECT name FROM employees WHERE id = $1 FOR UPDATE', [employeeId]);
         if (nameResult.rows.length === 0) {
             await client.query('ROLLBACK');
@@ -855,13 +861,7 @@ app.delete('/admin/employees/:id', isAdmin, async (req, res, next) => {
         }
         const employeeName = nameResult.rows[0].name;
 
-        // // Manuelles Löschen von work_hours (optional, da CASCADE vorhanden sein sollte)
-        // console.warn(`${logPrefix} Deleting work_hours for ${employeeName}...`);
-        // const workHoursDeleteResult = await client.query('DELETE FROM work_hours WHERE LOWER(name) = LOWER($1)', [employeeName.toLowerCase()]);
-        // console.warn(`${logPrefix} -> ${workHoursDeleteResult.rowCount} work_hours rows deleted.`);
-
-        // Mitarbeiter löschen (CASCADE sollte absences und monthly_balance löschen)
-        console.warn(`${logPrefix} Deleting employee ${employeeName} (ID: ${employeeId}) from employees table (cascades to absences, monthly_balance)...`);
+        console.warn(`${logPrefix} Deleting employee ${employeeName} (ID: ${employeeId}) from employees table (cascades to absences, monthly_balance, work_hours)...`);
         const deleteEmpResult = await client.query('DELETE FROM employees WHERE id = $1', [employeeId]);
 
         if (deleteEmpResult.rowCount > 0) {
@@ -876,8 +876,7 @@ app.delete('/admin/employees/:id', isAdmin, async (req, res, next) => {
     } catch (err) {
         if (client) await client.query('ROLLBACK');
         console.error(`${logPrefix} !!! CRITICAL ERROR during employee delete. Rolled back. Error: ${err.message}`, err.stack);
-        // Foreign Key Violation Error (sollte wegen ON DELETE CASCADE nicht passieren)
-        if (err.code === '23503') {
+        if (err.code === '23503') { // Sollte nicht passieren
             res.status(409).send('FK Fehler: Abhängige Daten existieren (sollte nicht passieren mit CASCADE).');
         } else {
             next(err);
@@ -886,7 +885,6 @@ app.delete('/admin/employees/:id', isAdmin, async (req, res, next) => {
         if (client) client.release();
     }
 });
-
 
 // --- Auswertungen (unverändert) ---
 app.get('/calculate-monthly-balance', isAdmin, async (req, res, next) => {
@@ -950,7 +948,6 @@ app.get('/calculate-period-balance', isAdmin, async (req, res, next) => {
 });
 
 // --- Abwesenheiten (unverändert) ---
-// GET /admin/absences
 app.get('/admin/absences', isAdmin, async (req, res, next) => {
     try {
         const { employeeId } = req.query;
@@ -976,7 +973,6 @@ app.get('/admin/absences', isAdmin, async (req, res, next) => {
         next(err);
     }
 });
-// POST /admin/absences
 app.post('/admin/absences', isAdmin, async (req, res, next) => {
     let client;
     const logPrefix = `[ROUTE:/admin/absences POST] Session: ${req.sessionID} -`;
@@ -992,9 +988,8 @@ app.post('/admin/absences', isAdmin, async (req, res, next) => {
 
         const normalizedAbsenceType = absenceType.toUpperCase();
         const targetDate = new Date(date + 'T00:00:00Z');
-        const dayOfWeek = targetDate.getUTCDay(); // 0 = Sonntag, 6 = Samstag
+        const dayOfWeek = targetDate.getUTCDay();
 
-        // Keine Buchung am Wochenende (außer Feiertag)
         if (dayOfWeek === 0 || dayOfWeek === 6) {
              const fd = targetDate.toLocaleDateString('de-DE',{weekday: 'long', timeZone:'UTC'});
              console.warn(`${logPrefix} Attempt to book absence on weekend (${fd}).`);
@@ -1002,7 +997,6 @@ app.post('/admin/absences', isAdmin, async (req, res, next) => {
              return res.status(400).json({ message: `Abwesenheiten können nicht am Wochenende (${fd}) gebucht werden.` });
         }
 
-        // Prüfung, ob es wirklich ein Feiertag ist, wenn Typ 'PUBLIC_HOLIDAY'
         if (normalizedAbsenceType === 'PUBLIC_HOLIDAY') {
             const isHoliday = hd.isHoliday(targetDate);
             if (!isHoliday || isHoliday.type !== 'public') {
@@ -1022,15 +1016,13 @@ app.post('/admin/absences', isAdmin, async (req, res, next) => {
         const expectedHoursForDay = getExpectedHours(employeeData, date);
         let credited_hours = expectedHoursForDay;
 
-        // Buchung nicht möglich, wenn MA an dem Tag 0 Soll-Stunden hat (außer bei Feiertag?)
-        // Überlegung: Sollte man Feiertag auch buchen dürfen, wenn 0 Soll? Aktuell: Ja.
         if (normalizedAbsenceType !== 'PUBLIC_HOLIDAY' && expectedHoursForDay <= 0) {
             const fd = targetDate.toLocaleDateString('de-DE',{weekday: 'long', timeZone:'UTC'});
             await client.query('ROLLBACK');
             console.warn(`${logPrefix} Cannot book absence, employee has 0 expected hours on ${fd}.`);
             return res.status(400).json({ message: `Buchung nicht möglich: Mitarbeiter ${employeeData.name} hat an diesem Tag (${fd}) keine Soll-Stunden.` });
         }
-        credited_hours = Math.max(0, credited_hours); // Sicherstellen, dass nicht negativ
+        credited_hours = Math.max(0, credited_hours);
 
         console.log(`${logPrefix} Inserting absence (Type: ${normalizedAbsenceType}, Credited: ${credited_hours})...`);
         const insertQuery = `INSERT INTO absences (employee_id, date, absence_type, credited_hours, comment) VALUES ($1, $2, $3, $4, $5) RETURNING id, date, absence_type, credited_hours, comment;`;
@@ -1048,10 +1040,10 @@ app.post('/admin/absences', isAdmin, async (req, res, next) => {
     } catch (err) {
         if (client) await client.query('ROLLBACK');
         console.error(`${logPrefix} ERROR during transaction. Rolled back. Error: ${err.message}`, err.stack);
-        if (err.code === '23505') { // Unique violation (employee_id, date)
+        if (err.code === '23505') {
             const fd = new Date(req.body.date+'T00:00:00Z').toLocaleDateString('de-DE',{timeZone:'UTC'});
             res.status(409).json({ message: `Für diesen Mitarbeiter existiert bereits ein Abwesenheitseintrag am ${fd}.` });
-        } else if (err.code === '23503') { // Foreign key violation
+        } else if (err.code === '23503') {
             res.status(404).json({ message: `Mitarbeiter mit ID ${req.body.employeeId} nicht gefunden (FK Fehler).`});
         } else {
             next(err);
@@ -1060,7 +1052,6 @@ app.post('/admin/absences', isAdmin, async (req, res, next) => {
         if (client) client.release();
     }
 });
-// DELETE /admin/absences/:id
 app.delete('/admin/absences/:id', isAdmin, async (req, res, next) => {
     try {
         const logPrefix = `[ROUTE:/admin/absences DELETE] ID: ${req.params?.id}, Session: ${req.sessionID} -`;
@@ -1083,7 +1074,6 @@ app.delete('/admin/absences/:id', isAdmin, async (req, res, next) => {
         next(err);
     }
 });
-// POST /admin/generate-holidays
 app.post('/admin/generate-holidays', isAdmin, async (req, res, next) => {
     let client;
     const logPrefix = `[ROUTE:/admin/generate-holidays POST] Year: ${req.body?.year}, Session: ${req.sessionID} -`;
@@ -1129,15 +1119,13 @@ app.post('/admin/generate-holidays', isAdmin, async (req, res, next) => {
         `;
 
         for (const holiday of publicHolidays) {
-            const holidayDateString = holiday.date.split(' ')[0]; // Nur YYYY-MM-DD
+            const holidayDateString = holiday.date.split(' ')[0];
             const holidayDate = new Date(holidayDateString + 'T00:00:00Z');
-            const dayOfWeek = holidayDate.getUTCDay(); // 0 = Sonntag, 6 = Samstag
+            const dayOfWeek = holidayDate.getUTCDay();
 
-            // Nur eintragen, wenn es ein Wochentag ist (Mo-Fr)
             if (dayOfWeek !== 0 && dayOfWeek !== 6) {
                  for (const employee of employees) {
                     const expectedHours = getExpectedHours(employee, holidayDateString);
-                    // Nur eintragen, wenn der Mitarbeiter an dem Tag Soll-Stunden hat
                     if (expectedHours > 0) {
                         const result = await client.query(insertQuery, [
                             employee.id,
@@ -1148,7 +1136,7 @@ app.post('/admin/generate-holidays', isAdmin, async (req, res, next) => {
                         if (result.rowCount > 0) {
                             generatedCount++;
                         } else {
-                            skippedCount++; // Bereits vorhanden oder anderer Konflikt
+                            skippedCount++;
                         }
                     }
                  }
@@ -1172,7 +1160,6 @@ app.post('/admin/generate-holidays', isAdmin, async (req, res, next) => {
         if (client) client.release();
     }
 });
-// DELETE /admin/delete-public-holidays
 app.delete('/admin/delete-public-holidays', isAdmin, async (req, res, next) => {
     try {
         const logPrefix = `[ROUTE:/admin/delete-public-holidays DELETE] Session: ${req.sessionID} -`;
@@ -1188,11 +1175,14 @@ app.delete('/admin/delete-public-holidays', isAdmin, async (req, res, next) => {
     }
 });
 
-
 // --- PDF Router ---
 try {
-    // Stelle sicher, dass die Funktion eine Router-Instanz zurückgibt
-    app.use('/api/pdf', monthlyPdfRouter(db));
+    // Stelle sicher, dass monthlyPdfRouter eine Funktion ist, die den Router zurückgibt
+    if (typeof monthlyPdfRouter === 'function') {
+        app.use('/api/pdf', monthlyPdfRouter(db)); // Übergibt die DB-Instanz
+    } else {
+        console.error("!!! Fehler: monthlyPdfRouter ist keine Funktion. Überprüfen Sie den Export in './routes/monthlyPdfEndpoint.js'.");
+    }
 } catch(routerError) {
     console.error("!!! Fehler beim Einbinden des PDF-Routers:", routerError);
 }
@@ -1208,48 +1198,54 @@ app.use((err, req, res, next) => {
     }
 
     if (!res.headersSent) {
-         // Sende generische Fehlermeldung, vermeide Details in Produktion
          res.status(500).send('Ein unerwarteter interner Serverfehler ist aufgetreten.');
     } else {
-         next(err); // An Standard-Express-Handler übergeben
+         next(err);
     }
 });
 
-// --- Server Start ---
-app.listen(port, () => {
-    console.log(`=======================================================`);
-    console.log(` Server läuft auf Port ${port}`);
-    console.log(` Node Environment: ${process.env.NODE_ENV || 'development'}`);
-    console.log(` Admin-Login: ${process.env.ADMIN_PASSWORD ? 'AKTIVIERT' : 'DEAKTIVIERT (Passwort fehlt!)'}`);
-    if(db && typeof db.options === 'object') {
-        // Versuche DB-Infos aus Umgebungsvariablen oder Pool-Optionen zu holen
-        const host = process.env.PGHOST || db.options.host || '??';
-        const port = process.env.PGPORT || db.options.port || '??';
-        const database = process.env.PGDATABASE || db.options.database || '??';
-        console.log(` Datenbank verbunden (Pool erstellt): Host=${host}, Port=${port}, DB=${database}`);
-    } else if (db) {
-        console.warn("!!! DB Pool Objekt 'db' existiert, aber Status unklar.");
-    } else {
-        console.error("!!! KRITISCH: DB Pool ('db') konnte nicht initialisiert werden!");
-    }
-    console.log(` Feiertagsmodul: DE / NW`);
-    console.log(` CORS Origin: ${process.env.CORS_ORIGIN || '*'}`);
-    console.log(` Frontend aus: '${path.join(__dirname, 'public')}'`);
-    console.log(` Trust Proxy Setting: ${app.get('trust proxy')}`);
-    // Sicherer Zugriff auf Session-Cookie-Einstellungen
-    let sessionCookieSecure = process.env.NODE_ENV === 'production';
-    let sessionCookieSameSite = 'lax'; // Standardwert
-    try {
-        // Greife nur auf session.cookie zu, wenn session existiert und cookie ein Objekt ist
-        if (app.settings && app.settings.session && typeof app.settings.session.cookie === 'object' && app.settings.session.cookie !== null) {
-             if (app.settings.session.cookie.hasOwnProperty('secure')) {
-                 sessionCookieSecure = app.settings.session.cookie.secure;
-             }
-             if (app.settings.session.cookie.hasOwnProperty('sameSite')) {
-                 sessionCookieSameSite = app.settings.session.cookie.sameSite;
-             }
-        }
-    } catch (e) { console.warn("Warnung: Konnte Session-Cookie-Details nicht vollständig lesen.", e.message); }
-    console.log(` Session Cookie Settings: secure=${sessionCookieSecure}, sameSite='${sessionCookieSameSite}'`);
-    console.log(`=======================================================`);
-});
+// --- Server Start (NACH DB Setup) ---
+// 6. Datenbank-Setup ausführen und DANN Server starten
+setupTables()
+  .then(() => {
+      console.log('>>> Datenbank Setup erfolgreich abgeschlossen.');
+      // --- Server Start ---
+      app.listen(port, () => {
+          console.log(`=======================================================`);
+          console.log(` Server läuft auf Port ${port}`);
+          console.log(` Node Environment: ${process.env.NODE_ENV || 'development'}`);
+          console.log(` Admin-Login: ${process.env.ADMIN_PASSWORD ? 'AKTIVIERT' : 'DEAKTIVIERT (Passwort fehlt!)'}`);
+          if(db && typeof db.options === 'object') {
+              const host = process.env.PGHOST || db.options.host || '??';
+              const portNum = process.env.PGPORT || db.options.port || '??'; // Renamed port variable
+              const database = process.env.PGDATABASE || db.options.database || '??';
+              console.log(` Datenbank verbunden (Pool erstellt): Host=${host}, Port=${portNum}, DB=${database}`);
+          } else if (db) {
+              console.warn("!!! DB Pool Objekt 'db' existiert, aber Status unklar.");
+          } else {
+              console.error("!!! KRITISCH: DB Pool ('db') konnte nicht initialisiert werden!");
+          }
+          console.log(` Feiertagsmodul: DE / NW`);
+          console.log(` CORS Origin: ${process.env.CORS_ORIGIN || '*'}`);
+          console.log(` Frontend aus: '${path.join(__dirname, 'public')}'`);
+          console.log(` Trust Proxy Setting: ${app.get('trust proxy')}`);
+          let sessionCookieSecure = process.env.NODE_ENV === 'production';
+          let sessionCookieSameSite = 'lax';
+          try {
+              if (app.settings && app.settings.session && typeof app.settings.session.cookie === 'object' && app.settings.session.cookie !== null) {
+                   if (app.settings.session.cookie.hasOwnProperty('secure')) {
+                       sessionCookieSecure = app.settings.session.cookie.secure;
+                   }
+                   if (app.settings.session.cookie.hasOwnProperty('sameSite')) {
+                       sessionCookieSameSite = app.settings.session.cookie.sameSite;
+                   }
+              }
+          } catch (e) { console.warn("Warnung: Konnte Session-Cookie-Details nicht vollständig lesen.", e.message); }
+          console.log(` Session Cookie Settings: secure=${sessionCookieSecure}, sameSite='${sessionCookieSameSite}'`);
+          console.log(`=======================================================`);
+      });
+  })
+  .catch((err) => {
+      console.error('!!! FEHLER beim Ausführen von setupTables vor Serverstart:', err);
+      process.exit(1); // Beenden, wenn DB-Setup fehlschlägt
+  });
