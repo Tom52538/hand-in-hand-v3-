@@ -109,8 +109,9 @@
     <h1>Arbeitszeiterfassung</h1>
 
     <div id="loggedInUserInfo" class="hidden">
-      <span>Eingeloggt als: <strong id="loggedInUserName"></strong></span>
-      <button id="logoutBtn" class="logout-btn">Abmelden</button>
+      <span>Logged in as: <strong id="loggedInUserName"></strong></span>
+      <button id="logoutBtn" class="logout-btn">Logout</button>
+      <button id="adminLogoutBtn" class="logout-btn hidden" style="background-color: #6c757d;">Admin Logout</button>
     </div>
 
     <div id="employeeLoginSection">
@@ -308,6 +309,7 @@
     const loggedInUserInfo = document.getElementById('loggedInUserInfo');
     const loggedInUserName = document.getElementById('loggedInUserName');
     const logoutBtn = document.getElementById('logoutBtn');
+    const adminLogoutBtn = document.getElementById('adminLogoutBtn');
     const showAdminLoginLink = document.getElementById('showAdminLoginLink');
     const showEmployeeLoginLink = document.getElementById('showEmployeeLoginLink');
     const loginEmployeeSelect = document.getElementById('loginEmployeeSelect'); // Login-Dropdown
@@ -386,6 +388,7 @@
 
     // ==== Initialisierung ====
     document.addEventListener('DOMContentLoaded', () => {
+      checkSessionStatus();
       showSection('employeeLoginSection');
       loadLoginEmployeeSelect(); // Login-Dropdown füllen
       loadAdminSelectOptions(); // Admin Dropdowns füllen
@@ -410,6 +413,7 @@
         if (employeeLoginFormElement) employeeLoginFormElement.addEventListener('submit', handleEmployeeLogin);
         else console.error("Element not found: employeeLoginForm");
         if (logoutBtn) logoutBtn.addEventListener('click', handleEmployeeLogout); else console.error("Element not found: logoutBtn");
+        if (adminLogoutBtn) adminLogoutBtn.addEventListener('click', handleAdminLogout);
         if (showAdminLoginLink) showAdminLoginLink.addEventListener('click', (e) => { e.preventDefault(); showSection('adminLoginSection'); }); else console.error("Element not found: showAdminLoginLink");
         if (showEmployeeLoginLink) showEmployeeLoginLink.addEventListener('click', (e) => { e.preventDefault(); showSection('employeeLoginSection'); }); else console.error("Element not found: showEmployeeLoginLink");
 
@@ -450,12 +454,40 @@
         if (adminTabsContainer) adminTabsContainer.classList.add('hidden');
         if (employeeSelectDiv) employeeSelectDiv.classList.add('hidden'); // Altes Dropdown ausblenden
 
+        logoutBtn.classList.remove("hidden");
+        adminLogoutBtn.classList.add("hidden");
+
         // Initialisiere Zeiterfassungs-UI für eingeloggten User
         resetWorkTimeForm(); // Setzt Button etc. zurück
         checkNextBookingAction(); // <<<<--- Ruft die angepasste Funktion auf
     }
-    function showLoggedOutView() { loggedInEmployee = null; if (employeeLoginFormElement) employeeLoginFormElement.reset(); if (employeeLoginError) employeeLoginError.classList.add('hidden'); showSection('employeeLoginSection'); if (loggedInUserInfo) loggedInUserInfo.classList.add('hidden'); if (workHoursForm) workHoursForm.classList.add('hidden'); if (adminTabsContainer) adminTabsContainer.classList.add('hidden'); if (employeeSelectDiv) employeeSelectDiv.classList.remove('hidden'); resetWorkTimeForm(); } // Altes Dropdown wieder zeigen?
-    function showAdminView() { showSection('adminTabs'); handleTabSwitch({ currentTarget: document.querySelector('.tabs li[data-tab="workhours"]') }); if (employeeLoginSection) employeeLoginSection.classList.add('hidden'); if (adminLoginSection) adminLoginSection.classList.add('hidden'); if (workHoursForm) workHoursForm.classList.add('hidden'); if (loggedInUserInfo) loggedInUserInfo.classList.add('hidden'); }
+    function showLoggedOutView() {
+        loggedInEmployee = null; if (employeeLoginFormElement) employeeLoginFormElement.reset(); if (employeeLoginError) employeeLoginError.classList.add('hidden'); showSection('employeeLoginSection'); if (loggedInUserInfo) loggedInUserInfo.classList.add('hidden'); if (workHoursForm) workHoursForm.classList.add('hidden'); if (adminTabsContainer) adminTabsContainer.classList.add('hidden'); if (employeeSelectDiv) employeeSelectDiv.classList.remove('hidden'); resetWorkTimeForm();
+        logoutBtn.classList.add("hidden");
+        adminLogoutBtn.classList.add("hidden");
+    } // Altes Dropdown wieder zeigen?
+    function showAdminView() {
+        showSection('adminTabs'); handleTabSwitch({ currentTarget: document.querySelector('.tabs li[data-tab="workhours"]') }); if (employeeLoginSection) employeeLoginSection.classList.add('hidden'); if (adminLoginSection) adminLoginSection.classList.add('hidden'); if (workHoursForm) workHoursForm.classList.add('hidden'); if (loggedInUserInfo) loggedInUserInfo.classList.remove('hidden');
+        logoutBtn.classList.add("hidden");
+        adminLogoutBtn.classList.remove("hidden");
+    }
+
+    async function checkSessionStatus() {
+      try {
+        const res = await fetch("/api/session-status", { credentials: "include" });
+        if (!res.ok) throw new Error("Not logged in");
+        const data = await res.json();
+        if (data.isEmployee) {
+          showLoggedInEmployeeView({ id: data.employee.id, name: data.employee.name });
+        } else if (data.isAdmin) {
+          showAdminView();
+        } else {
+          showLoggedOutView();
+        }
+      } catch {
+        showLoggedOutView();
+      }
+    }
 
     // ==== Allgemeine Hilfsfunktionen ====
     async function fetchEmployees() { try { const response = await fetch('/employees'); if (!response.ok) throw new Error(`Laden der Mitarbeiterliste fehlgeschlagen (${response.status}).`); return await response.json(); } catch (err) { console.error("Fehler beim Laden der Mitarbeiterliste:", err); alert("❌ Fehler: Mitarbeiterliste konnte nicht geladen werden. " + err.message); return []; } }
@@ -485,6 +517,14 @@
         finally { loginButton.disabled = false; loginButton.textContent = "Anmelden"; }
     }
     async function handleEmployeeLogout() { if (!confirm("Möchten Sie sich wirklich abmelden?")) return; logoutBtn.disabled = true; logoutBtn.textContent = "Abmeldung..."; try { const response = await fetch('/logout', { method: 'POST', credentials: 'include' }); const data = await response.json(); if (!response.ok) { throw new Error(data.message || `Logout fehlgeschlagen (${response.status})`); } alert(data.message || "Erfolgreich abgemeldet."); showLoggedOutView(); } catch(error) { console.error("Fehler beim Logout:", error); alert(`Logout fehlgeschlagen: ${error.message}`); } finally { logoutBtn.disabled = false; logoutBtn.textContent = "Abmelden"; } }
+
+    async function handleAdminLogout() {
+      if (!confirm("Really log out as admin?")) return;
+      try {
+        await fetch("/admin-logout", { method: "POST", credentials: "include" });
+        location.reload();
+      } catch {}
+    }
 
     // ==== Funktionen Zeiterfassung (ANGEPASST FÜR LOGIN) ====
     async function checkNextBookingAction() {
