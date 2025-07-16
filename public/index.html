@@ -681,7 +681,9 @@
                     const errorData = await response.json();
                     errorMsg += `: ${errorData.message || 'Unbekannter Serverfehler'}`;
                 } catch (jsonError) {
-                    errorMsg += `: ${await response.text()}`;
+                    // If parsing JSON fails, the response body is likely empty or not JSON.
+                    // We can't read it again, so just use the status text.
+                    errorMsg += `: ${response.statusText}`;
                 }
                  if (response.status === 401 || response.status === 403) {
                      alert("Sitzung abgelaufen oder keine Admin-Rechte. Bitte neu anmelden.");
