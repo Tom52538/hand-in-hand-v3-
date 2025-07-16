@@ -532,6 +532,46 @@ app.delete('/adminDeleteData', isAdmin, async (req, res, next) => {
     }
 });
 
+app.get('/admin-download-csv', isAdmin, async (req, res, next) => {
+    try {
+        const { year, month, employeeId } = req.query;
+        let query = `
+            SELECT w.id, e.name, w.date, w.hours, w.comment,
+                   TO_CHAR(w.starttime, 'HH24:MI') AS "startTime",
+                   TO_CHAR(w.endtime, 'HH24:MI') AS "endTime"
+            FROM work_hours w
+            JOIN employees e ON LOWER(w.name) = LOWER(e.name)
+        `;
+        const params = [];
+        const whereClauses = [];
+
+        if (year && month) {
+            whereClauses.push(`EXTRACT(YEAR FROM w.date) = $${params.length + 1} AND EXTRACT(MONTH FROM w.date) = $${params.length + 2}`);
+            params.push(year, month);
+        }
+
+        if (employeeId && employeeId !== 'all') {
+            whereClauses.push(`e.id = $${params.length + 1}`);
+            params.push(employeeId);
+        }
+
+        if (whereClauses.length > 0) {
+            query += ' WHERE ' + whereClauses.join(' AND ');
+        }
+
+        query += ' ORDER BY w.date ASC, e.name ASC';
+
+        const { rows } = await db.query(query, params);
+        const csv = await convertToCSV(db, rows);
+
+        res.header('Content-Type', 'text/csv');
+        res.attachment('work_hours.csv');
+        res.send(csv);
+    } catch (err) {
+        next(err);
+    }
+});
+
 // --- PDF Router ---
 try {
   if (typeof monthlyPdfRouter === 'function') {
