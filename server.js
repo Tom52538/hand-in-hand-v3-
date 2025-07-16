@@ -283,6 +283,16 @@ app.post("/admin-logout", (req, res, next) => {
   }
 });
 
+app.get("/api/session-status", (req, res) => {
+  if (req.session.isEmployee) {
+    return res.json({ isEmployee: true, employee: { id: req.session.employeeId, name: req.session.employeeName } });
+  }
+  if (req.session.isAdmin) {
+    return res.json({ isAdmin: true });
+  }
+  res.status(401).json({ message: "Not logged in" });
+});
+
 // --- Mitarbeiter-API-Endpunkte (nur mit isEmployee) ---
 // ... (Hier folgen alle /api/employee/*-Routen wie im Original, unverändert)
 
