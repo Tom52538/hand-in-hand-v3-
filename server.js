@@ -297,6 +297,37 @@ app.get("/api/session-status", (req, res) => {
 // ... (Hier folgen alle /api/employee/*-Routen wie im Original, unverändert)
 
 // --- Admin-Endpunkte (nur mit isAdmin) ---
+app.get('/admin-work-hours', isAdmin, async (req, res, next) => {
+  try {
+    const { year, month, employeeId } = req.query;
+    if (!year || !month) {
+      return res.status(400).json({ message: 'Jahr und Monat sind erforderlich.' });
+    }
+
+    let query = `
+      SELECT w.id, e.name, w.date, w.hours, w.comment,
+             TO_CHAR(w.starttime, 'HH24:MI') AS "startTime",
+             TO_CHAR(w.endtime, 'HH24:MI') AS "endTime"
+      FROM work_hours w
+      JOIN employees e ON LOWER(w.name) = LOWER(e.name)
+      WHERE EXTRACT(YEAR FROM w.date) = $1 AND EXTRACT(MONTH FROM w.date) = $2
+    `;
+    const params = [year, month];
+
+    if (employeeId && employeeId !== 'all') {
+      query += ' AND e.id = $3';
+      params.push(employeeId);
+    }
+
+    query += ' ORDER BY w.date ASC, e.name ASC';
+
+    const { rows } = await db.query(query, params);
+    res.json(rows);
+  } catch (err) {
+    next(err);
+  }
+});
+
 // ... (Hier folgen alle /admin*- und /api/admin/*-Routen wie im Original, unverändert)
 
 // --- PDF Router ---
