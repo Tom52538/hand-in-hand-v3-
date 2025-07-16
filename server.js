@@ -328,7 +328,209 @@ app.get('/admin-work-hours', isAdmin, async (req, res, next) => {
   }
 });
 
-// ... (Hier folgen alle /admin*- und /api/admin/*-Routen wie im Original, unverändert)
+app.get('/admin/employees', isAdmin, async (req, res, next) => {
+    try {
+        const result = await db.query('SELECT id, name, mo_hours, di_hours, mi_hours, do_hours, fr_hours FROM employees ORDER BY name ASC');
+        res.json(result.rows);
+    } catch (err) {
+        next(err);
+    }
+});
+
+app.post('/admin/employees', isAdmin, async (req, res, next) => {
+    try {
+        const { name, password, mo_hours, di_hours, mi_hours, do_hours, fr_hours } = req.body;
+        const password_hash = await bcrypt.hash(password, 10);
+        const result = await db.query(
+            'INSERT INTO employees (name, password_hash, mo_hours, di_hours, mi_hours, do_hours, fr_hours) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *',
+            [name, password_hash, mo_hours, di_hours, mi_hours, do_hours, fr_hours]
+        );
+        res.status(201).json(result.rows[0]);
+    } catch (err) {
+        if (err.code === '23505') { // Unique violation
+            return res.status(409).send('Ein Mitarbeiter mit diesem Namen existiert bereits.');
+        }
+        next(err);
+    }
+});
+
+app.put('/admin/employees/:id', isAdmin, async (req, res, next) => {
+    try {
+        const { id } = req.params;
+        const { name, newPassword, mo_hours, di_hours, mi_hours, do_hours, fr_hours } = req.body;
+        let password_hash;
+        if (newPassword) {
+            password_hash = await bcrypt.hash(newPassword, 10);
+        }
+
+        const currentEmployee = await db.query('SELECT password_hash FROM employees WHERE id = $1', [id]);
+
+        const result = await db.query(
+            `UPDATE employees SET name = $1, password_hash = $2, mo_hours = $3, di_hours = $4, mi_hours = $5, do_hours = $6, fr_hours = $7 WHERE id = $8 RETURNING *`,
+            [name, newPassword ? password_hash : currentEmployee.rows[0].password_hash, mo_hours, di_hours, mi_hours, do_hours, fr_hours, id]
+        );
+        res.json(result.rows[0]);
+    } catch (err) {
+        if (err.code === '23505') { // Unique violation
+            return res.status(409).send('Ein anderer Mitarbeiter mit diesem Namen existiert bereits.');
+        }
+        next(err);
+    }
+});
+
+app.delete('/admin/employees/:id', isAdmin, async (req, res, next) => {
+    try {
+        const { id } = req.params;
+        await db.query('DELETE FROM employees WHERE id = $1', [id]);
+        res.status(204).send();
+    } catch (err) {
+        next(err);
+    }
+});
+
+app.get('/admin/absences', isAdmin, async (req, res, next) => {
+    try {
+        const { employeeId } = req.query;
+        const result = await db.query('SELECT * FROM absences WHERE employee_id = $1 ORDER BY date DESC', [employeeId]);
+        res.json(result.rows);
+    } catch (err) {
+        next(err);
+    }
+});
+
+app.post('/admin/absences', isAdmin, async (req, res, next) => {
+    try {
+        const { employeeId, date, absenceType, comment } = req.body;
+        const employee = await db.query('SELECT * FROM employees WHERE id = $1', [employeeId]);
+        if (employee.rows.length === 0) {
+            return res.status(404).json({ message: 'Mitarbeiter nicht gefunden.' });
+        }
+        const credited_hours = getExpectedHours(employee.rows[0], date);
+        const result = await db.query(
+            'INSERT INTO absences (employee_id, date, absence_type, credited_hours, comment) VALUES ($1, $2, $3, $4, $5) RETURNING *',
+            [employeeId, date, absenceType, credited_hours, comment]
+        );
+        res.status(201).json(result.rows[0]);
+    } catch (err) {
+        if (err.code === '23505') { // Unique violation
+            return res.status(409).json({ message: 'Für diesen Tag existiert bereits ein Abwesenheitseintrag.' });
+        }
+        next(err);
+    }
+});
+
+app.delete('/admin/absences/:id', isAdmin, async (req, res, next) => {
+    try {
+        const { id } = req.params;
+        await db.query('DELETE FROM absences WHERE id = $1', [id]);
+        res.status(204).send();
+    } catch (err) {
+        next(err);
+    }
+});
+
+app.post('/admin/generate-holidays', isAdmin, async (req, res, next) => {
+    try {
+        const { year } = req.body;
+        const holidays = new Holidays('DE', 'NW');
+        const allHolidays = holidays.getHolidays(year);
+        const employees = await db.query('SELECT * FROM employees');
+        let generated = 0;
+        let skipped = 0;
+
+        for (const employee of employees.rows) {
+            for (const holiday of allHolidays) {
+                const date = new Date(holiday.date);
+                const dayOfWeek = date.getDay();
+                if (dayOfWeek > 0 && dayOfWeek < 6) { // Monday to Friday
+                    const expectedHours = getExpectedHours(employee, holiday.date);
+                    if (expectedHours > 0) {
+                        try {
+                            await db.query(
+                                'INSERT INTO absences (employee_id, date, absence_type, credited_hours, comment) VALUES ($1, $2, $3, $4, $5)',
+                                [employee.id, holiday.date, 'PUBLIC_HOLIDAY', expectedHours, holiday.name]
+                            );
+                            generated++;
+                        } catch (err) {
+                            if (err.code === '23505') { // Unique violation
+                                skipped++;
+                            } else {
+                                throw err;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        res.json({ message: `Feiertage für ${year} generiert.`, generated, skipped, employees: employees.rows.length });
+    } catch (err) {
+        next(err);
+    }
+});
+
+app.delete('/admin/delete-public-holidays', isAdmin, async (req, res, next) => {
+    try {
+        const result = await db.query("DELETE FROM absences WHERE absence_type = 'PUBLIC_HOLIDAY'");
+        res.json({ message: `${result.rowCount} Feiertagseinträge gelöscht.` });
+    } catch (err) {
+        next(err);
+    }
+});
+
+app.get('/calculate-monthly-balance', isAdmin, async (req, res, next) => {
+    try {
+        const { name, year, month } = req.query;
+        const data = await calculateMonthlyData(db, name, year, month);
+        res.json(data);
+    } catch (err) {
+        next(err);
+    }
+});
+
+app.get('/calculate-period-balance', isAdmin, async (req, res, next) => {
+    try {
+        const { name, year, periodType, periodValue } = req.query;
+        const data = await calculatePeriodData(db, name, year, periodType, periodValue);
+        res.json(data);
+    } catch (err) {
+        next(err);
+    }
+});
+
+app.put('/api/admin/update-hours', isAdmin, async (req, res, next) => {
+    try {
+        const { id, date, startTime, endTime, comment } = req.body;
+        const hours = calculateWorkHours(startTime, endTime);
+        const result = await db.query(
+            'UPDATE work_hours SET date = $1, starttime = $2, endtime = $3, hours = $4, comment = $5 WHERE id = $6 RETURNING *',
+            [date, startTime, endTime, hours, comment, id]
+        );
+        res.json(result.rows[0]);
+    } catch (err) {
+        next(err);
+    }
+});
+
+app.delete('/api/admin/delete-hours/:id', isAdmin, async (req, res, next) => {
+    try {
+        const { id } = req.params;
+        await db.query('DELETE FROM work_hours WHERE id = $1', [id]);
+        res.status(204).send();
+    } catch (err) {
+        next(err);
+    }
+});
+
+app.delete('/adminDeleteData', isAdmin, async (req, res, next) => {
+    try {
+        await db.query('DELETE FROM work_hours');
+        await db.query('DELETE FROM monthly_balance');
+        await db.query('DELETE FROM absences');
+        res.send('Alle Arbeits-, Bilanz- und Abwesenheitsdaten wurden gelöscht.');
+    } catch (err) {
+        next(err);
+    }
+});
 
 // --- PDF Router ---
 try {
