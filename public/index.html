@@ -1557,7 +1557,7 @@ function stopHeartbeat() {
 // Heartbeat senden
 async function sendHeartbeat() {
   // Nur senden wenn User eingeloggt ist
-  if (!loggedInEmployee && !(req.session && req.session.isAdmin)) {
+  if (!loggedInEmployee && !(window.req && window.req.session && window.req.session.isAdmin)) {
     return;
   }
 
@@ -1608,14 +1608,14 @@ function handleSessionExpired() {
 
 // Browser-Events für sofortigen Logout
 window.addEventListener('beforeunload', function(e) {
-  if (loggedInEmployee || (typeof req !== 'undefined' && req.session && req.session.isAdmin)) {
+  if (loggedInEmployee || (window.req && window.req.session && window.req.session.isAdmin)) {
     // Versuche Logout-Signal zu senden (funktioniert nicht immer)
     navigator.sendBeacon('/logout');
   }
 });
 
 window.addEventListener('pagehide', function(e) {
-  if (loggedInEmployee || (typeof req !== 'undefined' && req.session && req.session.isAdmin)) {
+  if (loggedInEmployee || (window.req && window.req.session && window.req.session.isAdmin)) {
     navigator.sendBeacon('/logout');
   }
 });
@@ -1626,7 +1626,7 @@ document.addEventListener('visibilitychange', function() {
     console.log("App versteckt - Heartbeat läuft weiter");
   } else {
     console.log("App wieder sichtbar - Sofortiger Heartbeat Check");
-    if (loggedInEmployee || (typeof req !== 'undefined' && req.session && req.session.isAdmin)) {
+    if (loggedInEmployee || (window.req && window.req.session && window.req.session.isAdmin)) {
       sendHeartbeat(); // Sofortiger Check beim Zurückkommen
     }
   }
