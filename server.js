@@ -510,7 +510,14 @@ app.get('/admin-work-hours', isAdmin, async (req, res, next) => {
     query += ' ORDER BY w.date ASC, e.name ASC';
 
     const { rows } = await db.query(query, params);
-    res.json(rows);
+    
+    // Datum als String formatieren für jede Zeile
+    const formattedRows = rows.map(row => ({
+      ...row,
+      date: row.date instanceof Date ? row.date.toISOString().split('T')[0] : (typeof row.date === 'string' ? row.date.split('T')[0] : row.date)
+    }));
+    
+    res.json(formattedRows);
   } catch (err) {
     next(err);
   }
