@@ -44,6 +44,18 @@
     button[style*="color: red"]:hover, button[style*="background-color: #dc3545"]:hover { background-color: #c82333; }
     button.logout-btn { background-color: #6c757d; } /* Grauer Logout Button */
     button.logout-btn:hover { background-color: #5a6268; }
+    .toggle-password {
+        position: absolute;
+        right: 10px;
+        top: 50%;
+        transform: translateY(-50%);
+        background: none;
+        border: none;
+        cursor: pointer;
+        font-size: 1.2rem;
+        padding: 0;
+        line-height: 1;
+    }
 
     /* Tab-Navigation */
     .tabs { list-style: none; padding: 0; margin: 0 0 1rem 0; display: flex; flex-wrap: wrap; border-bottom: 1px solid #ccc; }
@@ -125,7 +137,10 @@
             </div>
             <div>
                 <label for="loginPassword">Passwort:</label>
-                <input type="password" id="loginPassword" name="password" required autocomplete="current-password">
+                <div style="position: relative;">
+                    <input type="password" id="loginPassword" name="password" required autocomplete="current-password" style="padding-right: 40px;">
+                    <button type="button" class="toggle-password" style="position: absolute; right: 5px; top: 50%; transform: translateY(-50%); background: none; border: none; cursor: pointer;">👁️</button>
+                </div>
             </div>
             <button type="submit">Anmelden</button>
             <div id="employeeLoginError" class="error-message hidden"></div>
@@ -148,7 +163,13 @@
         <hr>
         <h2>Admin Login</h2>
         <form id="adminLoginForm">
-          <div><label for="adminPassword">Admin-Passwort:</label><input type="password" id="adminPassword" name="adminPassword" required></div>
+          <div>
+              <label for="adminPassword">Admin-Passwort:</label>
+              <div style="position: relative;">
+                  <input type="password" id="adminPassword" name="adminPassword" required style="padding-right: 40px;">
+                  <button type="button" class="toggle-password" style="position: absolute; right: 5px; top: 50%; transform: translateY(-50%); background: none; border: none; cursor: pointer;">👁️</button>
+              </div>
+          </div>
           <button type="submit">Anmelden (Admin)</button>
         </form>
         <p><a href="#" id="showEmployeeLoginLink">Zum Mitarbeiter Login</a></p>
@@ -217,7 +238,13 @@
             <form id="addEmployeeForm">
                 <h3>Neuen Mitarbeiter hinzufügen</h3>
                 <div><label for="employeeName">Name:</label><input type="text" id="employeeName" name="employeeName" required></div>
-                <div><label for="employeePassword">Passwort:</label><input type="password" id="employeePassword" name="employeePassword" required minlength="6"></div>
+                <div>
+                    <label for="employeePassword">Passwort:</label>
+                    <div style="position: relative;">
+                        <input type="password" id="employeePassword" name="employeePassword" required minlength="6" style="padding-right: 40px;">
+                        <button type="button" class="toggle-password" style="position: absolute; right: 5px; top: 50%; transform: translateY(-50%); background: none; border: none; cursor: pointer;">👁️</button>
+                    </div>
+                </div>
                 <div><label for="mo_hours">Mo (Soll Std.):</label><input type="number" id="mo_hours" name="mo_hours" step="0.01" value="0" min="0" max="24"></div>
                 <div><label for="di_hours">Di (Soll Std.):</label><input type="number" id="di_hours" name="di_hours" step="0.01" value="0" min="0" max="24"></div>
                 <div><label for="mi_hours">Mi (Soll Std.):</label><input type="number" id="mi_hours" name="mi_hours" step="0.01" value="0" min="0" max="24"></div>
@@ -231,8 +258,20 @@
                 <hr><h3>Mitarbeiter bearbeiten</h3>
                 <input type="hidden" id="editEmployeeId" name="id">
                 <div><label for="editEmployeeName">Name:</label><input type="text" id="editEmployeeName" name="name" required></div>
-                <div><label for="editEmployeeNewPassword">Neues Passwort (optional):</label><input type="password" id="editEmployeeNewPassword" name="newPassword" minlength="6" placeholder="Leer lassen, um nicht zu ändern"></div>
-                <div><label for="editEmployeeConfirmPassword">Neues Passwort bestätigen:</label><input type="password" id="editEmployeeConfirmPassword" name="confirmPassword" minlength="6"></div>
+                <div>
+                    <label for="editEmployeeNewPassword">Neues Passwort (optional):</label>
+                    <div style="position: relative;">
+                        <input type="password" id="editEmployeeNewPassword" name="newPassword" minlength="6" placeholder="Leer lassen, um nicht zu ändern" style="padding-right: 40px;">
+                        <button type="button" class="toggle-password" style="position: absolute; right: 5px; top: 50%; transform: translateY(-50%); background: none; border: none; cursor: pointer;">👁️</button>
+                    </div>
+                </div>
+                <div>
+                    <label for="editEmployeeConfirmPassword">Neues Passwort bestätigen:</label>
+                    <div style="position: relative;">
+                        <input type="password" id="editEmployeeConfirmPassword" name="confirmPassword" minlength="6" style="padding-right: 40px;">
+                        <button type="button" class="toggle-password" style="position: absolute; right: 5px; top: 50%; transform: translateY(-50%); background: none; border: none; cursor: pointer;">👁️</button>
+                    </div>
+                </div>
                 <small id="passwordMismatch" class="error-message hidden" style="margin-top: -0.5rem; margin-bottom: 1rem;">Passwörter stimmen nicht überein!</small>
                 <div><label for="editMoHours">Mo (Soll Std.):</label><input type="number" id="editMoHours" name="mo_hours" step="0.01" value="0" min="0" max="24"></div>
                 <div><label for="editDiHours">Di (Soll Std.):</label><input type="number" id="editDiHours" name="di_hours" step="0.01" value="0" min="0" max="24"></div>
@@ -440,6 +479,19 @@
         if (periodTypeSelect) periodTypeSelect.addEventListener('change', handlePeriodTypeChange); else console.error("Element not found: periodTypeSelect");
         if (downloadPdfBtn) downloadPdfBtn.addEventListener('click', handleDownloadPdf);
         else console.error("Element not found: downloadPdfBtn");
+
+        document.querySelectorAll('.toggle-password').forEach(button => {
+            button.addEventListener('click', () => {
+                const passwordInput = button.previousElementSibling;
+                if (passwordInput.type === 'password') {
+                    passwordInput.type = 'text';
+                    button.textContent = '🙈';
+                } else {
+                    passwordInput.type = 'password';
+                    button.textContent = '👁️';
+                }
+            });
+        });
     }
 
     // ==== UI-Steuerungsfunktionen ====
