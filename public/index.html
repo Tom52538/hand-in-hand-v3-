@@ -444,46 +444,61 @@
 
     // ==== UI-Steuerungsfunktionen ====
     function showSection(sectionId) { if (employeeLoginSection) employeeLoginSection.classList.add('hidden'); if (adminLoginSection) adminLoginSection.classList.add('hidden'); if (workHoursForm) workHoursForm.classList.add('hidden'); if (loggedInUserInfo) loggedInUserInfo.classList.add('hidden'); if (adminTabsContainer) adminTabsContainer.classList.add('hidden'); const sectionToShow = document.getElementById(sectionId); if (sectionToShow) { sectionToShow.classList.remove('hidden'); } }
-    function showLoggedInEmployeeView(employee) {
-        loggedInEmployee = employee;
-        if (loggedInUserName) loggedInUserName.textContent = employee.name;
-        if (loggedInUserInfo) loggedInUserInfo.classList.remove('hidden');
-        if (workHoursForm) workHoursForm.classList.remove('hidden');
-        if (employeeLoginSection) employeeLoginSection.classList.add('hidden');
-        if (adminLoginSection) adminLoginSection.classList.add('hidden');
-        if (adminTabsContainer) adminTabsContainer.classList.add('hidden');
-        if (employeeSelectDiv) employeeSelectDiv.classList.add('hidden'); // Altes Dropdown ausblenden
+function showLoggedInEmployeeView(employee) {
+    loggedInEmployee = employee;
+    if (loggedInUserName) loggedInUserName.textContent = employee.name;
+    if (loggedInUserInfo) loggedInUserInfo.classList.remove('hidden');
+    if (workHoursForm) workHoursForm.classList.remove('hidden');
+    if (employeeLoginSection) employeeLoginSection.classList.add('hidden');
+    if (adminLoginSection) adminLoginSection.classList.add('hidden');
+    if (adminTabsContainer) adminTabsContainer.classList.add('hidden');
+    if (employeeSelectDiv) employeeSelectDiv.classList.add('hidden');
 
-        logoutBtn.classList.remove("hidden");
-        adminLogoutBtn.classList.add("hidden");
+    logoutBtn.classList.remove("hidden");
+    adminLogoutBtn.classList.add("hidden");
 
-        // Initialisiere Zeiterfassungs-UI für eingeloggten User
-        resetWorkTimeForm(); // Setzt Button etc. zurück
-        checkNextBookingAction(); // <<<<--- Ruft die angepasste Funktion auf
-    }
-    function showLoggedOutView() {
-        loggedInEmployee = null; if (employeeLoginFormElement) employeeLoginFormElement.reset(); if (employeeLoginError) employeeLoginError.classList.add('hidden'); showSection('employeeLoginSection'); if (loggedInUserInfo) loggedInUserInfo.classList.add('hidden'); if (workHoursForm) workHoursForm.classList.add('hidden'); if (adminTabsContainer) adminTabsContainer.classList.add('hidden'); if (employeeSelectDiv) employeeSelectDiv.classList.remove('hidden'); resetWorkTimeForm();
-        logoutBtn.classList.add("hidden");
-        adminLogoutBtn.classList.add("hidden");
-    } // Altes Dropdown wieder zeigen?
-    function showAdminView() {
-        showSection('adminTabs');
-        handleTabSwitch({ currentTarget: document.querySelector('.tabs li[data-tab="workhours"]') });
-        if (employeeLoginSection) employeeLoginSection.classList.add('hidden');
-        if (adminLoginSection) adminLoginSection.classList.add('hidden');
-        if (workHoursForm) workHoursForm.classList.add('hidden');
+    resetWorkTimeForm();
+    checkNextBookingAction();
 
-        // Speziell für Admin-Ansicht
-        if (loggedInUserInfo) {
-            loggedInUserInfo.classList.remove('hidden');
-            if (loggedInUserName) {
-                loggedInUserName.textContent = 'Administrator'; // Setzt den Namen für den Admin
-            }
+    // HEARTBEAT STARTEN
+    startHeartbeat();
+}
+function showLoggedOutView() {
+    loggedInEmployee = null;
+    if (employeeLoginFormElement) employeeLoginFormElement.reset();
+    if (employeeLoginError) employeeLoginError.classList.add('hidden');
+    showSection('employeeLoginSection');
+    if (loggedInUserInfo) loggedInUserInfo.classList.add('hidden');
+    if (workHoursForm) workHoursForm.classList.add('hidden');
+    if (adminTabsContainer) adminTabsContainer.classList.add('hidden');
+    if (employeeSelectDiv && employeeSelectDiv.classList) employeeSelectDiv.classList.remove('hidden');
+    resetWorkTimeForm();
+    logoutBtn.classList.add("hidden");
+    adminLogoutBtn.classList.add("hidden");
+
+    // HEARTBEAT STOPPEN
+    stopHeartbeat();
+}
+function showAdminView() {
+    showSection('adminTabs');
+    handleTabSwitch({ currentTarget: document.querySelector('.tabs li[data-tab="workhours"]') });
+    if (employeeLoginSection) employeeLoginSection.classList.add('hidden');
+    if (adminLoginSection) adminLoginSection.classList.add('hidden');
+    if (workHoursForm) workHoursForm.classList.add('hidden');
+
+    if (loggedInUserInfo) {
+        loggedInUserInfo.classList.remove('hidden');
+        if (loggedInUserName) {
+            loggedInUserName.textContent = 'Administrator';
         }
-
-        logoutBtn.classList.add("hidden");
-        adminLogoutBtn.classList.remove("hidden");
     }
+
+    logoutBtn.classList.add("hidden");
+    adminLogoutBtn.classList.remove("hidden");
+
+    // HEARTBEAT STARTEN
+    startHeartbeat();
+}
 
     async function checkSessionStatus() {
       try {
@@ -529,15 +544,42 @@
         } catch (error) { console.error("Fehler beim Mitarbeiter-Login:", error); employeeLoginError.textContent = error.message || "Login fehlgeschlagen."; employeeLoginError.classList.remove('hidden'); }
         finally { loginButton.disabled = false; loginButton.textContent = "Anmelden"; }
     }
-    async function handleEmployeeLogout() { if (!confirm("Möchten Sie sich wirklich abmelden?")) return; logoutBtn.disabled = true; logoutBtn.textContent = "Abmeldung..."; try { const response = await fetch('/logout', { method: 'POST', credentials: 'include' }); const data = await response.json(); if (!response.ok) { throw new Error(data.message || `Logout fehlgeschlagen (${response.status})`); } alert(data.message || "Erfolgreich abgemeldet."); location.reload(); } catch(error) { console.error("Fehler beim Logout:", error); alert(`Logout fehlgeschlagen: ${error.message}`); } finally { logoutBtn.disabled = false; logoutBtn.textContent = "Abmelden"; } }
+async function handleEmployeeLogout() {
+    if (!confirm("Möchten Sie sich wirklich abmelden?")) return;
 
-    async function handleAdminLogout() {
-      if (!confirm("Really log out as admin?")) return;
-      try {
+    // HEARTBEAT STOPPEN
+    stopHeartbeat();
+
+    logoutBtn.disabled = true;
+    logoutBtn.textContent = "Abmeldung...";
+    try {
+        const response = await fetch('/logout', { method: 'POST', credentials: 'include' });
+        const data = await response.json();
+        if (!response.ok) {
+            throw new Error(data.message || `Logout fehlgeschlagen (${response.status})`);
+        }
+        alert(data.message || "Erfolgreich abgemeldet.");
+        showLoggedOutView();
+    } catch(error) {
+        console.error("Fehler beim Logout:", error);
+        alert(`Logout fehlgeschlagen: ${error.message}`);
+    } finally {
+        logoutBtn.disabled = false;
+        logoutBtn.textContent = "Logout";
+    }
+}
+
+async function handleAdminLogout() {
+    if (!confirm("Really log out as admin?")) return;
+
+    // HEARTBEAT STOPPEN
+    stopHeartbeat();
+
+    try {
         await fetch("/admin-logout", { method: "POST", credentials: "include" });
         location.reload();
-      } catch {}
-    }
+    } catch {}
+}
 
     // ==== Funktionen Zeiterfassung (ANGEPASST FÜR LOGIN) ====
     async function checkNextBookingAction() {
@@ -1487,6 +1529,108 @@
           window.location.href = url;
      }
 
+// === HEARTBEAT SYSTEM ===
+let heartbeatInterval = null;
+let sessionExpiredShown = false;
+
+// Heartbeat-System starten
+function startHeartbeat() {
+  console.log("Heartbeat System gestartet - Ping alle 90 Sekunden");
+
+  // Sofortiger erster Heartbeat
+  sendHeartbeat();
+
+  // Dann alle 90 Sekunden (Session läuft nach 3 Minuten ab)
+  heartbeatInterval = setInterval(sendHeartbeat, 90000);
+}
+
+// Heartbeat-System stoppen
+function stopHeartbeat() {
+  if (heartbeatInterval) {
+    console.log("Heartbeat System gestoppt");
+    clearInterval(heartbeatInterval);
+    heartbeatInterval = null;
+  }
+  sessionExpiredShown = false;
+}
+
+// Heartbeat senden
+async function sendHeartbeat() {
+  // Nur senden wenn User eingeloggt ist
+  if (!loggedInEmployee && !(req.session && req.session.isAdmin)) {
+    return;
+  }
+
+  try {
+    console.log("Sending heartbeat...");
+    const response = await fetch('/api/heartbeat', {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' }
+    });
+
+    if (response.ok) {
+      const data = await response.json();
+      console.log("Heartbeat OK:", data.status);
+
+      // Reset expired flag wenn Session wieder gültig
+      sessionExpiredShown = false;
+
+    } else if (response.status === 401) {
+      console.warn("Session expired - Auto-Logout");
+      handleSessionExpired();
+    } else {
+      console.error("Heartbeat error:", response.status);
+    }
+  } catch (error) {
+    console.error("Heartbeat failed:", error);
+    // Bei Netzwerkfehlern nicht ausloggen - könnte temporär sein
+  }
+}
+
+// Session abgelaufen - Auto-Logout
+function handleSessionExpired() {
+  if (sessionExpiredShown) return; // Verhindere mehrfache Alerts
+  sessionExpiredShown = true;
+
+  stopHeartbeat();
+
+  alert("Ihre Sitzung ist abgelaufen. Sie werden automatisch abgemeldet.");
+
+  // Force logout UI
+  showLoggedOutView();
+
+  // Clear any local state
+  loggedInEmployee = null;
+  currentWorkEntryId = null;
+  currentBalanceData = null;
+}
+
+// Browser-Events für sofortigen Logout
+window.addEventListener('beforeunload', function(e) {
+  if (loggedInEmployee || (typeof req !== 'undefined' && req.session && req.session.isAdmin)) {
+    // Versuche Logout-Signal zu senden (funktioniert nicht immer)
+    navigator.sendBeacon('/logout');
+  }
+});
+
+window.addEventListener('pagehide', function(e) {
+  if (loggedInEmployee || (typeof req !== 'undefined' && req.session && req.session.isAdmin)) {
+    navigator.sendBeacon('/logout');
+  }
+});
+
+// Visibility API - App minimiert/versteckt
+document.addEventListener('visibilitychange', function() {
+  if (document.hidden) {
+    console.log("App versteckt - Heartbeat läuft weiter");
+  } else {
+    console.log("App wieder sichtbar - Sofortiger Heartbeat Check");
+    if (loggedInEmployee || (typeof req !== 'undefined' && req.session && req.session.isAdmin)) {
+      sendHeartbeat(); // Sofortiger Check beim Zurückkommen
+    }
+  }
+});
   </script>
 </body>
 </html>
