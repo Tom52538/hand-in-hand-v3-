@@ -1581,35 +1581,55 @@ async function handleAdminLogout() {
           window.location.href = url;
      }
 
-// === HEARTBEAT SYSTEM ===
+// === ENHANCED HEARTBEAT SYSTEM WITH ROLE-BASED TIMEOUTS ===
 let heartbeatInterval = null;
 let sessionExpiredShown = false;
+let currentHeartbeatIntervalMs = 90000; // Default: 90 seconds for employees
+let isAdminSession = false;
+// Admin warning system variables
+let warningTimeout = null;
+let warningElement = null;
+let countdownInterval = null;
 
-// Heartbeat-System starten
 function startHeartbeat() {
-  console.log("Heartbeat System gestartet - Ping alle 90 Sekunden");
+  // Detect if this is an admin session
+  isAdminSession = document.getElementById('adminLogoutBtn') && !document.getElementById('adminLogoutBtn').classList.contains('hidden');
 
-  // Sofortiger erster Heartbeat
+  // Set dynamic heartbeat interval based on role
+  currentHeartbeatIntervalMs = isAdminSession ? 300000 : 90000; // Admin: 5min, Employee: 90sec
+
+  console.log(`Heartbeat System started - Role: ${isAdminSession ? 'Admin' : 'Employee'}, Interval: ${currentHeartbeatIntervalMs/1000}s`);
+
+  // Send immediate heartbeat
   sendHeartbeat();
 
-  // Dann alle 90 Sekunden (Session läuft nach 3 Minuten ab)
-  heartbeatInterval = setInterval(sendHeartbeat, 90000);
+  // Set recurring heartbeat with role-based interval
+  heartbeatInterval = setInterval(sendHeartbeat, currentHeartbeatIntervalMs);
+
+  // ADMIN ONLY: Set up warning system (60 seconds before next heartbeat)
+  if (isAdminSession) {
+    scheduleAdminWarning();
+  }
 }
 
-// Heartbeat-System stoppen
 function stopHeartbeat() {
   if (heartbeatInterval) {
-    console.log("Heartbeat System gestoppt");
+    console.log("Heartbeat System stopped");
     clearInterval(heartbeatInterval);
     heartbeatInterval = null;
   }
+
+  // Clear admin warning system
+  clearAdminWarning();
+
+  // Reset state
   sessionExpiredShown = false;
+  isAdminSession = false;
 }
 
-// Heartbeat senden
 async function sendHeartbeat() {
-  // Nur senden wenn User eingeloggt ist
-  if (!loggedInEmployee && !(window.req && window.req.session && window.req.session.isAdmin)) {
+  // Only send if user is logged in
+  if (!loggedInEmployee && !isAdminSession) {
     return;
   }
 
@@ -1625,8 +1645,26 @@ async function sendHeartbeat() {
       const data = await response.json();
       console.log("Heartbeat OK:", data.status);
 
-      // Reset expired flag wenn Session wieder gültig
+      // Update session info from server response
+      if (data.heartbeatInterval && data.heartbeatInterval !== currentHeartbeatIntervalMs) {
+        console.log(`Updating heartbeat interval: ${data.heartbeatInterval/1000}s`);
+        currentHeartbeatIntervalMs = data.heartbeatInterval;
+
+        // Restart heartbeat with new interval
+        stopHeartbeat();
+        startHeartbeat();
+      }
+
+      // Reset session expired flag
       sessionExpiredShown = false;
+
+      // Clear any existing warnings
+      clearAdminWarning();
+
+      // ADMIN ONLY: Schedule next warning
+      if (isAdminSession) {
+        scheduleAdminWarning();
+      }
 
     } else if (response.status === 401) {
       console.warn("Session expired - Auto-Logout");
@@ -1635,27 +1673,130 @@ async function sendHeartbeat() {
       console.error("Heartbeat error:", response.status);
     }
   } catch (error) {
-    console.error("Heartbeat failed:", error);
-    // Bei Netzwerkfehlern nicht ausloggen - könnte temporär sein
+    console.error("Heartbeat failed:", error); // Don't logout on network errors - could be temporary
   }
 }
 
+// === ADMIN WARNING SYSTEM ===
+
+function scheduleAdminWarning() {
+  if (!isAdminSession) return;
+
+  // Clear existing warning timeout
+  if (warningTimeout) {
+    clearTimeout(warningTimeout);
+  }
+
+  // Schedule warning 60 seconds before next heartbeat
+  const warningDelay = currentHeartbeatIntervalMs - 60000; // 60 seconds before heartbeat
+
+  if (warningDelay > 0) {
+    warningTimeout = setTimeout(showAdminWarning, warningDelay);
+    console.log(`Admin warning scheduled in ${warningDelay/1000} seconds`);
+  }
+}
+
+function showAdminWarning() {
+  if (!isAdminSession || sessionExpiredShown) return;
+
+  // Create warning overlay
+  warningElement = document.createElement('div');
+  warningElement.style.cssText = `position: fixed; top: 20px; right: 20px; background: linear-gradient(135deg, #ff9500, #ff7700); color: white; padding: 20px; border-radius: 10px; box-shadow: 0 4px 20px rgba(0,0,0,0.3); z-index: 10000; font-family: sans-serif; font-size: 14px; min-width: 300px; border: 2px solid #ff6600;`;
+
+  warningElement.innerHTML = `
+    <div style="font-weight: bold; margin-bottom: 10px;">
+      ⚠️ Session Warning
+    </div>
+    <div style="margin-bottom: 15px;">
+      Your session will expire in <span id="countdown" style="font-weight: bold; font-size: 16px;">60</span> seconds
+    </div>
+    <div>
+      <button id="extendSession" style="background: #28a745; color: white; border: none; padding: 8px 15px; border-radius: 5px; margin-right: 10px; cursor: pointer;">
+        Extend Session
+      </button>
+      <button id="logoutNow" style="background: #dc3545; color: white; border: none; padding: 8px 15px; border-radius: 5px; cursor: pointer;">
+        Logout Now
+      </button>
+    </div>
+  `;
+
+  document.body.appendChild(warningElement);
+
+  // Add event listeners
+  document.getElementById('extendSession').addEventListener('click', extendAdminSession);
+  document.getElementById('logoutNow').addEventListener('click', handleAdminLogout);
+
+  // Start countdown
+  startWarningCountdown();
+}
+
+function startWarningCountdown() {
+  let secondsLeft = 60;
+  const countdownSpan = document.getElementById('countdown');
+
+  countdownInterval = setInterval(() => {
+    secondsLeft--;
+    if (countdownSpan) {
+      countdownSpan.textContent = secondsLeft;
+    }
+
+    if (secondsLeft <= 0) {
+      clearInterval(countdownInterval);
+      // Session expired - force logout
+      handleSessionExpired();
+    }
+  }, 1000);
+}
+
+function extendAdminSession() {
+  console.log("Admin extending session...");
+
+  // Send immediate heartbeat to extend session
+  sendHeartbeat();
+
+  // Clear warning
+  clearAdminWarning();
+}
+
+function clearAdminWarning() {
+  if (warningTimeout) {
+    clearTimeout(warningTimeout);
+    warningTimeout = null;
+  }
+
+  if (countdownInterval) {
+    clearInterval(countdownInterval);
+    countdownInterval = null;
+  }
+
+  if (warningElement) {
+    warningElement.remove();
+    warningElement = null;
+  }
+}
 // Session abgelaufen - Auto-Logout
 function handleSessionExpired() {
-  if (sessionExpiredShown) return; // Verhindere mehrfache Alerts
+  if (sessionExpiredShown) return;
   sessionExpiredShown = true;
 
+  // Stop all heartbeat and warning systems
   stopHeartbeat();
 
-  alert("Ihre Sitzung ist abgelaufen. Sie werden automatisch abgemeldet.");
+  // Show appropriate message based on user type
+  if (isAdminSession) {
+    alert("🔐 Admin session expired. You have been automatically logged out for security reasons.");
+  } else {
+    alert("Your session has expired. Please log in again to continue time tracking.");
+  }
 
   // Force logout UI
   showLoggedOutView();
 
-  // Clear any local state
+  // Clear all session state
   loggedInEmployee = null;
   currentWorkEntryId = null;
   currentBalanceData = null;
+  isAdminSession = false;
 }
 
 // Browser-Events für sofortigen Logout
