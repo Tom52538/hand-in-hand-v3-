@@ -317,10 +317,19 @@ app.get('/api/employee/next-booking-details', isEmployee, async (req, res, next)
     if (openEntryResult.rows.length > 0) {
       // Es gibt einen offenen Eintrag -> Arbeitsende buchen
       const openEntry = openEntryResult.rows[0];
+      
+      // Datum als String formatieren (YYYY-MM-DD)
+      let startDateStr = openEntry.date;
+      if (openEntry.date instanceof Date) {
+        startDateStr = openEntry.date.toISOString().split('T')[0];
+      } else if (typeof openEntry.date === 'string') {
+        startDateStr = openEntry.date.split('T')[0];
+      }
+      
       res.json({
         nextBooking: 'arbeitsende',
         id: openEntry.id,
-        startDate: openEntry.date,
+        startDate: startDateStr,
         startTime: openEntry.starttime
       });
     } else {
