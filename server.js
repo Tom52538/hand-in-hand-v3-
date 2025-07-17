@@ -294,7 +294,186 @@ app.get("/api/session-status", (req, res) => {
 });
 
 // --- Mitarbeiter-API-Endpunkte (nur mit isEmployee) ---
-// ... (Hier folgen alle /api/employee/*-Routen wie im Original, unverändert)
+
+// GET /api/employee/next-booking-details - Prüft nächste Buchungsaktion
+app.get('/api/employee/next-booking-details', isEmployee, async (req, res, next) => {
+  try {
+    const employeeId = req.session.employeeId;
+    const employeeName = req.session.employeeName;
+    
+    // Prüfe auf offenen Eintrag (starttime vorhanden, aber endtime fehlt)
+    const openEntryQuery = `
+      SELECT id, date, TO_CHAR(starttime, 'HH24:MI') as startTime
+      FROM work_hours 
+      WHERE LOWER(name) = LOWER($1) 
+        AND starttime IS NOT NULL 
+        AND endtime IS NULL
+      ORDER BY date DESC, starttime DESC 
+      LIMIT 1
+    `;
+    
+    const openEntryResult = await db.query(openEntryQuery, [employeeName]);
+    
+    if (openEntryResult.rows.length > 0) {
+      // Es gibt einen offenen Eintrag -> Arbeitsende buchen
+      const openEntry = openEntryResult.rows[0];
+      res.json({
+        nextBooking: 'arbeitsende',
+        id: openEntry.id,
+        startDate: openEntry.date,
+        startTime: openEntry.starttime
+      });
+    } else {
+      // Kein offener Eintrag -> Arbeitsbeginn buchen
+      res.json({
+        nextBooking: 'arbeitsbeginn'
+      });
+    }
+  } catch (err) {
+    console.error('Fehler bei next-booking-details:', err);
+    next(err);
+  }
+});
+
+// POST /api/employee/log-start - Startet Arbeitszeit
+app.post('/api/employee/log-start', isEmployee, async (req, res, next) => {
+  try {
+    const employeeId = req.session.employeeId;
+    const employeeName = req.session.employeeName;
+    const { date, startTime } = req.body;
+    
+    if (!date || !startTime) {
+      return res.status(400).json({ message: 'Datum und Startzeit sind erforderlich.' });
+    }
+    
+    // Prüfe ob bereits ein offener Eintrag für heute existiert
+    const existingQuery = `
+      SELECT id FROM work_hours 
+      WHERE LOWER(name) = LOWER($1) 
+        AND date = $2 
+        AND starttime IS NOT NULL 
+        AND endtime IS NULL
+    `;
+    const existingResult = await db.query(existingQuery, [employeeName, date]);
+    
+    if (existingResult.rows.length > 0) {
+      return res.status(400).json({ message: 'Es existiert bereits ein offener Arbeitsbeginn für heute.' });
+    }
+    
+    // Neuen Eintrag erstellen
+    const insertQuery = `
+      INSERT INTO work_hours (name, date, starttime) 
+      VALUES ($1, $2, $3) 
+      RETURNING id
+    `;
+    const insertResult = await db.query(insertQuery, [employeeName, date, startTime]);
+    
+    res.status(201).json({
+      message: 'Arbeitsbeginn erfolgreich gebucht.',
+      id: insertResult.rows[0].id
+    });
+  } catch (err) {
+    console.error('Fehler bei log-start:', err);
+    next(err);
+  }
+});
+
+// PUT /api/employee/log-end/:id - Beendet Arbeitszeit
+app.put('/api/employee/log-end/:id', isEmployee, async (req, res, next) => {
+  try {
+    const employeeId = req.session.employeeId;
+    const employeeName = req.session.employeeName;
+    const entryId = req.params.id;
+    const { endTime, comment } = req.body;
+    
+    if (!endTime) {
+      return res.status(400).json({ message: 'Endzeit ist erforderlich.' });
+    }
+    
+    // Prüfe ob der Eintrag existiert und dem Mitarbeiter gehört
+    const checkQuery = `
+      SELECT id, date, TO_CHAR(starttime, 'HH24:MI') as starttime
+      FROM work_hours 
+      WHERE id = $1 
+        AND LOWER(name) = LOWER($2)
+        AND starttime IS NOT NULL 
+        AND endtime IS NULL
+    `;
+    const checkResult = await db.query(checkQuery, [entryId, employeeName]);
+    
+    if (checkResult.rows.length === 0) {
+      return res.status(404).json({ message: 'Offener Arbeitseintrag nicht gefunden oder gehört nicht zu diesem Mitarbeiter.' });
+    }
+    
+    const entry = checkResult.rows[0];
+    const hours = calculateWorkHours(entry.starttime, endTime);
+    
+    // Eintrag aktualisieren
+    const updateQuery = `
+      UPDATE work_hours 
+      SET endtime = $1, hours = $2, comment = $3
+      WHERE id = $4
+      RETURNING id
+    `;
+    await db.query(updateQuery, [endTime, hours, comment || null, entryId]);
+    
+    res.json({
+      message: 'Arbeitsende erfolgreich gebucht.',
+      hours: hours
+    });
+  } catch (err) {
+    console.error('Fehler bei log-end:', err);
+    next(err);
+  }
+});
+
+// GET /api/employee/summary-hours - Zeigt Tages- und Monatsübersicht
+app.get('/api/employee/summary-hours', isEmployee, async (req, res, next) => {
+  try {
+    const employeeId = req.session.employeeId;
+    const employeeName = req.session.employeeName;
+    const { date } = req.query;
+    
+    if (!date) {
+      return res.status(400).json({ message: 'Datum ist erforderlich.' });
+    }
+    
+    // Tagesstunden berechnen
+    const dailyQuery = `
+      SELECT COALESCE(SUM(hours), 0) as daily_hours
+      FROM work_hours 
+      WHERE LOWER(name) = LOWER($1) 
+        AND date = $2
+        AND hours IS NOT NULL
+    `;
+    const dailyResult = await db.query(dailyQuery, [employeeName, date]);
+    const dailyHours = parseFloat(dailyResult.rows[0].daily_hours) || 0;
+    
+    // Monatsstunden berechnen
+    const dateObj = new Date(date + 'T00:00:00Z');
+    const year = dateObj.getUTCFullYear();
+    const month = dateObj.getUTCMonth() + 1;
+    
+    const monthlyQuery = `
+      SELECT COALESCE(SUM(hours), 0) as monthly_hours
+      FROM work_hours 
+      WHERE LOWER(name) = LOWER($1) 
+        AND EXTRACT(YEAR FROM date) = $2
+        AND EXTRACT(MONTH FROM date) = $3
+        AND hours IS NOT NULL
+    `;
+    const monthlyResult = await db.query(monthlyQuery, [employeeName, year, month]);
+    const monthlyHours = parseFloat(monthlyResult.rows[0].monthly_hours) || 0;
+    
+    res.json({
+      dailyHours: dailyHours,
+      monthlyHours: monthlyHours
+    });
+  } catch (err) {
+    console.error('Fehler bei summary-hours:', err);
+    next(err);
+  }
+});
 
 // --- Admin-Endpunkte (nur mit isAdmin) ---
 app.get('/admin-work-hours', isAdmin, async (req, res, next) => {
@@ -546,12 +725,12 @@ app.get('/admin-download-csv', isAdmin, async (req, res, next) => {
         const whereClauses = [];
 
         if (year && month) {
-            whereClauses.push(`EXTRACT(YEAR FROM w.date) = $${params.length + 1} AND EXTRACT(MONTH FROM w.date) = $${params.length + 2}`);
+            whereClauses.push(`EXTRACT(YEAR FROM w.date) = ${params.length + 1} AND EXTRACT(MONTH FROM w.date) = ${params.length + 2}`);
             params.push(year, month);
         }
 
         if (employeeId && employeeId !== 'all') {
-            whereClauses.push(`e.id = $${params.length + 1}`);
+            whereClauses.push(`e.id = ${params.length + 1}`);
             params.push(employeeId);
         }
 
