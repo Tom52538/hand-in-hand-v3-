@@ -270,7 +270,7 @@ app.post("/admin-login", (req, res, next) => {
 });
 
 // --- Admin-Logout: Middleware entfernt, wie gewünscht ---
-app.post("/admin-logout", (req, res, next) => {
+app.post("/admin-logout", isAdmin, (req, res, next) => {
   if (req.session) {
     const sessionId = req.sessionID;
     req.session.destroy(err => {

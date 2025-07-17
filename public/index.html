@@ -467,7 +467,20 @@
         adminLogoutBtn.classList.add("hidden");
     } // Altes Dropdown wieder zeigen?
     function showAdminView() {
-        showSection('adminTabs'); handleTabSwitch({ currentTarget: document.querySelector('.tabs li[data-tab="workhours"]') }); if (employeeLoginSection) employeeLoginSection.classList.add('hidden'); if (adminLoginSection) adminLoginSection.classList.add('hidden'); if (workHoursForm) workHoursForm.classList.add('hidden'); if (loggedInUserInfo) loggedInUserInfo.classList.remove('hidden');
+        showSection('adminTabs');
+        handleTabSwitch({ currentTarget: document.querySelector('.tabs li[data-tab="workhours"]') });
+        if (employeeLoginSection) employeeLoginSection.classList.add('hidden');
+        if (adminLoginSection) adminLoginSection.classList.add('hidden');
+        if (workHoursForm) workHoursForm.classList.add('hidden');
+
+        // Speziell für Admin-Ansicht
+        if (loggedInUserInfo) {
+            loggedInUserInfo.classList.remove('hidden');
+            if (loggedInUserName) {
+                loggedInUserName.textContent = 'Administrator'; // Setzt den Namen für den Admin
+            }
+        }
+
         logoutBtn.classList.add("hidden");
         adminLogoutBtn.classList.remove("hidden");
     }
