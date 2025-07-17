@@ -56,6 +56,50 @@
         padding: 0;
         line-height: 1;
     }
+/* Enhanced error message styles */
+.validation-error-popup {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: linear-gradient(135deg, #ff4757, #ff3838);
+    color: white;
+    padding: 25px;
+    border-radius: 12px;
+    box-shadow: 0 8px 32px rgba(255, 71, 87, 0.3);
+    z-index: 10001;
+    font-family: sans-serif;
+    max-width: 500px;
+    text-align: center;
+    border: 2px solid #ff2d2d;
+}
+
+.validation-warning-popup {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: linear-gradient(135deg, #ffa502, #ff9500);
+    color: white;
+    padding: 25px;
+    border-radius: 12px;
+    box-shadow: 0 8px 32px rgba(255, 165, 2, 0.3);
+    z-index: 10001;
+    font-family: sans-serif;
+    max-width: 500px;
+    text-align: center;
+    border: 2px solid #ff8c00;
+}
+
+.popup-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 10000;
+}
 
     /* Tab-Navigation */
     .tabs { list-style: none; padding: 0; margin: 0 0 1rem 0; display: flex; flex-wrap: wrap; border-bottom: 1px solid #ccc; }
@@ -661,33 +705,96 @@ async function handleAdminLogout() {
     }
 
     async function handleWorkTimeToggle() {
-        if (!loggedInEmployee) { alert("Fehler: Kein Mitarbeiter eingeloggt."); showLoggedOutView(); return; }
+        if (!loggedInEmployee) {
+            alert("Fehler: Kein Mitarbeiter eingeloggt.");
+            showLoggedOutView();
+            return;
+        }
+
         const action = workTimeBtn.textContent.includes('Arbeitsbeginn') ? 'start' : 'end';
         const now = new Date();
         const date = now.toISOString().split("T")[0];
         const time = now.toTimeString().slice(0, 5);
+
         workTimeBtn.disabled = true;
         workTimeBtn.textContent = 'Buchung wird verarbeitet...';
+
         if (action === 'start') {
             try {
-                const response = await fetch("/api/employee/log-start", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ date, startTime: time }), credentials: 'include' });
+                const response = await fetch("/api/employee/log-start", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ date, startTime: time }),
+                    credentials: 'include'
+                });
+
                 const result = await response.json();
-                if (!response.ok) throw new Error(result.message || `Serverfehler ${response.status}`);
-                alert("✅ Arbeitsbeginn erfolgreich gebucht."); currentWorkEntryId = result.id;
-            } catch (err) { console.error("Fehler beim Buchen des Arbeitsbeginns:", err); alert("❌ Fehler beim Buchen des Arbeitsbeginns: " + err.message); }
-            finally { checkNextBookingAction(); }
-        } else { // action === 'end'
-            if (!currentWorkEntryId) { alert("Fehler: Konnte die ID des offenen Eintrags nicht finden."); checkNextBookingAction(); return; }
+
+                if (!response.ok) {
+                    // UPDATED: Enhanced error handling for strict validation
+                    if (response.status === 409) {
+                        // Handle specific validation errors
+                        if (result.errorType === 'DAILY_LIMIT_REACHED') {
+                            alert(`🚫 ARBEITSZEIT BEREITS ERFASST\n\n${result.message}`);
+                        } else if (result.errorType === 'OPEN_ENTRY_EXISTS') {
+                            alert(`⚠️ OFFENER EINTRAG VORHANDEN\n\n${result.message}`);
+                        } else {
+                            alert(`❌ Buchung nicht möglich:\n\n${result.message}`);
+                        }
+                    } else {
+                        throw new Error(result.message || `Serverfehler ${response.status}`);
+                    }
+                } else {
+                    alert("✅ Arbeitsbeginn erfolgreich gebucht.");
+                    currentWorkEntryId = result.id;
+                }
+            } catch (err) {
+                console.error("Fehler beim Buchen des Arbeitsbeginns:", err);
+                alert("❌ Unerwarteter Fehler beim Buchen des Arbeitsbeginns: " + err.message);
+            } finally {
+                checkNextBookingAction();
+            }
+        } else {
+            // action === 'end' - existing code remains unchanged
+            if (!currentWorkEntryId) {
+                alert("Fehler: Konnte die ID des offenen Eintrags nicht finden.");
+                checkNextBookingAction();
+                return;
+            }
             try {
-                const comment = ""; // Kommentarfeld ggf. hinzufügen
-                const response = await fetch(`/api/employee/log-end/${currentWorkEntryId}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ endTime: time, comment: comment || null }), credentials: 'include' });
+                const comment = "";
+                const response = await fetch(`/api/employee/log-end/${currentWorkEntryId}`, {
+                    method: "PUT",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ endTime: time, comment: comment || null }),
+                    credentials: 'include'
+                });
                 const result = await response.json();
                 if (!response.ok) throw new Error(result.message || `Serverfehler ${response.status}`);
-                alert("✅ Arbeitsende erfolgreich gebucht."); currentWorkEntryId = null;
-                let summaryDate = date; if(displayDateInput.value && displayDateInput.value !== 'Unbekannt') { try { const parts = displayDateInput.value.split(' '); if (parts.length > 1) { const dateParts = parts[1].split('.'); if (dateParts.length === 3) { summaryDate = `${dateParts[2]}-${dateParts[1].padStart(2,'0')}-${dateParts[0].padStart(2,'0')}`; } } } catch (e) { console.error("Fehler beim Parsen des angezeigten Datums für Summary:", e); } }
-                displaySummaryHours(summaryDate); // <<<<---- Ruft die Funktion auf
-            } catch (err) { console.error("Fehler beim Buchen des Arbeitsendes:", err); alert("❌ Fehler beim Buchen des Arbeitsendes: " + err.message); }
-            finally { checkNextBookingAction(); }
+                alert("✅ Arbeitsende erfolgreich gebucht.");
+                currentWorkEntryId = null;
+
+                let summaryDate = date;
+                if(displayDateInput.value && displayDateInput.value !== 'Unbekannt') {
+                    try {
+                        const parts = displayDateInput.value.split(' ');
+                        if (parts.length > 1) {
+                            const dateParts = parts[1].split('.');
+                            if (dateParts.length === 3) {
+                                summaryDate = `${dateParts[2]}-${dateParts[1].padStart(2,'0')}-${dateParts[0].padStart(2,'0')}`;
+                            }
+                        }
+                    } catch (e) {
+                        console.error("Fehler beim Parsen des angezeigten Datums für Summary:", e);
+                    }
+                }
+                displaySummaryHours(summaryDate);
+            } catch (err) {
+                console.error("Fehler beim Buchen des Arbeitsendes:", err);
+                alert("❌ Fehler beim Buchen des Arbeitsendes: " + err.message);
+            } finally {
+                checkNextBookingAction();
+            }
         }
     }
     async function displaySummaryHours(dayDate) {
@@ -872,57 +979,69 @@ async function handleAdminLogout() {
     }
 
     // +++ NEU IMPLEMENTIERT: Änderungen speichern +++
-    async function saveChanges() {
-        if (!editWorkHoursForm) return;
-        const id = editIdInput.value;
-        const date = editDateInput.value;
-        const startTime = editStartTimeInput.value;
-        const endTime = editEndTimeInput.value;
-        const comment = editCommentInput.value;
+async function saveChanges() {
+    if (!editWorkHoursForm) return;
+    const id = editIdInput.value;
+    const date = editDateInput.value;
+    const startTime = editStartTimeInput.value;
+    const endTime = editEndTimeInput.value;
+    const comment = editCommentInput.value;
 
-        // Einfache Validierung (optional erweiterbar)
-        if (!id || !date || !startTime || !endTime) {
-            alert("Bitte alle Zeitfelder (Datum, Start, Ende) ausfüllen.");
-            return;
-        }
+    // Simple validation
+    if (!id || !date || !startTime || !endTime) {
+        alert("Bitte alle Zeitfelder (Datum, Start, Ende) ausfüllen.");
+        return;
+    }
 
-        const body = { id, date, startTime, endTime, comment };
-        const saveButton = editWorkHoursForm.querySelector('button[onclick="saveChanges()"]');
-        saveButton.disabled = true;
-        saveButton.textContent = 'Speichern...';
+    const body = { id, date, startTime, endTime, comment };
+    const saveButton = editWorkHoursForm.querySelector('button[onclick="saveChanges()"]');
+    saveButton.disabled = true;
+    saveButton.textContent = 'Speichern...';
 
-        try {
-            const response = await fetch('/api/admin/update-hours', {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(body),
-                credentials: 'include'
-            });
+    try {
+        const response = await fetch('/api/admin/update-hours', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+            credentials: 'include'
+        });
 
-            const responseText = await response.text(); // Text holen, da Erfolg auch nur Text sein kann
-            if (!response.ok) {
-                 if (response.status === 401 || response.status === 403) {
-                     alert("Sitzung abgelaufen oder keine Admin-Rechte. Bitte neu anmelden.");
-                     showLoggedOutView();
-                     throw new Error("Unauthorized");
-                 }
-                throw new Error(`Speichern fehlgeschlagen (${response.status}): ${responseText}`);
+        if (!response.ok) {
+            if (response.status === 401 || response.status === 403) {
+                alert("Sitzung abgelaufen oder keine Admin-Rechte. Bitte neu anmelden.");
+                showLoggedOutView();
+                throw new Error("Unauthorized");
             }
 
-            alert("✅ Eintrag erfolgreich aktualisiert.");
-            cancelEditWorkHours(); // Formular schließen/leeren
-            loadAdminWorkHours(); // Tabelle neu laden, um Änderungen zu sehen
+            // UPDATED: Handle strict validation errors
+            if (response.status === 409) {
+                const errorData = await response.json();
+                if (errorData.errorType === 'DATE_CONFLICT') {
+                    alert(`🚫 KONFLIKT ERKANNT\n\n${errorData.message}\n\n💡 Löschen Sie zuerst den bestehenden Eintrag oder wählen Sie ein anderes Datum.`);
+                } else {
+                    alert(`❌ Speichern nicht möglich:\n\n${errorData.message}`);
+                }
+                throw new Error("Validation conflict");
+            }
 
-        } catch (error) {
-             if (error.message !== "Unauthorized") {
-                 console.error('Fehler beim Speichern der Änderungen:', error);
-                 alert(`❌ Fehler beim Speichern: ${error.message}`);
-             }
-        } finally {
-            saveButton.disabled = false;
-            saveButton.textContent = 'Speichern';
+            const responseText = await response.text();
+            throw new Error(`Speichern fehlgeschlagen (${response.status}): ${responseText}`);
         }
+
+        alert("✅ Eintrag erfolgreich aktualisiert.");
+        cancelEditWorkHours();
+        loadAdminWorkHours();
+
+    } catch (error) {
+        if (error.message !== "Unauthorized" && error.message !== "Validation conflict") {
+            console.error('Fehler beim Speichern der Änderungen:', error);
+            alert(`❌ Fehler beim Speichern: ${error.message}`);
+        }
+    } finally {
+        saveButton.disabled = false;
+        saveButton.textContent = 'Speichern';
     }
+}
 
     // +++ NEU IMPLEMENTIERT: Eintrag löschen +++
     async function deleteEntry(id, name, date) {
@@ -1824,6 +1943,56 @@ document.addEventListener('visibilitychange', function() {
     }
   }
 });
+
+// === ENHANCED ERROR DISPLAY SYSTEM ===
+
+function showValidationError(message, type = 'error') {
+    // Remove any existing popups
+    const existingPopup = document.querySelector('.validation-error-popup, .validation-warning-popup');
+    const existingOverlay = document.querySelector('.popup-overlay');
+    if (existingPopup) existingPopup.remove();
+    if (existingOverlay) existingOverlay.remove();
+
+    // Create overlay
+    const overlay = document.createElement('div');
+    overlay.className = 'popup-overlay';
+    overlay.addEventListener('click', () => {
+        overlay.remove();
+        popup.remove();
+    });
+
+    // Create popup
+    const popup = document.createElement('div');
+    popup.className = type === 'error' ? 'validation-error-popup' : 'validation-warning-popup';
+
+    const icon = type === 'error' ? '🚫' : '⚠️';
+    const title = type === 'error' ? 'BUCHUNG NICHT MÖGLICH' : 'WARNUNG';
+
+    popup.innerHTML = `
+        <div style="font-size: 24px; margin-bottom: 15px;">${icon}</div>
+        <div style="font-weight: bold; font-size: 18px; margin-bottom: 15px;">${title}</div>
+        <div style="font-size: 14px; line-height: 1.5; margin-bottom: 20px;">${message}</div>
+        <button onclick="this.closest('.popup-overlay').remove(); this.closest('.validation-error-popup, .validation-warning-popup').remove();"
+                style="background: white; color: #333; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer; font-weight: bold;">
+            Verstanden
+        </button>
+    `;
+
+    document.body.appendChild(overlay);
+    document.body.appendChild(popup);
+
+    // Auto-remove after 10 seconds
+    setTimeout(() => {
+        if (document.body.contains(overlay)) overlay.remove();
+        if (document.body.contains(popup)) popup.remove();
+    }, 10000);
+}
+
+// Enhanced console logging for validation events
+function logValidationEvent(type, details) {
+    const timestamp = new Date().toLocaleString('de-DE');
+    console.log(`[${timestamp}] VALIDATION ${type.toUpperCase()}:`, details);
+}
   </script>
 </body>
 </html>
