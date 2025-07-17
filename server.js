@@ -1,4 +1,4 @@
-// server.js – Vollständige, geprüfte und bereinigte Version (Stand: 14.07.2025)
+// server.js – Complete version with dynamic session timeouts (Updated: 17.07.2025)
 
 const express = require('express');
 const cors = require('cors');
@@ -13,25 +13,25 @@ const bcrypt = require('bcrypt');
 
 dotenv.config();
 
-// --- Datenbankverbindung ---
+// --- Database Connection ---
 const db = new Pool({
   connectionString: process.env.DATABASE_URL,
-  // ssl: { rejectUnauthorized: false } // ggf. für Railway/Prod aktivieren
+  // ssl: { rejectUnauthorized: false } // Enable for Railway/Prod if needed
 });
 
-// --- Express App initialisieren ---
+// --- Express App Initialization ---
 const app = express();
 const port = process.env.PORT || 3000;
 app.set('trust proxy', 1);
 
-// --- Hilfsfunktionen & Module ---
+// --- Helper Functions & Modules ---
 const hd = new Holidays('DE', 'NW');
 let calculateMonthlyData, calculatePeriodData, getExpectedHours, monthlyPdfRouter;
 try {
   ({ calculateMonthlyData, calculatePeriodData, getExpectedHours } = require('./utils/calculationUtils'));
   monthlyPdfRouter = require('./routes/monthlyPdfEndpoint');
 } catch (e) {
-  console.error("Fehler beim Laden von Hilfsmodulen:", e);
+  console.error("Error loading helper modules:", e);
   process.exit(1);
 }
 
@@ -59,7 +59,7 @@ async function convertToCSV(database, data) {
     const empRes = await database.query('SELECT id, name, mo_hours, di_hours, mi_hours, do_hours, fr_hours FROM employees');
     empRes.rows.forEach(emp => employeeMap.set(emp.name.toLowerCase(), emp));
   } catch(e) {
-    console.error("Fehler beim Abrufen der Mitarbeiterdaten für CSV-Sollstunden:", e);
+    console.error("Error fetching employee data for CSV target hours:", e);
   }
   for (const row of data) {
     let dateFormatted = "";
@@ -112,27 +112,31 @@ async function convertToCSV(database, data) {
 app.use(cors({ origin: process.env.CORS_ORIGIN || '*', credentials: true }));
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
+
+// --- UPDATED: Dynamic Session Configuration ---
 app.use(session({
   store: new pgSession({ pool: db, tableName: 'user_sessions' }),
   secret: process.env.SESSION_SECRET || 'sehr-geheimes-fallback-secret-fuer-dev',
   resave: false,
   saveUninitialized: false,
+  rolling: true, // Enable rolling sessions - important for dynamic timeouts
   cookie: { 
     secure: process.env.NODE_ENV === 'production', 
-    maxAge: 1000 * 60 * 3, // 3 Minuten Session-Timeout
+    maxAge: 1000 * 60 * 3, // Default: 3 minutes (will be overridden dynamically)
     httpOnly: true, 
     sameSite: 'lax' 
   }
 }));
+
 app.use(express.static(path.join(__dirname, 'public')));
 
-// --- Auth-Middleware ---
+// --- Auth Middleware ---
 function isAdmin(req, res, next) {
   if (req.session && req.session.isAdmin === true) {
     next();
   } else {
     if (req.originalUrl.startsWith('/api/') || req.originalUrl.startsWith('/admin')) {
-      res.status(403).json({ message: 'Zugriff verweigert. Admin-Login erforderlich.' });
+      res.status(403).json({ message: 'Access denied. Admin login required.' });
     } else {
       res.redirect('/');
     }
@@ -142,11 +146,11 @@ function isEmployee(req, res, next) {
   if (req.session && req.session.isEmployee === true && req.session.employeeId) {
     next();
   } else {
-    res.status(401).json({ message: 'Authentifizierung erforderlich. Bitte anmelden.' });
+    res.status(401).json({ message: 'Authentication required. Please log in.' });
   }
 }
 
-// --- Datenbank-Setup Funktion ---
+// --- Database Setup Function ---
 const setupTables = async () => {
   try {
     const client = await db.connect();
@@ -192,12 +196,12 @@ const setupTables = async () => {
     const sessionTableCheck = await client.query(`SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'user_sessions');`);
     client.release();
   } catch (err) {
-    console.error("Kritischer Datenbank Setup Fehler:", err);
+    console.error("Critical database setup error:", err);
     process.exit(1);
   }
 };
 
-// --- Öffentliche und Authentifizierungsrouten ---
+// --- Public and Authentication Routes ---
 app.get('/healthz', (req, res) => res.status(200).send('OK'));
 
 app.get('/employees', async (req, res, next) => {
@@ -212,35 +216,39 @@ app.get('/employees', async (req, res, next) => {
 app.post("/login", async (req, res, next) => {
   const { employeeName, password } = req.body;
   if (!employeeName || !password) {
-    return res.status(400).json({ message: "Mitarbeitername und Passwort erforderlich." });
+    return res.status(400).json({ message: "Employee name and password required." });
   }
   try {
     const findUserQuery = 'SELECT id, name, password_hash FROM employees WHERE LOWER(name) = LOWER($1)';
     const userResult = await db.query(findUserQuery, [employeeName]);
     if (userResult.rows.length === 0) {
-      return res.status(401).json({ message: "Mitarbeitername oder Passwort ungültig." });
+      return res.status(401).json({ message: "Invalid employee name or password." });
     }
     const user = userResult.rows[0];
     if (!user.password_hash) {
-      return res.status(401).json({ message: "Für diesen Mitarbeiter ist kein Login möglich. Bitte Admin kontaktieren." });
+      return res.status(401).json({ message: "Login not possible for this employee. Please contact admin." });
     }
     const match = await bcrypt.compare(password, user.password_hash);
     if (match) {
       req.session.regenerate((errReg) => {
-        if (errReg) return res.status(500).json({ message: "Interner Serverfehler beim Login (Session Regenerate)." });
+        if (errReg) return res.status(500).json({ message: "Internal server error during login (Session Regenerate)." });
         req.session.isEmployee = true;
         req.session.employeeId = user.id;
         req.session.employeeName = user.name;
+        
+        // UPDATED: Set dynamic session timeout for employees (3 minutes)
+        req.session.cookie.maxAge = 1000 * 60 * 3; // 3 minutes for employees
+        
         req.session.save((errSave) => {
-          if (errSave) return res.status(500).json({ message: "Interner Serverfehler beim Login (Session Save)." });
+          if (errSave) return res.status(500).json({ message: "Internal server error during login (Session Save)." });
           res.status(200).json({
-            message: "Login erfolgreich.",
+            message: "Login successful.",
             employee: { id: user.id, name: user.name }
           });
         });
       });
     } else {
-      res.status(401).json({ message: "Mitarbeitername oder Passwort ungültig." });
+      res.status(401).json({ message: "Invalid employee name or password." });
     }
   } catch (err) {
     next(err);
@@ -251,40 +259,43 @@ app.post("/logout", isEmployee, (req, res, next) => {
   req.session.destroy(err => {
     if (err) return next(err);
     res.clearCookie('connect.sid');
-    res.status(200).json({ message: "Erfolgreich abgemeldet." });
+    res.status(200).json({ message: "Successfully logged out." });
   });
 });
 
 app.post("/admin-login", (req, res, next) => {
   const { password } = req.body;
   const adminPassword = process.env.ADMIN_PASSWORD;
-  if (!adminPassword) return res.status(500).send("Serverkonfigurationsfehler.");
-  if (!password) return res.status(400).send("Passwort fehlt.");
+  if (!adminPassword) return res.status(500).send("Server configuration error.");
+  if (!password) return res.status(400).send("Password missing.");
   if (password === adminPassword) {
     req.session.regenerate((errReg) => {
       if (errReg) return next(errReg);
       req.session.isAdmin = true;
+      
+      // UPDATED: Set dynamic session timeout for admin (30 minutes)
+      req.session.cookie.maxAge = 1000 * 60 * 30; // 30 minutes for admin
+      
       req.session.save((errSave) => {
         if (errSave) return next(errSave);
-        res.status(200).send("Admin erfolgreich angemeldet.");
+        res.status(200).send("Admin successfully logged in.");
       });
     });
   } else {
-    res.status(401).send("Ungültiges Passwort.");
+    res.status(401).send("Invalid password.");
   }
 });
 
-// --- Admin-Logout: Middleware entfernt, wie gewünscht ---
 app.post("/admin-logout", isAdmin, (req, res, next) => {
   if (req.session) {
     const sessionId = req.sessionID;
     req.session.destroy(err => {
       if (err) return next(err);
       res.clearCookie('connect.sid');
-      return res.status(200).send("Erfolgreich abgemeldet.");
+      return res.status(200).send("Successfully logged out.");
     });
   } else {
-    return res.status(200).send("Keine aktive Session zum Abmelden gefunden.");
+    return res.status(200).send("No active session found to log out.");
   }
 });
 
@@ -298,32 +309,43 @@ app.get("/api/session-status", (req, res) => {
   res.status(401).json({ message: "Not logged in" });
 });
 
-// --- Heartbeat Endpoint für Auto-Logout ---
+// --- UPDATED: Enhanced Heartbeat Endpoint with Dynamic Timeout Renewal ---
 app.post("/api/heartbeat", (req, res) => {
   if (req.session && (req.session.isEmployee || req.session.isAdmin)) {
-    // Session ist gültig - erneuere sie
-    req.session.touch(); // Setzt lastAccess auf aktuellen Zeitpunkt
+    // UPDATED: Dynamically renew session with correct timeout based on role
+    if (req.session.isAdmin) {
+      req.session.cookie.maxAge = 1000 * 60 * 30; // Admin: 30 minutes
+    } else if (req.session.isEmployee) {
+      req.session.cookie.maxAge = 1000 * 60 * 3;  // Employee: 3 minutes
+    }
+    
+    // Refresh session activity
+    req.session.touch();
+    
     res.status(200).json({ 
       status: 'alive',
       isEmployee: !!req.session.isEmployee,
       isAdmin: !!req.session.isAdmin,
-      employeeName: req.session.employeeName || null
+      employeeName: req.session.employeeName || null,
+      // UPDATED: Send timeout info to frontend for dynamic heartbeat intervals
+      sessionTimeout: req.session.cookie.maxAge,
+      heartbeatInterval: req.session.isAdmin ? 300000 : 90000 // Admin: 5min, Employee: 90sec
     });
   } else {
-    // Session ungültig
+    // Session invalid
     res.status(401).json({ status: 'expired' });
   }
 });
 
-// --- Mitarbeiter-API-Endpunkte (nur mit isEmployee) ---
+// --- Employee API Endpoints (with isEmployee middleware) ---
 
-// GET /api/employee/next-booking-details - Prüft nächste Buchungsaktion
+// GET /api/employee/next-booking-details - Check next booking action
 app.get('/api/employee/next-booking-details', isEmployee, async (req, res, next) => {
   try {
     const employeeId = req.session.employeeId;
     const employeeName = req.session.employeeName;
     
-    // Prüfe auf offenen Eintrag (starttime vorhanden, aber endtime fehlt)
+    // Check for open entry (starttime present but endtime missing)
     const openEntryQuery = `
       SELECT id, date, TO_CHAR(starttime, 'HH24:MI') as startTime
       FROM work_hours 
@@ -337,10 +359,10 @@ app.get('/api/employee/next-booking-details', isEmployee, async (req, res, next)
     const openEntryResult = await db.query(openEntryQuery, [employeeName]);
     
     if (openEntryResult.rows.length > 0) {
-      // Es gibt einen offenen Eintrag -> Arbeitsende buchen
+      // Open entry exists -> book work end
       const openEntry = openEntryResult.rows[0];
       
-      // Datum als String formatieren (YYYY-MM-DD)
+      // Format date as string (YYYY-MM-DD)
       let startDateStr = openEntry.date;
       if (openEntry.date instanceof Date) {
         startDateStr = openEntry.date.toISOString().split('T')[0];
@@ -355,18 +377,18 @@ app.get('/api/employee/next-booking-details', isEmployee, async (req, res, next)
         startTime: openEntry.starttime
       });
     } else {
-      // Kein offener Eintrag -> Arbeitsbeginn buchen
+      // No open entry -> book work start
       res.json({
         nextBooking: 'arbeitsbeginn'
       });
     }
   } catch (err) {
-    console.error('Fehler bei next-booking-details:', err);
+    console.error('Error in next-booking-details:', err);
     next(err);
   }
 });
 
-// POST /api/employee/log-start - Startet Arbeitszeit
+// POST /api/employee/log-start - Start work time
 app.post('/api/employee/log-start', isEmployee, async (req, res, next) => {
   try {
     const employeeId = req.session.employeeId;
@@ -374,10 +396,10 @@ app.post('/api/employee/log-start', isEmployee, async (req, res, next) => {
     const { date, startTime } = req.body;
     
     if (!date || !startTime) {
-      return res.status(400).json({ message: 'Datum und Startzeit sind erforderlich.' });
+      return res.status(400).json({ message: 'Date and start time are required.' });
     }
     
-    // Prüfe ob bereits ein offener Eintrag für heute existiert
+    // Check if open entry for today already exists
     const existingQuery = `
       SELECT id FROM work_hours 
       WHERE LOWER(name) = LOWER($1) 
@@ -388,10 +410,10 @@ app.post('/api/employee/log-start', isEmployee, async (req, res, next) => {
     const existingResult = await db.query(existingQuery, [employeeName, date]);
     
     if (existingResult.rows.length > 0) {
-      return res.status(400).json({ message: 'Es existiert bereits ein offener Arbeitsbeginn für heute.' });
+      return res.status(400).json({ message: 'An open work start already exists for today.' });
     }
     
-    // Neuen Eintrag erstellen
+    // Create new entry
     const insertQuery = `
       INSERT INTO work_hours (name, date, starttime) 
       VALUES ($1, $2, $3) 
@@ -400,16 +422,16 @@ app.post('/api/employee/log-start', isEmployee, async (req, res, next) => {
     const insertResult = await db.query(insertQuery, [employeeName, date, startTime]);
     
     res.status(201).json({
-      message: 'Arbeitsbeginn erfolgreich gebucht.',
+      message: 'Work start successfully booked.',
       id: insertResult.rows[0].id
     });
   } catch (err) {
-    console.error('Fehler bei log-start:', err);
+    console.error('Error in log-start:', err);
     next(err);
   }
 });
 
-// PUT /api/employee/log-end/:id - Beendet Arbeitszeit
+// PUT /api/employee/log-end/:id - End work time
 app.put('/api/employee/log-end/:id', isEmployee, async (req, res, next) => {
   try {
     const employeeId = req.session.employeeId;
@@ -418,10 +440,10 @@ app.put('/api/employee/log-end/:id', isEmployee, async (req, res, next) => {
     const { endTime, comment } = req.body;
     
     if (!endTime) {
-      return res.status(400).json({ message: 'Endzeit ist erforderlich.' });
+      return res.status(400).json({ message: 'End time is required.' });
     }
     
-    // Prüfe ob der Eintrag existiert und dem Mitarbeiter gehört
+    // Check if entry exists and belongs to employee
     const checkQuery = `
       SELECT id, date, TO_CHAR(starttime, 'HH24:MI') as starttime
       FROM work_hours 
@@ -433,13 +455,13 @@ app.put('/api/employee/log-end/:id', isEmployee, async (req, res, next) => {
     const checkResult = await db.query(checkQuery, [entryId, employeeName]);
     
     if (checkResult.rows.length === 0) {
-      return res.status(404).json({ message: 'Offener Arbeitseintrag nicht gefunden oder gehört nicht zu diesem Mitarbeiter.' });
+      return res.status(404).json({ message: 'Open work entry not found or does not belong to this employee.' });
     }
     
     const entry = checkResult.rows[0];
     const hours = calculateWorkHours(entry.starttime, endTime);
     
-    // Eintrag aktualisieren
+    // Update entry
     const updateQuery = `
       UPDATE work_hours 
       SET endtime = $1, hours = $2, comment = $3
@@ -449,16 +471,16 @@ app.put('/api/employee/log-end/:id', isEmployee, async (req, res, next) => {
     await db.query(updateQuery, [endTime, hours, comment || null, entryId]);
     
     res.json({
-      message: 'Arbeitsende erfolgreich gebucht.',
+      message: 'Work end successfully booked.',
       hours: hours
     });
   } catch (err) {
-    console.error('Fehler bei log-end:', err);
+    console.error('Error in log-end:', err);
     next(err);
   }
 });
 
-// GET /api/employee/summary-hours - Zeigt Tages- und Monatsübersicht
+// GET /api/employee/summary-hours - Show daily and monthly overview
 app.get('/api/employee/summary-hours', isEmployee, async (req, res, next) => {
   try {
     const employeeId = req.session.employeeId;
@@ -466,10 +488,10 @@ app.get('/api/employee/summary-hours', isEmployee, async (req, res, next) => {
     const { date } = req.query;
     
     if (!date) {
-      return res.status(400).json({ message: 'Datum ist erforderlich.' });
+      return res.status(400).json({ message: 'Date is required.' });
     }
     
-    // Tagesstunden berechnen
+    // Calculate daily hours
     const dailyQuery = `
       SELECT COALESCE(SUM(hours), 0) as daily_hours
       FROM work_hours 
@@ -480,7 +502,7 @@ app.get('/api/employee/summary-hours', isEmployee, async (req, res, next) => {
     const dailyResult = await db.query(dailyQuery, [employeeName, date]);
     const dailyHours = parseFloat(dailyResult.rows[0].daily_hours) || 0;
     
-    // Monatsstunden berechnen
+    // Calculate monthly hours
     const dateObj = new Date(date + 'T00:00:00Z');
     const year = dateObj.getUTCFullYear();
     const month = dateObj.getUTCMonth() + 1;
@@ -501,17 +523,17 @@ app.get('/api/employee/summary-hours', isEmployee, async (req, res, next) => {
       monthlyHours: monthlyHours
     });
   } catch (err) {
-    console.error('Fehler bei summary-hours:', err);
+    console.error('Error in summary-hours:', err);
     next(err);
   }
 });
 
-// --- Admin-Endpunkte (nur mit isAdmin) ---
+// --- Admin Endpoints (with isAdmin middleware) ---
 app.get('/admin-work-hours', isAdmin, async (req, res, next) => {
   try {
     const { year, month, employeeId } = req.query;
     if (!year || !month) {
-      return res.status(400).json({ message: 'Jahr und Monat sind erforderlich.' });
+      return res.status(400).json({ message: 'Year and month are required.' });
     }
 
     let query = `
@@ -533,7 +555,7 @@ app.get('/admin-work-hours', isAdmin, async (req, res, next) => {
 
     const { rows } = await db.query(query, params);
     
-    // Datum als String formatieren für jede Zeile
+    // Format date as string for each row
     const formattedRows = rows.map(row => ({
       ...row,
       date: row.date instanceof Date ? row.date.toISOString().split('T')[0] : (typeof row.date === 'string' ? row.date.split('T')[0] : row.date)
@@ -565,7 +587,7 @@ app.post('/admin/employees', isAdmin, async (req, res, next) => {
         res.status(201).json(result.rows[0]);
     } catch (err) {
         if (err.code === '23505') { // Unique violation
-            return res.status(409).send('Ein Mitarbeiter mit diesem Namen existiert bereits.');
+            return res.status(409).send('An employee with this name already exists.');
         }
         next(err);
     }
@@ -589,7 +611,7 @@ app.put('/admin/employees/:id', isAdmin, async (req, res, next) => {
         res.json(result.rows[0]);
     } catch (err) {
         if (err.code === '23505') { // Unique violation
-            return res.status(409).send('Ein anderer Mitarbeiter mit diesem Namen existiert bereits.');
+            return res.status(409).send('Another employee with this name already exists.');
         }
         next(err);
     }
@@ -620,7 +642,7 @@ app.post('/admin/absences', isAdmin, async (req, res, next) => {
         const { employeeId, date, absenceType, comment } = req.body;
         const employee = await db.query('SELECT * FROM employees WHERE id = $1', [employeeId]);
         if (employee.rows.length === 0) {
-            return res.status(404).json({ message: 'Mitarbeiter nicht gefunden.' });
+            return res.status(404).json({ message: 'Employee not found.' });
         }
         const credited_hours = getExpectedHours(employee.rows[0], date);
         const result = await db.query(
@@ -630,7 +652,7 @@ app.post('/admin/absences', isAdmin, async (req, res, next) => {
         res.status(201).json(result.rows[0]);
     } catch (err) {
         if (err.code === '23505') { // Unique violation
-            return res.status(409).json({ message: 'Für diesen Tag existiert bereits ein Abwesenheitseintrag.' });
+            return res.status(409).json({ message: 'An absence entry already exists for this day.' });
         }
         next(err);
     }
@@ -679,7 +701,7 @@ app.post('/admin/generate-holidays', isAdmin, async (req, res, next) => {
                 }
             }
         }
-        res.json({ message: `Feiertage für ${year} generiert.`, generated, skipped, employees: employees.rows.length });
+        res.json({ message: `Holidays generated for ${year}.`, generated, skipped, employees: employees.rows.length });
     } catch (err) {
         next(err);
     }
@@ -688,7 +710,7 @@ app.post('/admin/generate-holidays', isAdmin, async (req, res, next) => {
 app.delete('/admin/delete-public-holidays', isAdmin, async (req, res, next) => {
     try {
         const result = await db.query("DELETE FROM absences WHERE absence_type = 'PUBLIC_HOLIDAY'");
-        res.json({ message: `${result.rowCount} Feiertagseinträge gelöscht.` });
+        res.json({ message: `${result.rowCount} holiday entries deleted.` });
     } catch (err) {
         next(err);
     }
@@ -743,7 +765,7 @@ app.delete('/adminDeleteData', isAdmin, async (req, res, next) => {
         await db.query('DELETE FROM work_hours');
         await db.query('DELETE FROM monthly_balance');
         await db.query('DELETE FROM absences');
-        res.send('Alle Arbeits-, Bilanz- und Abwesenheitsdaten wurden gelöscht.');
+        res.send('All work, balance and absence data has been deleted.');
     } catch (err) {
         next(err);
     }
@@ -795,30 +817,33 @@ try {
     app.use('/api/pdf', monthlyPdfRouter(db));
   }
 } catch(routerError) {
-  console.error("Fehler beim Einbinden des PDF-Routers:", routerError);
+  console.error("Error loading PDF router:", routerError);
 }
 
 // --- Global Error Handler ---
 app.use((err, req, res, next) => {
   if (!res.headersSent) {
-    res.status(500).send('Ein unerwarteter interner Serverfehler ist aufgetreten.');
+    res.status(500).send('An unexpected internal server error occurred.');
   } else {
     next(err);
   }
 });
 
-// --- Datenbank-Setup & Serverstart ---
+// --- Database Setup & Server Start ---
 setupTables()
-  .then(() => { console.log('>>> Datenbank Setup erfolgreich abgeschlossen (nach Serverstart).'); })
-  .catch((err) => { console.error('FEHLER beim Ausführen von setupTables (nach Serverstart):', err); });
+  .then(() => { console.log('>>> Database setup successfully completed (after server start).'); })
+  .catch((err) => { console.error('ERROR executing setupTables (after server start):', err); });
 
 app.listen(port, () => {
   console.log(`=======================================================`);
-  console.log(` Server läuft auf Port ${port}`);
+  console.log(` Server running on port ${port}`);
   console.log(` Node Environment: ${process.env.NODE_ENV || 'development'}`);
-  console.log(` Admin-Login: ${process.env.ADMIN_PASSWORD ? 'AKTIVIERT' : 'DEAKTIVIERT (Passwort fehlt!)'}`);
-  console.log(` Feiertagsmodul: DE / NW`);
+  console.log(` Admin Login: ${process.env.ADMIN_PASSWORD ? 'ENABLED' : 'DISABLED (Password missing!)'}`);
+  console.log(` Holiday Module: DE / NW`);
   console.log(` CORS Origin: ${process.env.CORS_ORIGIN || '*'}`);
-  console.log(` Frontend aus: '${path.join(__dirname, 'public')}'`);
+  console.log(` Frontend from: '${path.join(__dirname, 'public')}'`);
+  console.log(` 🔥 DYNAMIC SESSION TIMEOUTS ENABLED:`);
+  console.log(`    - Employees: 3 minutes (90s heartbeat)`);
+  console.log(`    - Admin: 30 minutes (5min heartbeat)`);
   console.log(`=======================================================`);
 });
