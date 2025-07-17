@@ -529,7 +529,7 @@
         } catch (error) { console.error("Fehler beim Mitarbeiter-Login:", error); employeeLoginError.textContent = error.message || "Login fehlgeschlagen."; employeeLoginError.classList.remove('hidden'); }
         finally { loginButton.disabled = false; loginButton.textContent = "Anmelden"; }
     }
-    async function handleEmployeeLogout() { if (!confirm("Möchten Sie sich wirklich abmelden?")) return; logoutBtn.disabled = true; logoutBtn.textContent = "Abmeldung..."; try { const response = await fetch('/logout', { method: 'POST', credentials: 'include' }); const data = await response.json(); if (!response.ok) { throw new Error(data.message || `Logout fehlgeschlagen (${response.status})`); } alert(data.message || "Erfolgreich abgemeldet."); showLoggedOutView(); } catch(error) { console.error("Fehler beim Logout:", error); alert(`Logout fehlgeschlagen: ${error.message}`); } finally { logoutBtn.disabled = false; logoutBtn.textContent = "Abmelden"; } }
+    async function handleEmployeeLogout() { if (!confirm("Möchten Sie sich wirklich abmelden?")) return; logoutBtn.disabled = true; logoutBtn.textContent = "Abmeldung..."; try { const response = await fetch('/logout', { method: 'POST', credentials: 'include' }); const data = await response.json(); if (!response.ok) { throw new Error(data.message || `Logout fehlgeschlagen (${response.status})`); } alert(data.message || "Erfolgreich abgemeldet."); location.reload(); } catch(error) { console.error("Fehler beim Logout:", error); alert(`Logout fehlgeschlagen: ${error.message}`); } finally { logoutBtn.disabled = false; logoutBtn.textContent = "Abmelden"; } }
 
     async function handleAdminLogout() {
       if (!confirm("Really log out as admin?")) return;
