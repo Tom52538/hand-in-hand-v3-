@@ -1,4 +1,4 @@
-// server.js – Complete version with dynamic session timeouts (Updated: 17.07.2025)
+// server.js – Complete version with dynamic session timeouts and strict daily validation (Updated: 17.07.2025)
 
 const express = require('express');
 const cors = require('cors');
@@ -388,7 +388,7 @@ app.get('/api/employee/next-booking-details', isEmployee, async (req, res, next)
   }
 });
 
-// POST /api/employee/log-start - Start work time
+// POST /api/employee/log-start - Start work time with STRICT DAILY VALIDATION
 app.post('/api/employee/log-start', isEmployee, async (req, res, next) => {
   try {
     const employeeId = req.session.employeeId;
@@ -399,21 +399,52 @@ app.post('/api/employee/log-start', isEmployee, async (req, res, next) => {
       return res.status(400).json({ message: 'Date and start time are required.' });
     }
     
-    // Check if open entry for today already exists
-    const existingQuery = `
-      SELECT id FROM work_hours 
-      WHERE LOWER(name) = LOWER($1) 
-        AND date = $2 
-        AND starttime IS NOT NULL 
-        AND endtime IS NULL
+    // STRICT VALIDATION: Check for ANY existing entries on the same day
+    const dailyValidationQuery = `
+      SELECT id, TO_CHAR(starttime, 'HH24:MI') as starttime, 
+             TO_CHAR(endtime, 'HH24:MI') as endtime,
+             hours
+      FROM work_hours 
+      WHERE LOWER(name) = LOWER($1) AND date = $2
+      ORDER BY starttime ASC
     `;
-    const existingResult = await db.query(existingQuery, [employeeName, date]);
     
-    if (existingResult.rows.length > 0) {
-      return res.status(400).json({ message: 'An open work start already exists for today.' });
+    const dailyEntries = await db.query(dailyValidationQuery, [employeeName, date]);
+    
+    if (dailyEntries.rows.length > 0) {
+      // Check for complete entries (both start and end time)
+      const completeEntries = dailyEntries.rows.filter(entry => entry.endtime);
+      const openEntries = dailyEntries.rows.filter(entry => !entry.endtime);
+      
+      if (completeEntries.length > 0) {
+        // Complete entry exists - STRICT RULE: Only one work period per day
+        const completeEntry = completeEntries[0];
+        const formattedDate = new Date(date + 'T00:00:00Z').toLocaleDateString('de-DE');
+        return res.status(409).json({ 
+          message: `🚫 Arbeitszeit für ${formattedDate} bereits vollständig erfasst (${completeEntry.starttime} - ${completeEntry.endtime}, ${parseFloat(completeEntry.hours || 0).toFixed(2)} Std.). Neue Buchung nicht möglich.\n\n💡 Bei Korrekturen wenden Sie sich an den Administrator.`,
+          errorType: 'DAILY_LIMIT_REACHED',
+          existingEntry: {
+            startTime: completeEntry.starttime,
+            endTime: completeEntry.endtime,
+            hours: completeEntry.hours
+          }
+        });
+      }
+      
+      if (openEntries.length > 0) {
+        // Open entry exists
+        const openEntry = openEntries[0];
+        const formattedDate = new Date(date + 'T00:00:00Z').toLocaleDateString('de-DE');
+        return res.status(409).json({ 
+          message: `⚠️ Bereits offener Arbeitsbeginn für ${formattedDate} um ${openEntry.starttime} Uhr vorhanden.\n\nBitte zuerst das Arbeitsende buchen, bevor ein neuer Arbeitsbeginn erfasst werden kann.`,
+          errorType: 'OPEN_ENTRY_EXISTS',
+          openEntryId: openEntry.id,
+          openStartTime: openEntry.starttime
+        });
+      }
     }
     
-    // Create new entry
+    // No conflicts - proceed with creating new entry
     const insertQuery = `
       INSERT INTO work_hours (name, date, starttime) 
       VALUES ($1, $2, $3) 
@@ -421,8 +452,10 @@ app.post('/api/employee/log-start', isEmployee, async (req, res, next) => {
     `;
     const insertResult = await db.query(insertQuery, [employeeName, date, startTime]);
     
+    console.log(`✅ Work start logged: ${employeeName} on ${date} at ${startTime} (ID: ${insertResult.rows[0].id})`);
+    
     res.status(201).json({
-      message: 'Work start successfully booked.',
+      message: 'Arbeitsbeginn erfolgreich gebucht.',
       id: insertResult.rows[0].id
     });
   } catch (err) {
@@ -466,12 +499,14 @@ app.put('/api/employee/log-end/:id', isEmployee, async (req, res, next) => {
       UPDATE work_hours 
       SET endtime = $1, hours = $2, comment = $3
       WHERE id = $4
-      RETURNING id
+      RETURNING id, date
     `;
-    await db.query(updateQuery, [endTime, hours, comment || null, entryId]);
+    const updateResult = await db.query(updateQuery, [endTime, hours, comment || null, entryId]);
+    
+    console.log(`✅ Work end logged: ${employeeName} entry ID ${entryId}, ${hours.toFixed(2)} hours total`);
     
     res.json({
-      message: 'Work end successfully booked.',
+      message: 'Arbeitsende erfolgreich gebucht.',
       hours: hours
     });
   } catch (err) {
@@ -736,16 +771,60 @@ app.get('/calculate-period-balance', isAdmin, async (req, res, next) => {
     }
 });
 
+// UPDATED: Admin Update Hours with STRICT DAILY VALIDATION
 app.put('/api/admin/update-hours', isAdmin, async (req, res, next) => {
     try {
         const { id, date, startTime, endTime, comment } = req.body;
+        
+        if (!id || !date || !startTime || !endTime) {
+            return res.status(400).json({ message: 'ID, date, start time, and end time are required.' });
+        }
+        
+        // Get current entry info to check if we're changing the date
+        const currentEntryQuery = 'SELECT name, date FROM work_hours WHERE id = $1';
+        const currentEntryResult = await db.query(currentEntryQuery, [id]);
+        
+        if (currentEntryResult.rows.length === 0) {
+            return res.status(404).json({ message: 'Work hours entry not found.' });
+        }
+        
+        const currentEntry = currentEntryResult.rows[0];
+        const currentDate = currentEntry.date instanceof Date ? 
+            currentEntry.date.toISOString().split('T')[0] : 
+            currentEntry.date.split('T')[0];
+        
+        // If date is being changed, validate the new date doesn't have conflicts
+        if (currentDate !== date) {
+            const conflictCheckQuery = `
+                SELECT id, TO_CHAR(starttime, 'HH24:MI') as starttime, 
+                       TO_CHAR(endtime, 'HH24:MI') as endtime
+                FROM work_hours 
+                WHERE LOWER(name) = LOWER($1) AND date = $2 AND id != $3
+            `;
+            
+            const conflicts = await db.query(conflictCheckQuery, [currentEntry.name, date, id]);
+            
+            if (conflicts.rows.length > 0) {
+                const conflict = conflicts.rows[0];
+                const formattedDate = new Date(date + 'T00:00:00Z').toLocaleDateString('de-DE');
+                return res.status(409).json({ 
+                    message: `❌ Konflikt: Für ${formattedDate} existiert bereits ein Arbeitszeiteneintrag (${conflict.starttime} - ${conflict.endtime || '???'}).\n\nNur ein Arbeitszeitraum pro Tag und Mitarbeiter ist erlaubt.`,
+                    errorType: 'DATE_CONFLICT',
+                    conflictingEntry: conflict
+                });
+            }
+        }
+        
         const hours = calculateWorkHours(startTime, endTime);
         const result = await db.query(
             'UPDATE work_hours SET date = $1, starttime = $2, endtime = $3, hours = $4, comment = $5 WHERE id = $6 RETURNING *',
             [date, startTime, endTime, hours, comment, id]
         );
+        
+        console.log(`✅ Admin updated work hours: ID ${id}, ${hours.toFixed(2)} hours`);
         res.json(result.rows[0]);
     } catch (err) {
+        console.error('Error in admin update-hours:', err);
         next(err);
     }
 });
@@ -753,19 +832,35 @@ app.put('/api/admin/update-hours', isAdmin, async (req, res, next) => {
 app.delete('/api/admin/delete-hours/:id', isAdmin, async (req, res, next) => {
     try {
         const { id } = req.params;
-        await db.query('DELETE FROM work_hours WHERE id = $1', [id]);
+        const result = await db.query('DELETE FROM work_hours WHERE id = $1 RETURNING name, date', [id]);
+        
+        if (result.rows.length === 0) {
+            return res.status(404).json({ message: 'Work hours entry not found.' });
+        }
+        
+        console.log(`✅ Admin deleted work hours: ID ${id} (${result.rows[0].name}, ${result.rows[0].date})`);
         res.status(204).send();
     } catch (err) {
+        console.error('Error in admin delete-hours:', err);
         next(err);
     }
 });
 
 app.delete('/adminDeleteData', isAdmin, async (req, res, next) => {
     try {
-        await db.query('DELETE FROM work_hours');
-        await db.query('DELETE FROM monthly_balance');
-        await db.query('DELETE FROM absences');
-        res.send('All work, balance and absence data has been deleted.');
+        const workHoursResult = await db.query('DELETE FROM work_hours RETURNING id');
+        const balanceResult = await db.query('DELETE FROM monthly_balance RETURNING id');
+        const absencesResult = await db.query('DELETE FROM absences RETURNING id');
+        
+        const deletedCounts = {
+            workHours: workHoursResult.rows.length,
+            balances: balanceResult.rows.length,
+            absences: absencesResult.rows.length
+        };
+        
+        console.log(`✅ Admin deleted all data: ${deletedCounts.workHours} work entries, ${deletedCounts.balances} balance entries, ${deletedCounts.absences} absence entries`);
+        
+        res.send(`All work, balance and absence data has been deleted. (${deletedCounts.workHours} work entries, ${deletedCounts.balances} balance entries, ${deletedCounts.absences} absence entries)`);
     } catch (err) {
         next(err);
     }
@@ -822,6 +917,7 @@ try {
 
 // --- Global Error Handler ---
 app.use((err, req, res, next) => {
+  console.error('Global error handler:', err);
   if (!res.headersSent) {
     res.status(500).send('An unexpected internal server error occurred.');
   } else {
@@ -845,5 +941,8 @@ app.listen(port, () => {
   console.log(` 🔥 DYNAMIC SESSION TIMEOUTS ENABLED:`);
   console.log(`    - Employees: 3 minutes (90s heartbeat)`);
   console.log(`    - Admin: 30 minutes (5min heartbeat)`);
+  console.log(` 🚫 STRICT DAILY VALIDATION ENABLED:`);
+  console.log(`    - Maximum 1 work period per employee per day`);
+  console.log(`    - No multiple bookings allowed`);
   console.log(`=======================================================`);
 });
