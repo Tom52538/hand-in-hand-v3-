@@ -117,7 +117,12 @@ app.use(session({
   secret: process.env.SESSION_SECRET || 'sehr-geheimes-fallback-secret-fuer-dev',
   resave: false,
   saveUninitialized: false,
-  cookie: { secure: process.env.NODE_ENV === 'production', maxAge: 1000 * 60 * 60 * 24, httpOnly: true, sameSite: 'lax' }
+  cookie: { 
+    secure: process.env.NODE_ENV === 'production', 
+    maxAge: 1000 * 60 * 3, // 3 Minuten Session-Timeout
+    httpOnly: true, 
+    sameSite: 'lax' 
+  }
 }));
 app.use(express.static(path.join(__dirname, 'public')));
 
@@ -291,6 +296,23 @@ app.get("/api/session-status", (req, res) => {
     return res.json({ isAdmin: true });
   }
   res.status(401).json({ message: "Not logged in" });
+});
+
+// --- Heartbeat Endpoint für Auto-Logout ---
+app.post("/api/heartbeat", (req, res) => {
+  if (req.session && (req.session.isEmployee || req.session.isAdmin)) {
+    // Session ist gültig - erneuere sie
+    req.session.touch(); // Setzt lastAccess auf aktuellen Zeitpunkt
+    res.status(200).json({ 
+      status: 'alive',
+      isEmployee: !!req.session.isEmployee,
+      isAdmin: !!req.session.isAdmin,
+      employeeName: req.session.employeeName || null
+    });
+  } else {
+    // Session ungültig
+    res.status(401).json({ status: 'expired' });
+  }
 });
 
 // --- Mitarbeiter-API-Endpunkte (nur mit isEmployee) ---
