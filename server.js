@@ -49,6 +49,28 @@ function calculateWorkHours(startTime, endTime) {
   if (diffInMin < 0) diffInMin += 24 * 60;
   return diffInMin / 60;
 }
+
+// FLEX-BOOKING: Helper function to check for overlapping time intervals
+function doIntervalsOverlap(start1, end1, start2, end2) {
+  if (!start1 || !end1 || !start2 || !end2) return false;
+
+  let start1Minutes = parseTime(start1);
+  let end1Minutes = parseTime(end1);
+  let start2Minutes = parseTime(start2);
+  let end2Minutes = parseTime(end2);
+
+  // Handle overnight shifts by normalizing end times
+  if (end1Minutes < start1Minutes) {
+    end1Minutes += 24 * 60;
+  }
+  if (end2Minutes < start2Minutes) {
+    end2Minutes += 24 * 60;
+  }
+
+  // Overlap logic: Two intervals [a, b) and [c, d) overlap if a < d AND c < b.
+  return start1Minutes < end2Minutes && start2Minutes < end1Minutes;
+}
+
 async function convertToCSV(database, data) {
   if (!data || data.length === 0) return '';
   const csvRows = [];
@@ -476,6 +498,24 @@ app.put('/api/employee/log-end/:id', isEmployee, async (req, res, next) => {
     }
     
     const entry = checkResult.rows[0];
+
+    // FLEX-BOOKING: Overlap Check
+    const otherEntriesQuery = `
+      SELECT TO_CHAR(starttime, 'HH24:MI') as "startTime", TO_CHAR(endtime, 'HH24:MI') as "endTime"
+      FROM work_hours
+      WHERE LOWER(name) = LOWER($1) AND date = $2 AND id != $3 AND endtime IS NOT NULL
+    `;
+    const otherEntriesResult = await db.query(otherEntriesQuery, [employeeName, entry.date, entryId]);
+
+    for (const otherEntry of otherEntriesResult.rows) {
+      if (doIntervalsOverlap(entry.starttime, endTime, otherEntry.startTime, otherEntry.endTime)) {
+        return res.status(409).json({
+          message: `❌ Buchung nicht möglich: Der Zeitraum (${entry.starttime} - ${endTime}) überschneidet sich mit einem bestehenden Eintrag (${otherEntry.startTime} - ${otherEntry.endTime}).`,
+          errorType: 'OVERLAP_CONFLICT'
+        });
+      }
+    }
+
     const hours = calculateWorkHours(entry.starttime, endTime);
     
     // Update entry
@@ -808,9 +848,22 @@ app.put('/api/admin/update-hours', isAdmin, async (req, res, next) => {
             currentEntry.date.toISOString().split('T')[0] : 
             currentEntry.date.split('T')[0];
         
-        // FLEX-BOOKING: The conflict check for admin updates has been removed to allow multiple entries per day.
-        // The original logic prevented an admin from moving an entry to a day that already had another entry.
-        // This is no longer desired behavior.
+        // FLEX-BOOKING: Overlap Check for Admin Updates
+        const otherEntriesQuery = `
+          SELECT TO_CHAR(starttime, 'HH24:MI') as "startTime", TO_CHAR(endtime, 'HH24:MI') as "endTime"
+          FROM work_hours
+          WHERE LOWER(name) = LOWER($1) AND date = $2 AND id != $3
+        `;
+        const otherEntriesResult = await db.query(otherEntriesQuery, [currentEntry.name, date, id]);
+
+        for (const otherEntry of otherEntriesResult.rows) {
+          if (doIntervalsOverlap(startTime, endTime, otherEntry.startTime, otherEntry.endTime)) {
+            return res.status(409).json({
+              message: `❌ Speichern nicht möglich: Der geänderte Zeitraum (${startTime} - ${endTime}) überschneidet sich mit einem bestehenden Eintrag (${otherEntry.startTime} - ${otherEntry.endTime}).`,
+              errorType: 'OVERLAP_CONFLICT'
+            });
+          }
+        }
         
         const hours = calculateWorkHours(startTime, endTime);
         const result = await db.query(
