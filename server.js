@@ -657,6 +657,95 @@ app.get('/admin-work-hours', isAdmin, async (req, res, next) => {
   }
 });
 
+// FLEX-BOOKING: Endpoint for admins to get all bookings for a specific employee and day
+app.get('/api/admin/daily-bookings', isAdmin, async (req, res, next) => {
+  try {
+    const { name, date } = req.query;
+    if (!name || !date) {
+      return res.status(400).json({ message: 'Employee name and date are required.' });
+    }
+
+    const dailyBookingsQuery = `
+      SELECT
+        id,
+        TO_CHAR(starttime, 'HH24:MI') as "startTime",
+        TO_CHAR(endtime, 'HH24:MI') as "endTime",
+        hours
+      FROM work_hours
+      WHERE LOWER(name) = LOWER($1) AND date = $2
+      ORDER BY starttime ASC
+    `;
+
+    const { rows } = await db.query(dailyBookingsQuery, [name, date]);
+    res.json(rows);
+
+  } catch (err) {
+    console.error('Error in admin/daily-bookings:', err);
+    next(err);
+  }
+});
+
+// FLEX-BOOKING: Endpoint for admins to manually add a completed work entry
+app.post('/api/admin/manual-entry', isAdmin, async (req, res, next) => {
+  try {
+    const { name, date, startTime, endTime, comment } = req.body;
+
+    if (!name || !date || !startTime || !endTime) {
+      return res.status(400).json({ message: 'Name, date, startTime, and endTime are required.' });
+    }
+
+    // Validation 1: Check for negative or zero duration
+    const hours = calculateWorkHours(startTime, endTime);
+    if (hours <= 0) {
+      return res.status(400).json({ message: `Endzeit (${endTime}) muss nach der Startzeit (${startTime}) liegen.` });
+    }
+
+    // Validation 2: Check for open entries on the same day for that user
+    const openEntryCheck = await db.query(
+      'SELECT id FROM work_hours WHERE LOWER(name) = LOWER($1) AND date = $2 AND endtime IS NULL',
+      [name, date]
+    );
+    if (openEntryCheck.rows.length > 0) {
+      return res.status(409).json({
+        message: `Ein offener Arbeitseintrag existiert bereits für diesen Tag. Bitte schließen Sie diesen zuerst.`,
+        errorType: 'OPEN_ENTRY_EXISTS'
+      });
+    }
+
+    // Validation 3: Check for overlaps with existing completed entries
+    const otherEntriesQuery = `
+      SELECT TO_CHAR(starttime, 'HH24:MI') as "startTime", TO_CHAR(endtime, 'HH24:MI') as "endTime"
+      FROM work_hours
+      WHERE LOWER(name) = LOWER($1) AND date = $2 AND endtime IS NOT NULL
+    `;
+    const otherEntriesResult = await db.query(otherEntriesQuery, [name, date]);
+
+    for (const otherEntry of otherEntriesResult.rows) {
+      if (doIntervalsOverlap(startTime, endTime, otherEntry.startTime, otherEntry.endTime)) {
+        return res.status(409).json({
+          message: `Der neue Zeitraum (${startTime} - ${endTime}) überschneidet sich mit einem bestehenden Eintrag (${otherEntry.startTime} - ${otherEntry.endTime}).`,
+          errorType: 'OVERLAP_CONFLICT'
+        });
+      }
+    }
+
+    // All checks passed, insert the new entry
+    const insertQuery = `
+      INSERT INTO work_hours (name, date, starttime, endtime, hours, comment)
+      VALUES ($1, $2, $3, $4, $5, $6)
+      RETURNING *
+    `;
+    const result = await db.query(insertQuery, [name, date, startTime, endTime, hours, comment || null]);
+
+    console.log(`✅ Admin manually added work hours for ${name} on ${date}: ${hours.toFixed(2)} hours`);
+    res.status(201).json(result.rows[0]);
+
+  } catch (err) {
+    console.error('Error in admin/manual-entry:', err);
+    next(err);
+  }
+});
+
 app.get('/admin/employees', isAdmin, async (req, res, next) => {
     try {
         const result = await db.query('SELECT id, name, mo_hours, di_hours, mi_hours, do_hours, fr_hours FROM employees ORDER BY name ASC');

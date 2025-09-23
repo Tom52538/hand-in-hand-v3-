@@ -242,6 +242,7 @@
         <li data-tab="workhours" class="active">Arbeitszeiten</li>
         <li data-tab="employees">Mitarbeiter</li>
         <li data-tab="absences">Abwesenheiten</li>
+        <li data-tab="manual-entry">Nachbuchen</li>
         <li data-tab="reports">Auswertungen</li>
       </ul>
       <div id="tab-workhours" class="tab-content">
@@ -380,6 +381,40 @@
                 <small>Löscht alle Abwesenheiten vom Typ 'Feiertag' für alle Mitarbeiter. Urlaub/Krank bleibt erhalten. Danach können die korrekten Feiertage oben neu generiert werden.</small>
             </div>
       </div>
+      <div id="tab-manual-entry" class="tab-content hidden">
+        <h2>Schicht manuell nachbuchen</h2>
+        <form id="manualEntryForm" style="border: 1px solid #eee; padding: 20px; background-color: #fdfdfd; border-radius: 4px;">
+            <div>
+                <label for="manualEntryEmployeeSelect">Mitarbeiter:</label>
+                <select id="manualEntryEmployeeSelect" name="name" required>
+                    <option value="">Bitte auswählen...</option>
+                </select>
+            </div>
+            <div><label for="manualEntryDate">Datum:</label><input type="date" id="manualEntryDate" name="date" required></div>
+            <div><label for="manualEntryStartTime">Arbeitsbeginn:</label><input type="time" id="manualEntryStartTime" name="startTime" required step="60"></div>
+            <div><label for="manualEntryEndTime">Arbeitsende:</label><input type="time" id="manualEntryEndTime" name="endTime" required step="60"></div>
+            <div><label for="manualEntryComment">Bemerkungen (optional):</label><input type="text" id="manualEntryComment" name="comment"></div>
+            <button type="submit">Schicht speichern</button>
+        </form>
+        <div id="manualEntryPreview" style="margin-top: 1.5rem;">
+            <hr>
+            <h3>Vorhandene Buchungen an diesem Tag</h3>
+            <div class="table-wrapper">
+                <table id="manualEntryBookingsTable">
+                    <thead>
+                        <tr>
+                            <th>Beginn</th>
+                            <th>Ende</th>
+                            <th>Dauer (Std.)</th>
+                        </tr>
+                    </thead>
+                    <tbody id="manualEntryBookingsTableBody">
+                        <tr><td colspan="3">Bitte Mitarbeiter und Datum auswählen.</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+      </div>
       <div id="tab-reports" class="tab-content hidden">
           <h2>Auswertungen</h2>
           <form id="balanceForm">
@@ -486,6 +521,13 @@
     const downloadPdfBtn = document.getElementById('downloadPdfBtn');
     const balanceResultDiv = document.getElementById('balanceResult');
 
+    // Manual Entry DOM References
+    const manualEntryTabContent = document.getElementById('tab-manual-entry');
+    const manualEntryForm = document.getElementById('manualEntryForm');
+    const manualEntryEmployeeSelect = document.getElementById('manualEntryEmployeeSelect');
+    const manualEntryDate = document.getElementById('manualEntryDate');
+    const manualEntryBookingsTableBody = document.getElementById('manualEntryBookingsTableBody');
+
     const dateDisplayOptions = { weekday: 'short', day: '2-digit', month: '2-digit', year: 'numeric' };
     const dateDisplayOptionsUTC = { ...dateDisplayOptions, timeZone: 'UTC' };
 
@@ -543,6 +585,11 @@
         if (periodTypeSelect) periodTypeSelect.addEventListener('change', handlePeriodTypeChange); else console.error("Element not found: periodTypeSelect");
         if (downloadPdfBtn) downloadPdfBtn.addEventListener('click', handleDownloadPdf);
         else console.error("Element not found: downloadPdfBtn");
+
+        // Listeners for Manual Entry Tab
+        if (manualEntryForm) manualEntryForm.addEventListener('submit', handleManualEntrySubmit);
+        if (manualEntryEmployeeSelect) manualEntryEmployeeSelect.addEventListener('change', loadAdminDailyBookings);
+        if (manualEntryDate) manualEntryDate.addEventListener('change', loadAdminDailyBookings);
 
         document.querySelectorAll('.toggle-password').forEach(button => {
             button.addEventListener('click', () => {
@@ -700,6 +747,95 @@ async function handleAdminLogout() {
         await fetch("/admin-logout", { method: "POST", credentials: "include" });
         location.reload();
     } catch {}
+}
+
+// ==== Funktionen für manuelles Nachbuchen (Admin) ====
+async function loadAdminDailyBookings() {
+    const employeeName = manualEntryEmployeeSelect.value;
+    const date = manualEntryDate.value;
+
+    if (!employeeName || !date) {
+        manualEntryBookingsTableBody.innerHTML = '<tr><td colspan="3">Bitte Mitarbeiter und Datum auswählen.</td></tr>';
+        return;
+    }
+
+    manualEntryBookingsTableBody.innerHTML = '<tr><td colspan="3">Lade Buchungen...</td></tr>';
+
+    try {
+        const response = await fetch(`/api/admin/daily-bookings?name=${encodeURIComponent(employeeName)}&date=${date}`, { credentials: 'include' });
+        if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(errorText || 'Could not fetch daily bookings for admin.');
+        }
+
+        const bookings = await response.json();
+        manualEntryBookingsTableBody.innerHTML = '';
+
+        if (bookings.length > 0) {
+            bookings.forEach(booking => {
+                const tr = document.createElement('tr');
+                const duration = booking.hours !== null ? booking.hours.toFixed(2) : '---';
+                tr.innerHTML = `
+                    <td>${booking.startTime || '---'}</td>
+                    <td>${booking.endTime || '---'}</td>
+                    <td>${duration}</td>
+                `;
+                manualEntryBookingsTableBody.appendChild(tr);
+            });
+        } else {
+            manualEntryBookingsTableBody.innerHTML = '<tr><td colspan="3">Keine Buchungen für diesen Tag gefunden.</td></tr>';
+        }
+    } catch (error) {
+        console.error("Error loading admin daily bookings:", error);
+        manualEntryBookingsTableBody.innerHTML = `<tr><td colspan="3" class="error-message">Fehler: ${error.message}</td></tr>`;
+    }
+}
+
+async function handleManualEntrySubmit(event) {
+    event.preventDefault();
+    const form = event.target;
+    const button = form.querySelector('button[type="submit"]');
+    const body = {
+        name: form.name.value,
+        date: form.date.value,
+        startTime: form.startTime.value,
+        endTime: form.endTime.value,
+        comment: form.comment.value
+    };
+
+    if (!body.name || !body.date || !body.startTime || !body.endTime) {
+        alert("Bitte Mitarbeiter, Datum, Start- und Endzeit ausfüllen.");
+        return;
+    }
+
+    button.disabled = true;
+    button.textContent = 'Speichern...';
+
+    try {
+        const response = await fetch('/api/admin/manual-entry', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+            credentials: 'include'
+        });
+
+        const result = await response.json();
+        if (!response.ok) {
+            throw new Error(result.message || `Serverfehler ${response.status}`);
+        }
+
+        alert('✅ Schicht erfolgreich nachgetragen.');
+        form.startTime.value = '';
+        form.endTime.value = '';
+        form.comment.value = '';
+        loadAdminDailyBookings(); // Refresh the list
+    } catch (error) {
+        console.error("Error submitting manual entry:", error);
+        alert(`❌ Fehler: ${error.message}`);
+    } finally {
+        button.disabled = false;
+        button.textContent = 'Schicht speichern';
+    }
 }
 
     // ==== Funktionen Zeiterfassung (ANGEPASST FÜR LOGIN) ====
@@ -914,6 +1050,17 @@ async function handleAdminLogout() {
                 case 'workhours': if (!filterEmployeeSelect.options || filterEmployeeSelect.options.length <= 1) { loadAdminSelectOptions(); } if (!workHoursTableBody.firstChild || workHoursTableBody.innerHTML.includes('Filter auswählen')) { workHoursTableBody.innerHTML = '<tr><td colspan="7">Bitte Filter auswählen und anwenden.</td></tr>'; } cancelEditWorkHours(); break;
                 case 'employees': loadEmployees(); cancelEditEmployee(); break;
                 case 'absences': if (!absenceEmployeeSelect.options || absenceEmployeeSelect.options.length <= 1) { loadAdminSelectOptions(); } if(absencesTableBody) absencesTableBody.innerHTML = '<tr><td colspan="5">Bitte Mitarbeiter auswählen.</td></tr>'; if(addAbsenceForm) addAbsenceForm.reset(); if(addAbsenceSubmitBtn) addAbsenceSubmitBtn.disabled = true; if(absenceFormNote) absenceFormNote.style.display = 'block'; if(addAbsenceEmployeeIdInput) addAbsenceEmployeeIdInput.value = ""; if(generateHolidaysResultDiv) generateHolidaysResultDiv.innerHTML = ""; if(generateHolidaysYearInput) generateHolidaysYearInput.value = new Date().getFullYear(); if(deleteHolidaysResultDiv) deleteHolidaysResultDiv.innerHTML = ""; break;
+                case 'manual-entry':
+                    if (!manualEntryEmployeeSelect.options || manualEntryEmployeeSelect.options.length <= 1) {
+                        fetchEmployees().then(employees => {
+                            populateSelectWithOptions(manualEntryEmployeeSelect, employees, false, "Bitte auswählen...");
+                        });
+                    }
+                    if (!manualEntryDate.value) {
+                        manualEntryDate.value = new Date().toISOString().split('T')[0];
+                    }
+                    loadAdminDailyBookings();
+                    break;
                 case 'reports': if (!balanceNameSelect.options || balanceNameSelect.options.length <= 1) { loadAdminSelectOptions(); } if(balanceResultDiv) balanceResultDiv.innerHTML = ''; if(downloadPdfBtn) downloadPdfBtn.disabled = true; handlePeriodTypeChange(); currentBalanceData = null; break;
             }
         } else { console.error(`Tab-Inhalt für ID '${targetContentId}' nicht gefunden.`); }
