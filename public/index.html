@@ -201,6 +201,24 @@
          <div class="booking-row"><label for="displayEndTime">Arbeitsende:</label><input type="text" id="displayEndTime" readonly></div>
          <div id="summaryHours" class="hidden"><div class="booking-row"><label>Arbeitszeit (Tag):</label><span id="dailyTotalHours">--</span></div><div class="booking-row"><label>Arbeitszeit (Monat):</label><span id="monthlyTotalHours">--</span></div></div>
      </div>
+
+     <div id="dailyBookingsContainer" class="hidden" style="margin-top: 20px;">
+        <h3>Heutige Buchungen</h3>
+        <div class="table-wrapper">
+            <table id="dailyBookingsTable">
+                <thead>
+                    <tr>
+                        <th>Beginn</th>
+                        <th>Ende</th>
+                        <th>Dauer (Std.)</th>
+                    </tr>
+                </thead>
+                <tbody id="dailyBookingsTableBody">
+                    <!-- Rows will be inserted here by JavaScript -->
+                </tbody>
+            </table>
+        </div>
+      </div>
     </form>
 
     <div id="adminLoginSection" class="hidden">
@@ -408,6 +426,8 @@
     const summaryHoursDiv = document.getElementById('summaryHours');
     const dailyTotalHoursSpan = document.getElementById('dailyTotalHours');
     const monthlyTotalHoursSpan = document.getElementById('monthlyTotalHours');
+    const dailyBookingsContainer = document.getElementById('dailyBookingsContainer');
+    const dailyBookingsTableBody = document.getElementById('dailyBookingsTableBody');
 
     const adminLoginSection = document.getElementById('adminLoginSection');
     const adminLoginFormElement = document.getElementById('adminLoginForm');
@@ -555,6 +575,11 @@ function showLoggedInEmployeeView(employee) {
 
     resetWorkTimeForm();
     checkNextBookingAction();
+
+    // FLEX-BOOKING: Show today's bookings and summary on login
+    const today = new Date().toISOString().split('T')[0];
+    displayDailyBookings(today);
+    displaySummaryHours(today);
 
     // HEARTBEAT STARTEN
     startHeartbeat();
@@ -733,10 +758,9 @@ async function handleAdminLogout() {
                 if (!response.ok) {
                     // UPDATED: Enhanced error handling for strict validation
                     if (response.status === 409) {
+                        // FLEX-BOOKING: DAILY_LIMIT_REACHED is no longer a possible error.
                         // Handle specific validation errors
-                        if (result.errorType === 'DAILY_LIMIT_REACHED') {
-                            alert(`🚫 ARBEITSZEIT BEREITS ERFASST\n\n${result.message}`);
-                        } else if (result.errorType === 'OPEN_ENTRY_EXISTS') {
+                        if (result.errorType === 'OPEN_ENTRY_EXISTS') {
                             alert(`⚠️ OFFENER EINTRAG VORHANDEN\n\n${result.message}`);
                         } else {
                             alert(`❌ Buchung nicht möglich:\n\n${result.message}`);
@@ -789,6 +813,7 @@ async function handleAdminLogout() {
                     }
                 }
                 displaySummaryHours(summaryDate);
+                displayDailyBookings(summaryDate); // FLEX-BOOKING: Refresh daily bookings list
             } catch (err) {
                 console.error("Fehler beim Buchen des Arbeitsendes:", err);
                 alert("❌ Fehler beim Buchen des Arbeitsendes: " + err.message);
@@ -823,8 +848,45 @@ async function handleAdminLogout() {
             console.log("Summary Stunden erfolgreich angezeigt."); // DEBUG
         } catch (error) { console.error("Fehler in displaySummaryHours:", error); dailyTotalHoursSpan.textContent = 'Fehler'; monthlyTotalHoursSpan.textContent = 'Fehler'; }
     }
-    function resetWorkTimeForm() { if(employeeSelect) employeeSelect.value = ''; if(workTimeBtn) { workTimeBtn.textContent = 'Bitte Mitarbeiter wählen'; workTimeBtn.style.backgroundColor = ''; workTimeBtn.disabled = true; } resetBookingDetails(); if(bookingDetailsDiv) bookingDetailsDiv.classList.add('hidden'); if(summaryHoursDiv) summaryHoursDiv.classList.add('hidden'); }
+    function resetWorkTimeForm() { if(employeeSelect) employeeSelect.value = ''; if(workTimeBtn) { workTimeBtn.textContent = 'Bitte Mitarbeiter wählen'; workTimeBtn.style.backgroundColor = ''; workTimeBtn.disabled = true; } resetBookingDetails(); if(bookingDetailsDiv) bookingDetailsDiv.classList.add('hidden'); if(summaryHoursDiv) summaryHoursDiv.classList.add('hidden'); if(dailyBookingsContainer) dailyBookingsContainer.classList.add('hidden'); }
     function resetBookingDetails() { if(displayDateInput) displayDateInput.value = ''; if(displayStartTimeInput) displayStartTimeInput.value = ''; if(displayEndTimeInput) displayEndTimeInput.value = ''; if(dailyTotalHoursSpan) dailyTotalHoursSpan.textContent = '--'; if(monthlyTotalHoursSpan) monthlyTotalHoursSpan.textContent = '--'; currentWorkEntryId = null; }
+
+    // FLEX-BOOKING: New function to display all bookings for a given day
+    async function displayDailyBookings(dayDate) {
+        if (!loggedInEmployee) { return; }
+        if (!dayDate) { return; }
+        if (!dailyBookingsContainer || !dailyBookingsTableBody) { return; }
+
+        try {
+            const response = await fetch(`/api/employee/daily-bookings?date=${dayDate}`, { credentials: 'include' });
+            if (!response.ok) {
+                if (response.status === 401) { showLoggedOutView(); }
+                return; // Don't show error, just hide the table
+            }
+            const bookings = await response.json();
+
+            dailyBookingsTableBody.innerHTML = ''; // Clear previous entries
+
+            if (bookings.length > 0) {
+                bookings.forEach(booking => {
+                    const tr = document.createElement('tr');
+                    const duration = booking.hours !== null ? booking.hours.toFixed(2) : '---';
+                    tr.innerHTML = `
+                        <td>${booking.startTime || '---'}</td>
+                        <td>${booking.endTime || '---'}</td>
+                        <td>${duration}</td>
+                    `;
+                    dailyBookingsTableBody.appendChild(tr);
+                });
+                dailyBookingsContainer.classList.remove('hidden');
+            } else {
+                dailyBookingsContainer.classList.add('hidden');
+            }
+        } catch (error) {
+            console.error("Fehler in displayDailyBookings:", error);
+            dailyBookingsContainer.classList.add('hidden');
+        }
+    }
 
     // ==== Admin-Funktionen ====
     async function handleAdminLogin(e) {

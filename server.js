@@ -412,24 +412,8 @@ app.post('/api/employee/log-start', isEmployee, async (req, res, next) => {
     const dailyEntries = await db.query(dailyValidationQuery, [employeeName, date]);
     
     if (dailyEntries.rows.length > 0) {
-      // Check for complete entries (both start and end time)
-      const completeEntries = dailyEntries.rows.filter(entry => entry.endtime);
+      // FLEX-BOOKING: Check only for open entries. Multiple completed entries are now allowed.
       const openEntries = dailyEntries.rows.filter(entry => !entry.endtime);
-      
-      if (completeEntries.length > 0) {
-        // Complete entry exists - STRICT RULE: Only one work period per day
-        const completeEntry = completeEntries[0];
-        const formattedDate = new Date(date + 'T00:00:00Z').toLocaleDateString('de-DE');
-        return res.status(409).json({ 
-          message: `🚫 Arbeitszeit für ${formattedDate} bereits vollständig erfasst (${completeEntry.starttime} - ${completeEntry.endtime}, ${parseFloat(completeEntry.hours || 0).toFixed(2)} Std.). Neue Buchung nicht möglich.\n\n💡 Bei Korrekturen wenden Sie sich an den Administrator.`,
-          errorType: 'DAILY_LIMIT_REACHED',
-          existingEntry: {
-            startTime: completeEntry.starttime,
-            endTime: completeEntry.endtime,
-            hours: completeEntry.hours
-          }
-        });
-      }
       
       if (openEntries.length > 0) {
         // Open entry exists
@@ -559,6 +543,37 @@ app.get('/api/employee/summary-hours', isEmployee, async (req, res, next) => {
     });
   } catch (err) {
     console.error('Error in summary-hours:', err);
+    next(err);
+  }
+});
+
+// FLEX-BOOKING: New endpoint to get all bookings for a specific day
+app.get('/api/employee/daily-bookings', isEmployee, async (req, res, next) => {
+  try {
+    const employeeName = req.session.employeeName;
+    const { date } = req.query;
+
+    if (!date) {
+      return res.status(400).json({ message: 'Date is required.' });
+    }
+
+    const dailyBookingsQuery = `
+      SELECT
+        id,
+        TO_CHAR(starttime, 'HH24:MI') as "startTime",
+        TO_CHAR(endtime, 'HH24:MI') as "endTime",
+        hours
+      FROM work_hours
+      WHERE LOWER(name) = LOWER($1) AND date = $2
+      ORDER BY starttime ASC
+    `;
+
+    const { rows } = await db.query(dailyBookingsQuery, [employeeName, date]);
+
+    res.json(rows);
+
+  } catch (err) {
+    console.error('Error in daily-bookings:', err);
     next(err);
   }
 });
@@ -793,27 +808,9 @@ app.put('/api/admin/update-hours', isAdmin, async (req, res, next) => {
             currentEntry.date.toISOString().split('T')[0] : 
             currentEntry.date.split('T')[0];
         
-        // If date is being changed, validate the new date doesn't have conflicts
-        if (currentDate !== date) {
-            const conflictCheckQuery = `
-                SELECT id, TO_CHAR(starttime, 'HH24:MI') as starttime, 
-                       TO_CHAR(endtime, 'HH24:MI') as endtime
-                FROM work_hours 
-                WHERE LOWER(name) = LOWER($1) AND date = $2 AND id != $3
-            `;
-            
-            const conflicts = await db.query(conflictCheckQuery, [currentEntry.name, date, id]);
-            
-            if (conflicts.rows.length > 0) {
-                const conflict = conflicts.rows[0];
-                const formattedDate = new Date(date + 'T00:00:00Z').toLocaleDateString('de-DE');
-                return res.status(409).json({ 
-                    message: `❌ Konflikt: Für ${formattedDate} existiert bereits ein Arbeitszeiteneintrag (${conflict.starttime} - ${conflict.endtime || '???'}).\n\nNur ein Arbeitszeitraum pro Tag und Mitarbeiter ist erlaubt.`,
-                    errorType: 'DATE_CONFLICT',
-                    conflictingEntry: conflict
-                });
-            }
-        }
+        // FLEX-BOOKING: The conflict check for admin updates has been removed to allow multiple entries per day.
+        // The original logic prevented an admin from moving an entry to a day that already had another entry.
+        // This is no longer desired behavior.
         
         const hours = calculateWorkHours(startTime, endTime);
         const result = await db.query(
